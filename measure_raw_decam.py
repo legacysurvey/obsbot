@@ -14,6 +14,7 @@ from scipy.ndimage.filters import median_filter
 
 from astrometry.util.plotutils import *
 from astrometry.util.util import wcs_pv2sip_hdr
+from astrometry.libkd.spherematch import match_xy
 
 from legacyanalysis.ps1cat import ps1cat, ps1_to_decam
 
@@ -150,7 +151,8 @@ def measure_raw_decam(fn, ext='N4'):
 
     minstar = 5
     pixsc = 0.262
-
+    maxshift = 30 # arcsec to PS1
+    
     F = fitsio.FITS(fn)
     primhdr = F[0].read_header()
 
@@ -201,13 +203,13 @@ def measure_raw_decam(fn, ext='N4'):
              0.06,),
         )
     
-    zpt0, sky0, kx = nominal_cal[band]
+    zp0, sky0, kx = nominal_cal[band]
 
 
     # Find the sky value and noise level
     sky,sig1 = sensible_sigmaclip(img[1500:2500, 500:1000])
 
-    skybr = -2.5 * np.log10(sky/pixsc/pixsc/exptime) + zpt0
+    skybr = -2.5 * np.log10(sky/pixsc/pixsc/exptime) + zp0
     print('Sky brightness: %8.2f mag/arcsec^2' % skybr)
     print('Fiducial:       %8.2f mag/arcsec^2' % sky0)
 
@@ -364,8 +366,8 @@ def measure_raw_decam(fn, ext='N4'):
     stars = pscat.get_stars()
     print('Got PS1 stars:', stars)
 
-    gicolor = stars.median[:,0] - stars.median[:,2]
-    keep = (gicolor > 0.4) * (gicolor < 2.7)
+    stars.gicolor = stars.median[:,0] - stars.median[:,2]
+    keep = (stars.gicolor > 0.4) * (stars.gicolor < 2.7)
     stars.cut(keep)
     if len(stars) == 0:
         print('No overlap or too few stars in PS1')
@@ -385,10 +387,94 @@ def measure_raw_decam(fn, ext='N4'):
     plt.title('PS1 stars')
     ps.savefig()
     
+    # Match PS1 to our detections, find offset
+    radius = maxshift / pixsc
+    I,J,d = match_xy(px, py, fx, fy, radius)
+    print(len(I), 'matches')
+
+    plt.clf()
+    plothist(px[I] - fx[J], py[I] - fy[J])
+    plt.xlabel('dx (pixels)')
+    plt.ylabel('dy (pixels)')
+    plt.title('DECam to PS1 matches')
+    ps.savefig()
+
+    dx = px[I] - fx[J]
+    dy = py[I] - fy[J]
+
+    # Hmm, let's try being dumb and see if that works...
+    shiftx = np.median(dx)
+    shifty = np.median(dy)
+
+    ax = plt.axis()
+    plt.plot(shiftx, shifty, 'm.')
+    plt.axis(ax)
+    ps.savefig()
+
+    # Refine with smaller search radius
+    radius2 = 3. / pixsc
+    I,J,d = match_xy(px, py, fx+shiftx, fy+shifty, radius2)
     
+    dx = px[I] - fx[J]
+    dy = py[I] - fy[J]
+    shiftx = np.median(dx)
+    shifty = np.median(dy)
+
+    plt.clf()
+    plothist(dx, dy)
+    plt.xlabel('dx (pixels)')
+    plt.ylabel('dy (pixels)')
+    plt.title('DECam to PS1 matches')
+    ax = plt.axis()
+    plt.plot(shiftx, shifty, 'm.')
+    plt.axis(ax)
+    ps.savefig()
+
+    # Compute photometric offset compared to PS1
+    # as the PS1 minus DECam-observed mags
+    colorterm = ps1_to_decam(stars.median[I,:], band)
+
+    ps1band = ps1cat.ps1band[band]
+    ps1mag = stars.median[I, ps1band] + colorterm
+    
+    plt.clf()
+    plt.semilogy(ps1mag, apflux2[J], 'b.')
+    plt.xlabel('PS1 mag')
+    plt.ylabel('DECam ap flux')
+    ps.savefig()
+
+    plt.clf()
+    plt.semilogy(ps1mag, apflux[J], 'b.')
+    plt.xlabel('PS1 mag')
+    plt.ylabel('DECam ap flux 1')
+    ps.savefig()
+
+    
+    apmag = -2.5 * np.log10(apflux2) + zp0 + 2.5 * np.log10(exptime)
+
+    plt.clf()
+    plt.plot(ps1mag, apmag[J], 'b.')
+    plt.xlabel('PS1 mag')
+    plt.ylabel('DECam ap mag')
+    ps.savefig()
+
+    dmag = ps1mag - apmag[J]
+    dm,dsig = sensible_sigmaclip(dmag, nsigma=2.5)
+    print('Mag offset', dm)
+    print('Scatter', dsig)
+    
+    # dmagA = dmag[iA]
+    # dmagB = dmag[iB]
+    # djs_iterstat, dmag, median=mag_offset, sigma=mag_rms, sigrej=2.5
+    # zpt_observed = zpt0 + mag_offset
+    # djs_iterstat, dmagA, median=mag_offsetA, sigma=mag_rmsA, sigrej=2.5
+    # djs_iterstat, dmagB, median=mag_offsetB, sigma=mag_rmsB, sigrej=2.5
+    # zpt_observedA = zpt0 + mag_offsetA
+    # zpt_observedB = zpt0 + mag_offsetB
+    # transparency = 10.d0^(-0.4*(zpt0-zpt_observed - kx*(1.0-airmass)))
 
 
     
-
+    
 measure_raw_decam('DECam_00488199.fits.fz')
     
