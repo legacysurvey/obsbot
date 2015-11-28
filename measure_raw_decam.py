@@ -678,9 +678,17 @@ if tile.tileid != tilenum:
 ebv = tile.ebv_med
 print('E(b-v) of planned tile:', ebv)
 
+if M['band'] == nextband:
+    skybright = M['skybright']
+else:
+    # Guess that the sky is as much brighter than canonical
+    # in the next band as it is in this one!
+    skybright = ((M['skybright'] - gvs.sb_dict[M['band']]) +
+                 gvs.sb_dict[nextband])
+
 fakezp = -99
-expfactor = ExposureFactor(M['band'], airmass, ebv, M['seeing'], fakezp,
-                           M['skybright'], gvs)
+expfactor = ExposureFactor(nextband, airmass, ebv, M['seeing'], fakezp,
+                           skybright, gvs)
 print('Exposure factor:', expfactor)
 
 
