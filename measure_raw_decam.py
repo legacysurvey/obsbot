@@ -271,8 +271,17 @@ def measure_raw_decam(fn, ext='N4', ps=None):
     dy = py[I] - fy[J]
 
     # Hmm, let's try being dumb and see if that works...
-    shiftx = np.median(dx)
-    shifty = np.median(dy)
+    # ... nope, eg rawdata/DECam_00497280.fits.fz
+    histo,xe,ye = np.histogram2d(dx, dy, bins=2*int(np.ceil(radius)),
+                                 range=((-radius,radius),(-radius,radius)))
+    histo = histo.T
+    mx = np.argmax(histo)
+    my,mx = np.unravel_index(mx, histo.shape)
+    shiftx = (xe[mx] + xe[mx+1])/2.
+    shifty = (ye[my] + ye[my+1])/2.
+    
+    #shiftx = np.median(dx)
+    #shifty = np.median(dy)
 
     if ps is not None:
         plt.clf()
