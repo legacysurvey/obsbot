@@ -54,6 +54,16 @@ for j in J:
         break
 
     fn = os.path.join(imagedir, newimgs[0])
+    for i in range(10):
+        try:
+            fitsio.read(fn)
+        except:
+            print('Failed to open', fn, '-- maybe not fully written yet.')
+            import traceback
+            traceback.print_exc()
+            time.sleep(2)
+            continue
+            
     M = measure_raw_decam(fn)
     
     #M = measure_raw_decam('DECam_00488199.fits.fz')
