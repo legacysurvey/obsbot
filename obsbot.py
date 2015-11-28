@@ -5,6 +5,8 @@ import json
 import matplotlib
 matplotlib.use('Agg')
 
+import ephem
+
 from astrometry.util.plotutils import *
 from astrometry.util.fits import *
 
@@ -65,7 +67,7 @@ for j in J:
             print('Failed to open', fn, '-- maybe not fully written yet.')
             import traceback
             traceback.print_exc()
-            time.sleep(2)
+            time.sleep(3)
             continue
 
     M = measure_raw_decam(fn, ext=ext, ps=ps)

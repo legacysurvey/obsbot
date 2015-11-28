@@ -16,11 +16,11 @@ from astrometry.util.fits import *
 from astrometry.util.util import wcs_pv2sip_hdr
 from astrometry.libkd.spherematch import match_xy
 
-import ephem
-
 from legacyanalysis.ps1cat import ps1cat, ps1_to_decam
 
 import photutils
+
+import tractor
 
 def measure_raw_decam(fn, ext='N4', ps=None):
     
@@ -387,7 +387,6 @@ def measure_raw_decam(fn, ext='N4', ps=None):
         ie[keep] = 1. / sig1
         # print('number of active pixels:', np.sum(ie > 0))
         
-        import tractor
         psf = tractor.NCircularGaussianPSF([4.], [1.])
         tim = tractor.Image(data=pix, inverr=ie, psf=psf)
         src = tractor.PointSource(tractor.PixPos(xi-xlo, yi-ylo),
