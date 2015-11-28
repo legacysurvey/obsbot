@@ -27,6 +27,8 @@ import photutils
 from nightlystrategy import (ExposureFactor, getParserAndGlobals, setupGlobals,
                              GetAirmass, StartAndEndTimes, s_to_days)
 
+from RemoteClient import RemoteClient
+
 def sensible_sigmaclip(arr, nsigma = 4.):
     goodpix,lo,hi = sigmaclip(arr, low=nsigma, high=nsigma)
     # sigmaclip returns unclipped pixels, lo,hi, where lo,hi are
@@ -691,5 +693,17 @@ expfactor = ExposureFactor(nextband, airmass, ebv, M['seeing'], fakezp,
                            skybright, gvs)
 print('Exposure factor:', expfactor)
 
+band = nextband
+exptime = expfactor * gvs.base_exptimes[band]
+print('Exptime (un-clipped)', exptime)
+exptime = np.clip(exptime, gvs.floor_exptimes[band], gvs.ceil_exptimes[band])
+print('Clipped exptime', exptime)
+
+if band == 'z' and exptime > gvs.t_sat_max:
+    exptime = gvs.t_sat_max
+    print('Reduced exposure time to avoid z-band saturation:', exptime)
 
 
+rc = RemoteClient()
+pid = rc.execute('get_propid')
+print('Got propid:', pid)
