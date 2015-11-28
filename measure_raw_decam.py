@@ -492,62 +492,7 @@ def measure_raw_decam(fn, ext='N4'):
 
     print('Transparency', transparency)
 
-    # Pull out sources, measure psfnorm for each -> seeing measure
-    # NOOOOO -- This doesn't work in the presence of noise.
-    # aprad = 2.0
-    # psf_r = int(aprad / pixsc)
-    # #psfnorms = []
-    # fwhms = np.zeros(len(fx), np.float32)
-    # for i,(xi,yi) in enumerate(zip(fx,fy)):
-    #     ix = int(np.round(xi))
-    #     iy = int(np.round(yi))
-    #     xlo = max(0, ix-psf_r)
-    #     xhi = min(W, ix+psf_r+1)
-    #     ylo = max(0, iy-psf_r)
-    #     yhi = min(H, iy+psf_r+1)
-    #     xx,yy = np.meshgrid(np.arange(xlo,xhi), np.arange(ylo,yhi))
-    #     r2 = (xx - xi)**2 + (yy - yi)**2
-    #     keep = (r2 < psf_r)
-    #     pix = img[ylo:yhi, xlo:xhi][keep]
-    #     n_eff = np.sum(pix)**2 / np.sum(pix**2)
-    #     #psfnorm = np.sqrt(1. / n_eff)
-    #     #psfnorms.append(psfnorm)
-    # 
-    #     #pp = pix / np.sum(pix)
-    #     #psfnorm = np.sqrt(np.sum(pp**2))
-    #     #print('psf norm', psfnorm, 'vs n_eff->psfnorm', np.sqrt(1./n_eff))
-    #     
-    #     # psfnorm is in units of 1/pixels.
-    #     # (eg, psfnorm for a gaussian is ~ 1/psf_sigma)
-    #     # Neff is in pixels**2
-    #     # Narcsec is in arcsec**2
-    #     narcsec = n_eff * pixsc**2
-    # 
-    #     # Back to units of linear arcsec.
-    #     narcsec = np.sqrt(narcsec)
-    #     # Correction factor to get back to equivalent of Gaussian sigma
-    #     narcsec /= 2.*np.sqrt(np.pi)
-    #     # Conversion factor to FWHM (2.35)
-    #     narcsec *= 2.*np.sqrt(2.*np.log(2.))
-    #     fwhms[i] = narcsec
-    # 
-    # lo,hi = np.percentile(fwhms, [5,95])
-    # lo -= 0.1
-    # hi += 0.1
-    # plt.clf()
-    # plt.hist(fwhms, 25, range=(lo,hi), histtype='step', color='b')
-    # plt.hist(fwhms[J], 25, range=(lo,hi), histtype='step', color='r')
-    # plt.xlabel('FWHM (arcsec)')
-    # ps.savefig()
-    # 
-    # print('Median FWHM:', np.median(fwhms))
-    # print('Median FWHM of PS1-matched stars:', np.median(fwhms[J]))
-    #
-    # fwhm = np.median(fwhms[J])
-
-    #fwhms = np.zeros(len(fx), np.float32)
     fwhms = []
-    
     psf_r = 15
     for i,(xi,yi,fluxi) in enumerate(zip(fx[J],fy[J],apflux[J])):
         ix = int(np.round(xi))
@@ -562,7 +507,7 @@ def measure_raw_decam(fn, ext='N4'):
         pix = img[ylo:yhi, xlo:xhi]
         ie = np.zeros_like(pix)
         ie[keep] = 1. / sig1
-        print('number of active pixels:', np.sum(ie > 0))
+        # print('number of active pixels:', np.sum(ie > 0))
         
         import tractor
         psf = tractor.NCircularGaussianPSF([4.], [1.])
@@ -637,13 +582,6 @@ def measure_raw_decam(fn, ext='N4'):
         yhi = min(H, iy+psf_r+1)
         pix = img[ylo:yhi, xlo:xhi]
 
-        print('xi,yi', xi,yi)
-        print('  xlo,xhi', xlo,xhi)
-        print('  ylo,yhi', ylo,yhi)
-        print('  pix:', pix.shape)
-        print('  iy-ylo:', iy-ylo)
-        print('  ix-xlo:', ix-xlo)
-        
         slc = pix[iy-ylo, :].copy()
         slc /= np.sum(slc)
         plt.plot(slc, 'b-', alpha=0.2)
