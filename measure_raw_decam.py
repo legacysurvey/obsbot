@@ -20,6 +20,8 @@ from legacyanalysis.ps1cat import ps1cat, ps1_to_decam
 
 import photutils
 
+from nightlystrategy import ExposureFactor
+
 def sensible_sigmaclip(arr, nsigma = 4.):
     goodpix,lo,hi = sigmaclip(arr, low=nsigma, high=nsigma)
     # sigmaclip returns unclipped pixels, lo,hi, where lo,hi are
@@ -440,41 +442,223 @@ def measure_raw_decam(fn, ext='N4'):
     plt.clf()
     plt.semilogy(ps1mag, apflux2[J], 'b.')
     plt.xlabel('PS1 mag')
-    plt.ylabel('DECam ap flux')
+    plt.ylabel('DECam ap flux (with sky sub)')
     ps.savefig()
 
     plt.clf()
     plt.semilogy(ps1mag, apflux[J], 'b.')
     plt.xlabel('PS1 mag')
-    plt.ylabel('DECam ap flux 1')
+    plt.ylabel('DECam ap flux (no sky sub)')
     ps.savefig()
 
     
-    apmag = -2.5 * np.log10(apflux2) + zp0 + 2.5 * np.log10(exptime)
+    apmag2 = -2.5 * np.log10(apflux2) + zp0 + 2.5 * np.log10(exptime)
+    apmag  = -2.5 * np.log10(apflux ) + zp0 + 2.5 * np.log10(exptime)
 
     plt.clf()
-    plt.plot(ps1mag, apmag[J], 'b.')
+    plt.plot(ps1mag, apmag[J], 'b.', label='No sky sub')
+    plt.plot(ps1mag, apmag2[J], 'r.', label='Sky sub')
     plt.xlabel('PS1 mag')
     plt.ylabel('DECam ap mag')
+    plt.legend(loc='upper left')
     ps.savefig()
 
-    dmag = ps1mag - apmag[J]
-    dm,dsig = sensible_sigmaclip(dmag, nsigma=2.5)
-    print('Mag offset', dm)
+    dm = ps1mag - apmag[J]
+    dmag,dsig = sensible_sigmaclip(dm, nsigma=2.5)
+    print('Mag offset', dmag)
     print('Scatter', dsig)
-    
-    # dmagA = dmag[iA]
-    # dmagB = dmag[iB]
-    # djs_iterstat, dmag, median=mag_offset, sigma=mag_rms, sigrej=2.5
-    # zpt_observed = zpt0 + mag_offset
-    # djs_iterstat, dmagA, median=mag_offsetA, sigma=mag_rmsA, sigrej=2.5
-    # djs_iterstat, dmagB, median=mag_offsetB, sigma=mag_rmsB, sigrej=2.5
-    # zpt_observedA = zpt0 + mag_offsetA
-    # zpt_observedB = zpt0 + mag_offsetB
-    # transparency = 10.d0^(-0.4*(zpt0-zpt_observed - kx*(1.0-airmass)))
 
+    dm = ps1mag - apmag2[J]
+    dmag2,dsig2 = sensible_sigmaclip(dm, nsigma=2.5)
+    print('Sky-sub mag offset', dmag2)
+    print('Scatter', dsig2)
+
+    plt.clf()
+    plt.plot(ps1mag, apmag[J] + dmag - ps1mag, 'b.', label='No sky sub')
+    plt.plot(ps1mag, apmag2[J]+ dmag2- ps1mag, 'r.', label='Sky sub')
+    plt.xlabel('PS1 mag')
+    plt.ylabel('DECam ap mag - PS1 mag')
+    plt.legend(loc='upper left')
+    plt.ylim(-0.25, 0.25)
+    plt.axhline(0, color='k', alpha=0.25)
+    ps.savefig()
+
+    zp_obs = zp0 + dmag
+    
+    transparency = 10.**(-0.4 * (zp0 - zp_obs - kx * (1. - airmass)))
+
+    print('Zeropoint %6.2f' % zp_obs)
+    print('Fiducial  %6.2f' % zp0)
+
+    print('Transparency', transparency)
+
+    # Pull out sources, measure psfnorm for each -> seeing measure
+    # NOOOOO -- This doesn't work in the presence of noise.
+    # aprad = 2.0
+    # psf_r = int(aprad / pixsc)
+    # #psfnorms = []
+    # fwhms = np.zeros(len(fx), np.float32)
+    # for i,(xi,yi) in enumerate(zip(fx,fy)):
+    #     ix = int(np.round(xi))
+    #     iy = int(np.round(yi))
+    #     xlo = max(0, ix-psf_r)
+    #     xhi = min(W, ix+psf_r+1)
+    #     ylo = max(0, iy-psf_r)
+    #     yhi = min(H, iy+psf_r+1)
+    #     xx,yy = np.meshgrid(np.arange(xlo,xhi), np.arange(ylo,yhi))
+    #     r2 = (xx - xi)**2 + (yy - yi)**2
+    #     keep = (r2 < psf_r)
+    #     pix = img[ylo:yhi, xlo:xhi][keep]
+    #     n_eff = np.sum(pix)**2 / np.sum(pix**2)
+    #     #psfnorm = np.sqrt(1. / n_eff)
+    #     #psfnorms.append(psfnorm)
+    # 
+    #     #pp = pix / np.sum(pix)
+    #     #psfnorm = np.sqrt(np.sum(pp**2))
+    #     #print('psf norm', psfnorm, 'vs n_eff->psfnorm', np.sqrt(1./n_eff))
+    #     
+    #     # psfnorm is in units of 1/pixels.
+    #     # (eg, psfnorm for a gaussian is ~ 1/psf_sigma)
+    #     # Neff is in pixels**2
+    #     # Narcsec is in arcsec**2
+    #     narcsec = n_eff * pixsc**2
+    # 
+    #     # Back to units of linear arcsec.
+    #     narcsec = np.sqrt(narcsec)
+    #     # Correction factor to get back to equivalent of Gaussian sigma
+    #     narcsec /= 2.*np.sqrt(np.pi)
+    #     # Conversion factor to FWHM (2.35)
+    #     narcsec *= 2.*np.sqrt(2.*np.log(2.))
+    #     fwhms[i] = narcsec
+    # 
+    # lo,hi = np.percentile(fwhms, [5,95])
+    # lo -= 0.1
+    # hi += 0.1
+    # plt.clf()
+    # plt.hist(fwhms, 25, range=(lo,hi), histtype='step', color='b')
+    # plt.hist(fwhms[J], 25, range=(lo,hi), histtype='step', color='r')
+    # plt.xlabel('FWHM (arcsec)')
+    # ps.savefig()
+    # 
+    # print('Median FWHM:', np.median(fwhms))
+    # print('Median FWHM of PS1-matched stars:', np.median(fwhms[J]))
+    #
+    # fwhm = np.median(fwhms[J])
+
+    #fwhms = np.zeros(len(fx), np.float32)
+    fwhms = []
+    
+    psf_r = 15
+    for i,(xi,yi,fluxi) in enumerate(zip(fx[J],fy[J],apflux[J])):
+        ix = int(np.round(xi))
+        iy = int(np.round(yi))
+        xlo = max(0, ix-psf_r)
+        xhi = min(W, ix+psf_r+1)
+        ylo = max(0, iy-psf_r)
+        yhi = min(H, iy+psf_r+1)
+        xx,yy = np.meshgrid(np.arange(xlo,xhi), np.arange(ylo,yhi))
+        r2 = (xx - xi)**2 + (yy - yi)**2
+        keep = (r2 < psf_r**2)
+        pix = img[ylo:yhi, xlo:xhi]
+        ie = np.zeros_like(pix)
+        ie[keep] = 1. / sig1
+        print('number of active pixels:', np.sum(ie > 0))
+        
+        import tractor
+        psf = tractor.NCircularGaussianPSF([4.], [1.])
+        tim = tractor.Image(data=pix, inverr=ie, psf=psf)
+        src = tractor.PointSource(tractor.PixPos(xi-xlo, yi-ylo),
+                                  tractor.Flux(fluxi))
+        tr = tractor.Tractor([tim],[src])
+
+        doplot = (i < 20)
+        if doplot:
+            mod0 = tr.getModelImage(0)
+
+        tim.freezeAllBut('psf')
+        psf.freezeAllBut('sigmas')
+        tr.printThawedParams()
+        print('Parameter step sizes:', tr.getStepSizes())
+        for step in range(50):
+            dlnp,x,alpha = tr.optimize()
+            print('dlnp', dlnp)
+            print('src', src)
+            print('psf', psf)
+            if dlnp == 0:
+                break
+        # Now fit only the PSF size
+        tr.freezeParam('catalog')
+        for step in range(50):
+            dlnp,x,alpha = tr.optimize()
+            print('dlnp', dlnp)
+            print('src', src)
+            print('psf', psf)
+            if dlnp == 0:
+                break
+
+        fwhms.append(psf.sigmas[0] * 2.35 * pixsc)
+            
+        if doplot:
+            mod1 = tr.getModelImage(0)
+            chi1 = tr.getChiImage(0)
+        
+            plt.clf()
+            plt.subplot(2,2,1)
+            dimshow(pix, **kwa)
+            plt.subplot(2,2,2)
+            dimshow(mod0, **kwa)
+            plt.subplot(2,2,3)
+            dimshow(mod1, **kwa)
+            plt.subplot(2,2,4)
+            dimshow(chi1, vmin=-10, vmax=10)
+            ps.savefig()
+
+    fwhms = np.array(fwhms)
+    fwhm = np.median(fwhms)
+
+    lo,hi = np.percentile(fwhms, [5,95])
+    lo -= 0.1
+    hi += 0.1
+    plt.clf()
+    plt.hist(fwhms, 25, range=(lo,hi), histtype='step', color='b')
+    plt.xlabel('FWHM (arcsec)')
+    ps.savefig()
+    # 
+    print('Median FWHM:', np.median(fwhms))
 
     
-    
+    plt.clf()
+    for i,(xi,yi) in enumerate(zip(fx[J],fy[J])[:50]):
+        ix = int(np.round(xi))
+        iy = int(np.round(yi))
+        xlo = max(0, ix-psf_r)
+        xhi = min(W, ix+psf_r+1)
+        ylo = max(0, iy-psf_r)
+        yhi = min(H, iy+psf_r+1)
+        pix = img[ylo:yhi, xlo:xhi]
+
+        print('xi,yi', xi,yi)
+        print('  xlo,xhi', xlo,xhi)
+        print('  ylo,yhi', ylo,yhi)
+        print('  pix:', pix.shape)
+        print('  iy-ylo:', iy-ylo)
+        print('  ix-xlo:', ix-xlo)
+        
+        slc = pix[iy-ylo, :].copy()
+        slc /= np.sum(slc)
+        plt.plot(slc, 'b-', alpha=0.2)
+        slc = pix[:, ix-xlo].copy()
+        slc /= np.sum(slc)
+        plt.plot(slc, 'r-', alpha=0.2)
+        ph,pw = pix.shape
+        cx,cy = pw/2, ph/2
+        xx = np.arange(pw)
+        sig = fwhm / pixsc / 2.35
+        yy = np.exp(-0.5 * (xx-cx)**2 / sig**2) * np.sum(pix)
+        yy /= np.sum(yy)
+        plt.plot(xx, yy, 'k-', alpha=0.1)
+    plt.ylim(-0.2, 1.0)
+    ps.savefig()
+        
 measure_raw_decam('DECam_00488199.fits.fz')
     
