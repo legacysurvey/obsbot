@@ -1,6 +1,9 @@
 from __future__ import print_function
 import time
+import json
+
 from astrometry.util.plotutils import *
+from astrometry.util.fits import *
 
 from RemoteClient import RemoteClient
 
@@ -31,14 +34,15 @@ opt,args = parser.parse_args(('--date %s --pass %i --portion 1.0' %
                               (date, passnum)).split())
 obs = setupGlobals(opt, gvs)
 
-lastimages = set(os.listdir('rawdata'))
+imagedir = 'rawdata'
+lastimages = set(os.listdir(imagedir))
 
 for j in J:
     print('Planned tile:', j)
 
     # Wait for a new image to appear
     while True:
-        images = set(os.listdir('rawdata'))
+        images = set(os.listdir(imagedir))
         newimgs = images - lastimages
         newimgs = list(newimgs)
         newimgs = [fn for fn in newimgs if fn.endswith('.fits.fz')]
@@ -49,7 +53,7 @@ for j in J:
         lastimages = images
         break
 
-    fn = newimgs[0]
+    fn = os.path.join(imagedir, newimgs[0])
     M = measure_raw_decam(fn)
     
     #M = measure_raw_decam('DECam_00488199.fits.fz')
