@@ -24,127 +24,6 @@ from legacyanalysis.ps1cat import ps1cat, ps1_to_decam
 
 import photutils
 
-def sensible_sigmaclip(arr, nsigma = 4.):
-    goodpix,lo,hi = sigmaclip(arr, low=nsigma, high=nsigma)
-    # sigmaclip returns unclipped pixels, lo,hi, where lo,hi are
-    # mean(goodpix) +- nsigma * sigma
-    meanval = np.mean(goodpix)
-    sigma = (meanval - lo) / nsigma
-    return meanval, sigma
-
-def parse_section(s, slices=False):
-    '''
-    parse '[57:2104,51:4146]' into integers; also subtract 1.
-    '''
-    s = s.replace('[','').replace(']','').replace(',',' ').replace(':',' ')
-    #print('String', s)
-    i = [int(si)-1 for si in s.split()]
-    assert(len(i) == 4)
-    if not slices:
-        return i
-    slc = slice(i[2], i[3]+1), slice(i[0], i[1]+1)
-    #print('Slice', slc)
-    return slc
-
-def read_raw_decam(F, ext):
-    '''
-    F: fitsio FITS object
-    '''
-    img = F[ext].read()
-    hdr = F[ext].read_header()
-    print('Image type', img.dtype, img.shape)
-
-    img = img.astype(np.float32)
-    print('Converted image to', img.dtype, img.shape)
-
-    if False:
-        mn,mx = np.percentile(img.ravel(), [25,95])
-        kwa = dict(vmin=mn, vmax=mx)
-
-        plt.clf()
-        dimshow(img, **kwa)
-        plt.title('Raw image')
-        ps.savefig()
-
-        M = 200
-        plt.clf()
-        plt.subplot(2,2,1)
-        dimshow(img[-M:, :M], ticks=False, **kwa)
-        plt.subplot(2,2,2)
-        dimshow(img[-M:, -M:], ticks=False, **kwa)
-        plt.subplot(2,2,3)
-        dimshow(img[:M, :M], ticks=False, **kwa)
-        plt.subplot(2,2,4)
-        dimshow(img[:M, -M:], ticks=False, **kwa)
-        plt.suptitle('Raw corners')
-        ps.savefig()
-    
-    if 'DESBIAS' in hdr:
-        assert(False)
-    # DECam RAW image
-
-    # Raw image size 2160 x 4146
-
-    # Subtract median overscan and multiply by gains 
-    # print('DATASECA', hdr['DATASECA'])
-    # print('BIASSECA', hdr['BIASSECA'])
-    # print('DATASECB', hdr['DATASECB'])
-    # print('BIASSECB', hdr['BIASSECB'])
-    dataA = parse_section(hdr['DATASECA'], slices=True)
-    biasA = parse_section(hdr['BIASSECA'], slices=True)
-    dataB = parse_section(hdr['DATASECB'], slices=True)
-    biasB = parse_section(hdr['BIASSECB'], slices=True)
-    gainA = hdr['GAINA']
-    gainB = hdr['GAINB']
-    # print('DataA', dataA)
-    # print('BiasA', biasA)
-    # print('DataB', dataB)
-    # print('BiasB', biasB)
-
-    if False:
-        plt.clf()
-        plt.plot([np.median(img[i,:] )     for i in range(100)], 'b-')
-        plt.plot([np.median(img[-(i+1),:]) for i in range(100)], 'c-')
-        plt.plot([np.median(img[:,i] )     for i in range(100)], 'r-')
-        plt.plot([np.median(img[:,-(i+1)]) for i in range(100)], 'm-')
-        plt.title('Img')
-        ps.savefig()
-    
-        plt.clf()
-        plt.plot([np.median(img[dataA][i,:] )     for i in range(100)], 'b-')
-        plt.plot([np.median(img[dataA][-(i+1),:]) for i in range(100)], 'c-')
-        plt.plot([np.median(img[dataA][:,i] )     for i in range(100)], 'r-')
-        plt.plot([np.median(img[dataA][:,-(i+1)]) for i in range(100)], 'm-')
-        plt.title('Img DataA')
-        ps.savefig()
-    
-        plt.clf()
-        plt.plot([np.median(img[dataB][i,:] )     for i in range(100)], 'b-')
-        plt.plot([np.median(img[dataB][-(i+1),:]) for i in range(100)], 'c-')
-        plt.plot([np.median(img[dataB][:,i] )     for i in range(100)], 'r-')
-        plt.plot([np.median(img[dataB][:,-(i+1)]) for i in range(100)], 'm-')
-        plt.title('Img DataB')
-        ps.savefig()
-
-    
-    img[dataA] = (img[dataA] - np.median(img[biasA])) * gainA
-    img[dataB] = (img[dataB] - np.median(img[biasB])) * gainB
-    
-    # Trim the image -- could just take the min/max of TRIMSECA/TRIMSECB...
-    trimA = parse_section(hdr['TRIMSECA'], slices=True)
-    trimB = parse_section(hdr['TRIMSECB'], slices=True)
-    # copy the TRIM A,B sections into a new image...
-    trimg = np.zeros_like(img)
-    trimg[trimA] = img[trimA]
-    trimg[trimB] = img[trimB]
-    # ... and then cut that new image
-    trim = parse_section(hdr['TRIMSEC'], slices=True)
-    img = trimg[trim]
-    print('Trimmed image:', img.dtype, img.shape)
-
-    return img,hdr
-    
-
 def measure_raw_decam(fn, ext='N4', ps=None):
     
     # aperture phot radii in arcsec
@@ -603,4 +482,125 @@ def measure_raw_decam(fn, ext='N4', ps=None):
 
     return dict(band=band, airmass=airmass, seeing=fwhm, zp=zp_obs,
                 skybright=skybr, transparency=transparency)
+
+def sensible_sigmaclip(arr, nsigma = 4.):
+    goodpix,lo,hi = sigmaclip(arr, low=nsigma, high=nsigma)
+    # sigmaclip returns unclipped pixels, lo,hi, where lo,hi are
+    # mean(goodpix) +- nsigma * sigma
+    meanval = np.mean(goodpix)
+    sigma = (meanval - lo) / nsigma
+    return meanval, sigma
+
+def parse_section(s, slices=False):
+    '''
+    parse '[57:2104,51:4146]' into integers; also subtract 1.
+    '''
+    s = s.replace('[','').replace(']','').replace(',',' ').replace(':',' ')
+    #print('String', s)
+    i = [int(si)-1 for si in s.split()]
+    assert(len(i) == 4)
+    if not slices:
+        return i
+    slc = slice(i[2], i[3]+1), slice(i[0], i[1]+1)
+    #print('Slice', slc)
+    return slc
+
+def read_raw_decam(F, ext):
+    '''
+    F: fitsio FITS object
+    '''
+    img = F[ext].read()
+    hdr = F[ext].read_header()
+    print('Image type', img.dtype, img.shape)
+
+    img = img.astype(np.float32)
+    print('Converted image to', img.dtype, img.shape)
+
+    if False:
+        mn,mx = np.percentile(img.ravel(), [25,95])
+        kwa = dict(vmin=mn, vmax=mx)
+
+        plt.clf()
+        dimshow(img, **kwa)
+        plt.title('Raw image')
+        ps.savefig()
+
+        M = 200
+        plt.clf()
+        plt.subplot(2,2,1)
+        dimshow(img[-M:, :M], ticks=False, **kwa)
+        plt.subplot(2,2,2)
+        dimshow(img[-M:, -M:], ticks=False, **kwa)
+        plt.subplot(2,2,3)
+        dimshow(img[:M, :M], ticks=False, **kwa)
+        plt.subplot(2,2,4)
+        dimshow(img[:M, -M:], ticks=False, **kwa)
+        plt.suptitle('Raw corners')
+        ps.savefig()
+    
+    if 'DESBIAS' in hdr:
+        assert(False)
+    # DECam RAW image
+
+    # Raw image size 2160 x 4146
+
+    # Subtract median overscan and multiply by gains 
+    # print('DATASECA', hdr['DATASECA'])
+    # print('BIASSECA', hdr['BIASSECA'])
+    # print('DATASECB', hdr['DATASECB'])
+    # print('BIASSECB', hdr['BIASSECB'])
+    dataA = parse_section(hdr['DATASECA'], slices=True)
+    biasA = parse_section(hdr['BIASSECA'], slices=True)
+    dataB = parse_section(hdr['DATASECB'], slices=True)
+    biasB = parse_section(hdr['BIASSECB'], slices=True)
+    gainA = hdr['GAINA']
+    gainB = hdr['GAINB']
+    # print('DataA', dataA)
+    # print('BiasA', biasA)
+    # print('DataB', dataB)
+    # print('BiasB', biasB)
+
+    if False:
+        plt.clf()
+        plt.plot([np.median(img[i,:] )     for i in range(100)], 'b-')
+        plt.plot([np.median(img[-(i+1),:]) for i in range(100)], 'c-')
+        plt.plot([np.median(img[:,i] )     for i in range(100)], 'r-')
+        plt.plot([np.median(img[:,-(i+1)]) for i in range(100)], 'm-')
+        plt.title('Img')
+        ps.savefig()
+    
+        plt.clf()
+        plt.plot([np.median(img[dataA][i,:] )     for i in range(100)], 'b-')
+        plt.plot([np.median(img[dataA][-(i+1),:]) for i in range(100)], 'c-')
+        plt.plot([np.median(img[dataA][:,i] )     for i in range(100)], 'r-')
+        plt.plot([np.median(img[dataA][:,-(i+1)]) for i in range(100)], 'm-')
+        plt.title('Img DataA')
+        ps.savefig()
+    
+        plt.clf()
+        plt.plot([np.median(img[dataB][i,:] )     for i in range(100)], 'b-')
+        plt.plot([np.median(img[dataB][-(i+1),:]) for i in range(100)], 'c-')
+        plt.plot([np.median(img[dataB][:,i] )     for i in range(100)], 'r-')
+        plt.plot([np.median(img[dataB][:,-(i+1)]) for i in range(100)], 'm-')
+        plt.title('Img DataB')
+        ps.savefig()
+
+    
+    img[dataA] = (img[dataA] - np.median(img[biasA])) * gainA
+    img[dataB] = (img[dataB] - np.median(img[biasB])) * gainB
+    
+    # Trim the image -- could just take the min/max of TRIMSECA/TRIMSECB...
+    trimA = parse_section(hdr['TRIMSECA'], slices=True)
+    trimB = parse_section(hdr['TRIMSECB'], slices=True)
+    # copy the TRIM A,B sections into a new image...
+    trimg = np.zeros_like(img)
+    trimg[trimA] = img[trimA]
+    trimg[trimB] = img[trimB]
+    # ... and then cut that new image
+    trim = parse_section(hdr['TRIMSEC'], slices=True)
+    img = trimg[trim]
+    print('Trimmed image:', img.dtype, img.shape)
+
+    return img,hdr
+    
 
