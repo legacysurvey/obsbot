@@ -30,7 +30,7 @@ def measure_raw_decam(fn, ext='N4', ps=None):
 
     minstar = 5
     pixsc = 0.262
-    maxshift = 30 # arcsec to PS1
+    maxshift = 45 # arcsec to PS1
     
     F = fitsio.FITS(fn)
     primhdr = F[0].read_header()
@@ -265,7 +265,7 @@ def measure_raw_decam(fn, ext='N4', ps=None):
     # Match PS1 to our detections, find offset
     radius = maxshift / pixsc
     I,J,d = match_xy(px, py, fx, fy, radius)
-    print(len(I), 'matches')
+    print(len(I), 'spatial matches with large radius', maxshift, 'arcsec')
 
     dx = px[I] - fx[J]
     dy = py[I] - fy[J]
@@ -288,6 +288,7 @@ def measure_raw_decam(fn, ext='N4', ps=None):
     # Refine with smaller search radius
     radius2 = 3. / pixsc
     I,J,d = match_xy(px, py, fx+shiftx, fy+shifty, radius2)
+    print(len(J), 'matches with small radius', 3, 'arcsec')
     
     dx = px[I] - fx[J]
     dy = py[I] - fy[J]
