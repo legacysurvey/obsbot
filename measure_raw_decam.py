@@ -24,11 +24,6 @@ from legacyanalysis.ps1cat import ps1cat, ps1_to_decam
 
 import photutils
 
-from nightlystrategy import (ExposureFactor, getParserAndGlobals, setupGlobals,
-                             GetAirmass, StartAndEndTimes, s_to_days)
-
-from RemoteClient import RemoteClient
-
 def sensible_sigmaclip(arr, nsigma = 4.):
     goodpix,lo,hi = sigmaclip(arr, low=nsigma, high=nsigma)
     # sigmaclip returns unclipped pixels, lo,hi, where lo,hi are
@@ -150,9 +145,7 @@ def read_raw_decam(F, ext):
     return img,hdr
     
 
-def measure_raw_decam(fn, ext='N4'):
-
-    ps = PlotSequence('raw')
+def measure_raw_decam(fn, ext='N4', ps=None):
     
     # aperture phot radii in arcsec
     aprad = 3.5
@@ -171,27 +164,24 @@ def measure_raw_decam(fn, ext='N4'):
     mn,mx = np.percentile(img.ravel(), [25,98])
     kwa = dict(vmin=mn, vmax=mx)
     
-    plt.clf()
-    dimshow(img, **kwa)
-    plt.title('Trimmed image')
-    ps.savefig()
+    if False and ps is not None:
+        plt.clf()
+        dimshow(img, **kwa)
+        plt.title('Trimmed image')
+        ps.savefig()
 
-    plt.clf()
-    plt.subplot(2,2,1)
-    dimshow(img[-M:, :M], ticks=False, **kwa)
-    plt.subplot(2,2,2)
-    dimshow(img[-M:, -M:], ticks=False, **kwa)
-    plt.subplot(2,2,3)
-    dimshow(img[:M, :M], ticks=False, **kwa)
-    plt.subplot(2,2,4)
-    dimshow(img[:M, -M:], ticks=False, **kwa)
-    plt.suptitle('Trimmed corners')
-    ps.savefig()
+        plt.clf()
+        plt.subplot(2,2,1)
+        dimshow(img[-M:, :M], ticks=False, **kwa)
+        plt.subplot(2,2,2)
+        dimshow(img[-M:, -M:], ticks=False, **kwa)
+        plt.subplot(2,2,3)
+        dimshow(img[:M, :M], ticks=False, **kwa)
+        plt.subplot(2,2,4)
+        dimshow(img[:M, -M:], ticks=False, **kwa)
+        plt.suptitle('Trimmed corners')
+        ps.savefig()
 
-    expnum = primhdr['EXPNUM']
-    print('Expnum', expnum)
-    obstype = primhdr['OBSTYPE']
-    print('Obstype', obstype)
     band = primhdr['FILTER']
     band = band.split()[0]
     print('Band', band)
@@ -214,7 +204,6 @@ def measure_raw_decam(fn, ext='N4'):
     
     zp0, sky0, kx = nominal_cal[band]
 
-
     # Find the sky value and noise level
     sky,sig1 = sensible_sigmaclip(img[1500:2500, 500:1000])
 
@@ -236,10 +225,11 @@ def measure_raw_decam(fn, ext='N4'):
     mn,mx = np.percentile(img.ravel(), [25,98])
     kwa = dict(vmin=mn, vmax=mx)
     
-    plt.clf()
-    dimshow(img, **kwa)
-    plt.title('Sky-sub image')
-    ps.savefig()
+    if ps is not None:
+        plt.clf()
+        dimshow(img, **kwa)
+        plt.title('Sky-sub image')
+        ps.savefig()
     
     # Trim off some extra pixels -- image edges are often bright...
     trim = 100
@@ -252,11 +242,12 @@ def measure_raw_decam(fn, ext='N4'):
     psfnorm = 1./(2. * np.sqrt(np.pi) * psfsig)
     detsn = gaussian_filter(cimg / sig1, psfsig) / psfnorm
 
-    plt.clf()
-    dimshow(detsn, vmin=-3, vmax=50, cmap='hot')
-    plt.colorbar()
-    plt.title('Detection S/N')
-    ps.savefig()
+    if False and ps is not None:
+        plt.clf()
+        dimshow(detsn, vmin=-3, vmax=50, cmap='hot')
+        plt.colorbar()
+        plt.title('Detection S/N')
+        ps.savefig()
 
     # zero out the edges -- larger margin here?
     detsn[0 ,:] = 0
@@ -299,23 +290,24 @@ def measure_raw_decam(fn, ext='N4'):
     xx = np.array(xx)
     yy = np.array(yy)
         
-    plt.clf()
-    dimshow(detsn, vmin=-3, vmax=50, cmap='hot')
-    ax = plt.axis()
-    plt.plot(xx, yy, 'go', mec='g', mfc='none', ms=10)
-    plt.colorbar()
-    plt.title('Detected sources')
-    plt.axis(ax)
-    ps.savefig()
+    if ps is not None:
+        # plt.clf()
+        # dimshow(detsn, vmin=-3, vmax=50, cmap='hot')
+        # ax = plt.axis()
+        # plt.plot(xx, yy, 'go', mec='g', mfc='none', ms=10)
+        # plt.colorbar()
+        # plt.title('Detected sources')
+        # plt.axis(ax)
+        # ps.savefig()
 
-    plt.clf()
-    dimshow(detsn, vmin=-3, vmax=50, cmap='hot')
-    ax = plt.axis()
-    plt.plot(fx, fy, 'go', mec='g', mfc='none', ms=10)
-    plt.colorbar()
-    plt.title('Detected sources (2)')
-    plt.axis(ax)
-    ps.savefig()
+        plt.clf()
+        dimshow(detsn, vmin=-3, vmax=50, cmap='hot')
+        ax = plt.axis()
+        plt.plot(fx, fy, 'go', mec='g', mfc='none', ms=10)
+        plt.colorbar()
+        plt.title('Detected sources (2)')
+        plt.axis(ax)
+        ps.savefig()
 
     keep = (np.hypot(fx - xx, fy - yy) < 1)
     print(sum(keep), 'of', len(keep), 'stars have centroids within 1 of peaks')
@@ -331,16 +323,12 @@ def measure_raw_decam(fn, ext='N4'):
     fx += trim
     fy += trim
     
-    #aps = np.append(aprad, skyrad).astype(np.float32)
-    #aps /= pixsc
     apxy = np.vstack((fx, fy)).T
     ap = []
-    #for rad in aps:
     aprad_pix = aprad / pixsc
     aper = photutils.CircularAperture(apxy, aprad_pix)
     p = photutils.aperture_photometry(img, aper)
     apflux = p.field('aperture_sum')
-    #apflux,sky1,sky2 = ap
 
     # Manual aperture photometry to get clipped means in sky annulus
     sky_inner_r, sky_outer_r = [r / pixsc for r in skyrad]
@@ -386,27 +374,29 @@ def measure_raw_decam(fn, ext='N4'):
     px -= 1
     py -= 1
 
-    kwa = dict(vmin=-3*sig1, vmax=50*sig1, cmap='hot')
-    plt.clf()
-    dimshow(img, **kwa)
-    ax = plt.axis()
-    plt.plot(fx, fy, 'go', mec='g', mfc='none', ms=10)
-    plt.plot(px, py, 'm.')
-    plt.axis(ax)
-    plt.title('PS1 stars')
-    ps.savefig()
+    if ps is not None:
+        kwa = dict(vmin=-3*sig1, vmax=50*sig1, cmap='hot')
+        plt.clf()
+        dimshow(img, **kwa)
+        ax = plt.axis()
+        plt.plot(fx, fy, 'go', mec='g', mfc='none', ms=10)
+        plt.plot(px, py, 'm.')
+        plt.axis(ax)
+        plt.title('PS1 stars')
+        ps.savefig()
     
     # Match PS1 to our detections, find offset
     radius = maxshift / pixsc
     I,J,d = match_xy(px, py, fx, fy, radius)
     print(len(I), 'matches')
 
-    plt.clf()
-    plothist(px[I] - fx[J], py[I] - fy[J])
-    plt.xlabel('dx (pixels)')
-    plt.ylabel('dy (pixels)')
-    plt.title('DECam to PS1 matches')
-    ps.savefig()
+    if ps is not None:
+        plt.clf()
+        plothist(px[I] - fx[J], py[I] - fy[J])
+        plt.xlabel('dx (pixels)')
+        plt.ylabel('dy (pixels)')
+        plt.title('DECam to PS1 matches')
+        ps.savefig()
 
     dx = px[I] - fx[J]
     dy = py[I] - fy[J]
@@ -415,10 +405,10 @@ def measure_raw_decam(fn, ext='N4'):
     shiftx = np.median(dx)
     shifty = np.median(dy)
 
-    ax = plt.axis()
-    plt.plot(shiftx, shifty, 'm.')
-    plt.axis(ax)
-    ps.savefig()
+    # ax = plt.axis()
+    # plt.plot(shiftx, shifty, 'm.')
+    # plt.axis(ax)
+    # ps.savefig()
 
     # Refine with smaller search radius
     radius2 = 3. / pixsc
@@ -429,15 +419,16 @@ def measure_raw_decam(fn, ext='N4'):
     shiftx = np.median(dx)
     shifty = np.median(dy)
 
-    plt.clf()
-    plothist(dx, dy)
-    plt.xlabel('dx (pixels)')
-    plt.ylabel('dy (pixels)')
-    plt.title('DECam to PS1 matches')
-    ax = plt.axis()
-    plt.plot(shiftx, shifty, 'm.')
-    plt.axis(ax)
-    ps.savefig()
+    if False and ps is not None:
+        plt.clf()
+        plothist(dx, dy)
+        plt.xlabel('dx (pixels)')
+        plt.ylabel('dy (pixels)')
+        plt.title('DECam to PS1 matches')
+        ax = plt.axis()
+        plt.plot(shiftx, shifty, 'm.')
+        plt.axis(ax)
+        ps.savefig()
 
     # Compute photometric offset compared to PS1
     # as the PS1 minus DECam-observed mags
@@ -446,29 +437,31 @@ def measure_raw_decam(fn, ext='N4'):
     ps1band = ps1cat.ps1band[band]
     ps1mag = stars.median[I, ps1band] + colorterm
     
-    plt.clf()
-    plt.semilogy(ps1mag, apflux2[J], 'b.')
-    plt.xlabel('PS1 mag')
-    plt.ylabel('DECam ap flux (with sky sub)')
-    ps.savefig()
-
-    plt.clf()
-    plt.semilogy(ps1mag, apflux[J], 'b.')
-    plt.xlabel('PS1 mag')
-    plt.ylabel('DECam ap flux (no sky sub)')
-    ps.savefig()
+    if False and ps is not None:
+        plt.clf()
+        plt.semilogy(ps1mag, apflux2[J], 'b.')
+        plt.xlabel('PS1 mag')
+        plt.ylabel('DECam ap flux (with sky sub)')
+        ps.savefig()
+    
+        plt.clf()
+        plt.semilogy(ps1mag, apflux[J], 'b.')
+        plt.xlabel('PS1 mag')
+        plt.ylabel('DECam ap flux (no sky sub)')
+        ps.savefig()
 
     
     apmag2 = -2.5 * np.log10(apflux2) + zp0 + 2.5 * np.log10(exptime)
     apmag  = -2.5 * np.log10(apflux ) + zp0 + 2.5 * np.log10(exptime)
 
-    plt.clf()
-    plt.plot(ps1mag, apmag[J], 'b.', label='No sky sub')
-    plt.plot(ps1mag, apmag2[J], 'r.', label='Sky sub')
-    plt.xlabel('PS1 mag')
-    plt.ylabel('DECam ap mag')
-    plt.legend(loc='upper left')
-    ps.savefig()
+    if ps is not None:
+        plt.clf()
+        plt.plot(ps1mag, apmag[J], 'b.', label='No sky sub')
+        plt.plot(ps1mag, apmag2[J], 'r.', label='Sky sub')
+        plt.xlabel('PS1 mag')
+        plt.ylabel('DECam ap mag')
+        plt.legend(loc='upper left')
+        ps.savefig()
 
     dm = ps1mag - apmag[J]
     dmag,dsig = sensible_sigmaclip(dm, nsigma=2.5)
@@ -480,15 +473,16 @@ def measure_raw_decam(fn, ext='N4'):
     print('Sky-sub mag offset', dmag2)
     print('Scatter', dsig2)
 
-    plt.clf()
-    plt.plot(ps1mag, apmag[J] + dmag - ps1mag, 'b.', label='No sky sub')
-    plt.plot(ps1mag, apmag2[J]+ dmag2- ps1mag, 'r.', label='Sky sub')
-    plt.xlabel('PS1 mag')
-    plt.ylabel('DECam ap mag - PS1 mag')
-    plt.legend(loc='upper left')
-    plt.ylim(-0.25, 0.25)
-    plt.axhline(0, color='k', alpha=0.25)
-    ps.savefig()
+    if ps is not None:
+        plt.clf()
+        plt.plot(ps1mag, apmag[J] + dmag - ps1mag, 'b.', label='No sky sub')
+        plt.plot(ps1mag, apmag2[J]+ dmag2- ps1mag, 'r.', label='Sky sub')
+        plt.xlabel('PS1 mag')
+        plt.ylabel('DECam ap mag - PS1 mag')
+        plt.legend(loc='upper left')
+        plt.ylim(-0.25, 0.25)
+        plt.axhline(0, color='k', alpha=0.25)
+        ps.savefig()
 
     zp_obs = zp0 + dmag
     
@@ -523,7 +517,7 @@ def measure_raw_decam(fn, ext='N4'):
                                   tractor.Flux(fluxi))
         tr = tractor.Tractor([tim],[src])
 
-        doplot = (i < 5)
+        doplot = (i < 5) * (ps is not None)
         if doplot:
             mod0 = tr.getModelImage(0)
 
@@ -568,142 +562,45 @@ def measure_raw_decam(fn, ext='N4'):
     fwhms = np.array(fwhms)
     fwhm = np.median(fwhms)
 
-    lo,hi = np.percentile(fwhms, [5,95])
-    lo -= 0.1
-    hi += 0.1
-    plt.clf()
-    plt.hist(fwhms, 25, range=(lo,hi), histtype='step', color='b')
-    plt.xlabel('FWHM (arcsec)')
-    ps.savefig()
+    if False and ps is not None:
+        lo,hi = np.percentile(fwhms, [5,95])
+        lo -= 0.1
+        hi += 0.1
+        plt.clf()
+        plt.hist(fwhms, 25, range=(lo,hi), histtype='step', color='b')
+        plt.xlabel('FWHM (arcsec)')
+        ps.savefig()
     # 
     print('Median FWHM:', np.median(fwhms))
 
+    if ps is not None:
+        plt.clf()
+        for i,(xi,yi) in enumerate(zip(fx[J],fy[J])[:50]):
+            ix = int(np.round(xi))
+            iy = int(np.round(yi))
+            xlo = max(0, ix-psf_r)
+            xhi = min(W, ix+psf_r+1)
+            ylo = max(0, iy-psf_r)
+            yhi = min(H, iy+psf_r+1)
+            pix = img[ylo:yhi, xlo:xhi]
     
-    plt.clf()
-    for i,(xi,yi) in enumerate(zip(fx[J],fy[J])[:50]):
-        ix = int(np.round(xi))
-        iy = int(np.round(yi))
-        xlo = max(0, ix-psf_r)
-        xhi = min(W, ix+psf_r+1)
-        ylo = max(0, iy-psf_r)
-        yhi = min(H, iy+psf_r+1)
-        pix = img[ylo:yhi, xlo:xhi]
-
-        slc = pix[iy-ylo, :].copy()
-        slc /= np.sum(slc)
-        plt.plot(slc, 'b-', alpha=0.2)
-        slc = pix[:, ix-xlo].copy()
-        slc /= np.sum(slc)
-        plt.plot(slc, 'r-', alpha=0.2)
-        ph,pw = pix.shape
-        cx,cy = pw/2, ph/2
-        xx = np.arange(pw)
-        sig = fwhm / pixsc / 2.35
-        yy = np.exp(-0.5 * (xx-cx)**2 / sig**2) * np.sum(pix)
-        yy /= np.sum(yy)
-        plt.plot(xx, yy, 'k-', alpha=0.1)
-    plt.ylim(-0.2, 1.0)
-    ps.savefig()
+            slc = pix[iy-ylo, :].copy()
+            slc /= np.sum(slc)
+            plt.plot(slc, 'b-', alpha=0.2)
+            slc = pix[:, ix-xlo].copy()
+            slc /= np.sum(slc)
+            plt.plot(slc, 'r-', alpha=0.2)
+            ph,pw = pix.shape
+            cx,cy = pw/2, ph/2
+            xx = np.arange(pw)
+            sig = fwhm / pixsc / 2.35
+            yy = np.exp(-0.5 * (xx-cx)**2 / sig**2) * np.sum(pix)
+            yy /= np.sum(yy)
+            plt.plot(xx, yy, 'k-', alpha=0.1)
+        plt.ylim(-0.2, 1.0)
+        ps.savefig()
 
 
     return dict(band=band, airmass=airmass, seeing=fwhm, zp=zp_obs,
                 skybright=skybr, transparency=transparency)
 
-
-
-jsonfn = 'decals_2015-11-27_plan.json'
-J = json.loads(open(jsonfn,'rb').read())
-
-tiles = fits_table('decam-tiles_obstatus.fits')
-
-date = '2015-11-17'
-passnum = 1
-
-j = J[0]
-print('Planned tile:', j)
-
-#M = measure_raw_decam('DECam_00488199.fits.fz')
-M = {'seeing': 1.4890481099577366, 'airmass': 1.34,
-     'skybright': 18.383479116033314, 'transparency': 0.94488537276869045,
-     'band': 'z', 'zp': 26.442847814941093}
-
-print('Measurements:', M)
-
-#class Duck(object):
-#    pass
-
-parser,gvs = getParserAndGlobals()
-# opt = Duck()
-# opt.date = date
-# opt.passnumber = passnum
-# opt.portion = 1.0
-# opt.start_date = '0000-00-00'
-# opt.start_time = 
-
-opt,args = parser.parse_args(('--date %s --pass %i --portion 1.0' %
-                              (date, passnum)).split())
-
-obs = setupGlobals(opt, gvs)
-
-gvs.transparency = M['transparency']
-
-objname = j['object']
-# Parse objname like 'DECaLS_5623_z'
-parts = objname.split('_')
-assert(len(parts) == 3)
-assert(parts[0] == 'DECaLS')
-nextband = parts[2]
-assert(nextband in 'grz')
-tilenum = int(parts[1])
-
-print('Next planned tile:', tilenum, nextband)
-
-# Set current date
-part = 1.0
-(sn, en, lon, sn_18, en_18) = StartAndEndTimes(obs, part, gvs)
-time_elapsed = 0.
-obs.date = sn + time_elapsed*s_to_days
-
-present_tile = ephem.readdb(str(objname+','+'f'+','+('%.6f' % j['RA'])+','+
-                                ('%.6f' % j['dec'])+','+'20'))
-present_tile.compute(obs)
-airmass = GetAirmass(float(present_tile.alt))
-print('Airmass of planned tile:', airmass)
-
-# Find this tile in the tiles table.
-tile = tiles[tilenum-1]
-if tile.tileid != tilenum:
-    I = np.flatnonzero(tile.tileid == tilename)
-    assert(len(I) == 1)
-    tile = tiles[I[0]]
-
-ebv = tile.ebv_med
-print('E(b-v) of planned tile:', ebv)
-
-if M['band'] == nextband:
-    skybright = M['skybright']
-else:
-    # Guess that the sky is as much brighter than canonical
-    # in the next band as it is in this one!
-    skybright = ((M['skybright'] - gvs.sb_dict[M['band']]) +
-                 gvs.sb_dict[nextband])
-
-fakezp = -99
-expfactor = ExposureFactor(nextband, airmass, ebv, M['seeing'], fakezp,
-                           skybright, gvs)
-print('Exposure factor:', expfactor)
-
-band = nextband
-exptime = expfactor * gvs.base_exptimes[band]
-print('Exptime (un-clipped)', exptime)
-exptime = np.clip(exptime, gvs.floor_exptimes[band], gvs.ceil_exptimes[band])
-print('Clipped exptime', exptime)
-
-if band == 'z' and exptime > gvs.t_sat_max:
-    exptime = gvs.t_sat_max
-    print('Reduced exposure time to avoid z-band saturation:', exptime)
-
-
-rc = RemoteClient()
-pid = rc.execute('get_propid')
-print('Got propid:', pid)
