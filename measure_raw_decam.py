@@ -267,14 +267,6 @@ def measure_raw_decam(fn, ext='N4', ps=None):
     I,J,d = match_xy(px, py, fx, fy, radius)
     print(len(I), 'matches')
 
-    if ps is not None:
-        plt.clf()
-        plothist(px[I] - fx[J], py[I] - fy[J])
-        plt.xlabel('dx (pixels)')
-        plt.ylabel('dy (pixels)')
-        plt.title('DECam to PS1 matches')
-        ps.savefig()
-
     dx = px[I] - fx[J]
     dy = py[I] - fy[J]
 
@@ -282,10 +274,16 @@ def measure_raw_decam(fn, ext='N4', ps=None):
     shiftx = np.median(dx)
     shifty = np.median(dy)
 
-    # ax = plt.axis()
-    # plt.plot(shiftx, shifty, 'm.')
-    # plt.axis(ax)
-    # ps.savefig()
+    if ps is not None:
+        plt.clf()
+        plothist(px[I] - fx[J], py[I] - fy[J])
+        plt.xlabel('dx (pixels)')
+        plt.ylabel('dy (pixels)')
+        plt.title('DECam to PS1 matches')
+        ax = plt.axis()
+        plt.plot(shiftx, shifty, 'mx')
+        plt.axis(ax)
+        ps.savefig()
 
     # Refine with smaller search radius
     radius2 = 3. / pixsc
