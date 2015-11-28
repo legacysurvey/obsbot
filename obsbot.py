@@ -27,6 +27,7 @@ J = json.loads(open(jsonfn,'rb').read())
 
 tiles = fits_table('decam-tiles_obstatus.fits')
 
+ext = 'N4'
 date = '2015-11-17'
 passnum = 1
 parser,gvs = getParserAndGlobals()
@@ -56,15 +57,15 @@ for j in J:
     fn = os.path.join(imagedir, newimgs[0])
     for i in range(10):
         try:
-            fitsio.read(fn)
+            fitsio.read(fn, ext=ext)
         except:
             print('Failed to open', fn, '-- maybe not fully written yet.')
             import traceback
             traceback.print_exc()
             time.sleep(2)
             continue
-            
-    M = measure_raw_decam(fn)
+
+    M = measure_raw_decam(fn, ext=ext, ps=ps)
     
     #M = measure_raw_decam('DECam_00488199.fits.fz')
     #M = {'seeing': 1.4890481099577366, 'airmass': 1.34,
