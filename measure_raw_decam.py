@@ -3,8 +3,6 @@ import os
 import tempfile
 import fitsio
 import numpy as np
-import matplotlib
-matplotlib.use('Agg')
 import pylab as plt
 import json
 

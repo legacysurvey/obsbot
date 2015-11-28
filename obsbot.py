@@ -2,6 +2,9 @@ from __future__ import print_function
 import time
 import json
 
+import matplotlib
+matplotlib.use('Agg')
+
 from astrometry.util.plotutils import *
 from astrometry.util.fits import *
 
