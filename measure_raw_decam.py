@@ -125,7 +125,8 @@ def measure_raw_decam(fn, ext='N4', ps=None):
     if ps is not None:
         plt.clf()
         dimshow(img, **kwa)
-        plt.title('Sky-sub image')
+        plt.title('Sky-sub image: %s-%s' % (os.path.basename(fn).replace('.fits','').replace('.fz',''), ext))
+        plt.colorbar()
         ps.savefig()
     
     # Trim off some extra pixels -- image edges are often bright...
@@ -280,6 +281,7 @@ def measure_raw_decam(fn, ext='N4', ps=None):
         plt.plot(px, py, 'm.')
         plt.axis(ax)
         plt.title('PS1 stars')
+        plt.colorbar()
         ps.savefig()
     
     # Match PS1 to our detections, find offset
@@ -310,7 +312,9 @@ def measure_raw_decam(fn, ext='N4', ps=None):
         plt.ylabel('dy (pixels)')
         plt.title('DECam to PS1 matches')
         ax = plt.axis()
-        plt.plot(shiftx, shifty, 'mx')
+        plt.plot(shiftx, shifty, 'm+', ms=15)
+        plt.axhline(0, color='b')
+        plt.axvline(0, color='b')
         plt.axis(ax)
         ps.savefig()
 
@@ -366,6 +370,7 @@ def measure_raw_decam(fn, ext='N4', ps=None):
         plt.xlabel('PS1 mag')
         plt.ylabel('DECam ap mag')
         plt.legend(loc='upper left')
+        plt.title('Zeropoint')
         ps.savefig()
 
     dm = ps1mag - apmag[J]
@@ -387,6 +392,7 @@ def measure_raw_decam(fn, ext='N4', ps=None):
         plt.legend(loc='upper left')
         plt.ylim(-0.25, 0.25)
         plt.axhline(0, color='k', alpha=0.25)
+        plt.title('Zeropoint')
         ps.savefig()
 
     zp_obs = zp0 + dmag
@@ -458,13 +464,18 @@ def measure_raw_decam(fn, ext='N4', ps=None):
         
             plt.clf()
             plt.subplot(2,2,1)
+            plt.title('Image')
             dimshow(pix, **kwa)
             plt.subplot(2,2,2)
+            plt.title('Initial model')
             dimshow(mod0, **kwa)
             plt.subplot(2,2,3)
+            plt.title('Final model')
             dimshow(mod1, **kwa)
             plt.subplot(2,2,4)
+            plt.title('Final chi')
             dimshow(chi1, vmin=-10, vmax=10)
+            plt.suptitle('PSF fit')
             ps.savefig()
 
     fwhms = np.array(fwhms)
@@ -494,18 +505,23 @@ def measure_raw_decam(fn, ext='N4', ps=None):
     
             slc = pix[iy-ylo, :].copy()
             slc /= np.sum(slc)
-            plt.plot(slc, 'b-', alpha=0.2)
+            p1 = plt.plot(slc, 'b-', alpha=0.2)
             slc = pix[:, ix-xlo].copy()
             slc /= np.sum(slc)
-            plt.plot(slc, 'r-', alpha=0.2)
+            p2 = plt.plot(slc, 'r-', alpha=0.2)
             ph,pw = pix.shape
             cx,cy = pw/2, ph/2
-            xx = np.arange(pw)
-            sig = fwhm / pixsc / 2.35
-            yy = np.exp(-0.5 * (xx-cx)**2 / sig**2) * np.sum(pix)
-            yy /= np.sum(yy)
-            plt.plot(xx, yy, 'k-', alpha=0.1)
-        plt.ylim(-0.2, 1.0)
+            if i == 0:
+                xx = np.linspace(0, pw, 300)
+                dx = xx[1]-xx[0]
+                sig = fwhm / pixsc / 2.35
+                yy = np.exp(-0.5 * (xx-cx)**2 / sig**2) # * np.sum(pix)
+                yy /= (np.sum(yy) * dx)
+                p3 = plt.plot(xx, yy, 'k-', zorder=20)
+        #plt.ylim(-0.2, 1.0)
+        plt.legend([p1[0], p2[0], p3[0]],
+                   ['image slice (y)', 'image slice (x)', 'fit'])
+        plt.title('PSF fit')
         ps.savefig()
 
 
@@ -642,6 +658,8 @@ if __name__ == '__main__':
                         help='Output file name')
     parser.add_argument('--ext', default=[], action='append',
                         help='FITS image extension to read: default "N4"; may be repeated')
+    parser.add_argument('--plots', help='Make plots with this filename prefix',
+                        default=None)
     parser.add_argument('images', metavar='DECam-filename.fits.fz', nargs='+',
                         help='DECam raw images to process')
 
@@ -650,13 +668,17 @@ if __name__ == '__main__':
     exts = args.ext
     if len(exts) == 0:
         exts = ['N4']
-    
+
+    ps = None
+    if args.plots is not None:
+        ps = PlotSequence(args.plots)
+        
     vals = {}
     for fn in fns:
         for ext in exts:
             print()
             print('Measuring', fn, 'ext', ext)
-            d = measure_raw_decam(fn, ext=ext)
+            d = measure_raw_decam(fn, ext=ext, ps=ps)
             d.update(filename=fn, ext=ext)
             for k,v in d.items():
                 if not k in vals:
