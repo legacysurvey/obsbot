@@ -23,7 +23,27 @@ import photutils
 import tractor
 
 def measure_raw_decam(fn, ext='N4', ps=None):
-    
+    '''
+    Reads the given file *fn*, extension *ext*', and measures a number of
+    quantities that are useful for depth estimates:
+
+    Returns: dict containing:
+
+    band : string, eg 'g'
+
+    airmass : float
+
+    seeing : float, FWHM in arcsec.  From Gaussian fit to PS1 stars.
+
+    zp : float.  From comparison to PS1, using aperture photometry.
+
+    skybright : float, magnitudes/arcsec^2, based on a sky estimate and the
+        canonical zeropoint.
+
+    transparency : float, fraction.  Atmospheric transparency, based
+        on computed zeropoint versus canonical zeropoint.
+    '''
+
     # aperture phot radii in arcsec
     aprad = 3.5
     skyrad = [7., 10.]
@@ -401,28 +421,32 @@ def measure_raw_decam(fn, ext='N4', ps=None):
                                   tractor.Flux(fluxi))
         tr = tractor.Tractor([tim],[src])
 
+        #print('Posterior before prior:', tr.getLogProb())
+        src.pos.addGaussianPrior('x', 0., 1.)
+        #print('Posterior after prior:', tr.getLogProb())
+        
         doplot = (i < 5) * (ps is not None)
         if doplot:
             mod0 = tr.getModelImage(0)
 
         tim.freezeAllBut('psf')
         psf.freezeAllBut('sigmas')
-        tr.printThawedParams()
-        print('Parameter step sizes:', tr.getStepSizes())
+        #tr.printThawedParams()
+        #print('Parameter step sizes:', tr.getStepSizes())
         for step in range(50):
             dlnp,x,alpha = tr.optimize()
-            print('dlnp', dlnp)
-            print('src', src)
-            print('psf', psf)
+            #print('dlnp', dlnp)
+            #print('src', src)
+            #print('psf', psf)
             if dlnp == 0:
                 break
         # Now fit only the PSF size
         tr.freezeParam('catalog')
         for step in range(50):
             dlnp,x,alpha = tr.optimize()
-            print('dlnp', dlnp)
-            print('src', src)
-            print('psf', psf)
+            #print('dlnp', dlnp)
+            #print('src', src)
+            #print('psf', psf)
             if dlnp == 0:
                 break
 
@@ -516,10 +540,10 @@ def read_raw_decam(F, ext):
     '''
     img = F[ext].read()
     hdr = F[ext].read_header()
-    print('Image type', img.dtype, img.shape)
+    #print('Image type', img.dtype, img.shape)
 
     img = img.astype(np.float32)
-    print('Converted image to', img.dtype, img.shape)
+    #print('Converted image to', img.dtype, img.shape)
 
     if False:
         mn,mx = np.percentile(img.ravel(), [25,95])
@@ -609,3 +633,44 @@ def read_raw_decam(F, ext):
     return img,hdr
     
 
+
+
+if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser(description='Script to make measurements on raw DECam images to estimate sky brightness, PSF size, and zeropoint / transparency for exposure-time scaling.')
+    parser.add_argument('--out', '-o', dest='outfn', default='raw.fits',
+                        help='Output file name')
+    parser.add_argument('--ext', default=[], action='append',
+                        help='FITS image extension to read: default "N4"; may be repeated')
+    parser.add_argument('images', metavar='DECam-filename.fits.fz', nargs='+',
+                        help='DECam raw images to process')
+
+    args = parser.parse_args()
+    fns = args.images
+    exts = args.ext
+    if len(exts) == 0:
+        exts = ['N4']
+    
+    vals = {}
+    for fn in fns:
+        for ext in exts:
+            print()
+            print('Measuring', fn, 'ext', ext)
+            d = measure_raw_decam(fn, ext=ext)
+            d.update(filename=fn, ext=ext)
+            for k,v in d.items():
+                if not k in vals:
+                    vals[k] = [v]
+                else:
+                    vals[k].append(v)
+
+    T = fits_table()
+    for k,v in vals.items():
+        T.set(k, v)
+    T.to_np_arrays()
+    for k in T.columns():
+        v = T.get(k)
+        if v.dtype == np.float64:
+            T.set(k, v.astype(np.float32))
+    T.writeto(args.outfn)
+    print('Wrote', args.outfn)

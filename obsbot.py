@@ -18,6 +18,11 @@ from RemoteClient import RemoteClient
 
 from measure_raw_decam import measure_raw_decam
 
+
+M = measure_raw_decam('DECam_00488199.fits.fz')
+import sys
+sys.exit(0)
+
 if False:
     rc = RemoteClient()
     pid = rc.execute('get_propid')
