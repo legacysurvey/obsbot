@@ -7,6 +7,7 @@ transparency, and advises whether & how to replan.
 '''
 from __future__ import print_function
 import sys
+import os
 
 try:
     from collections import OrderedDict
@@ -21,16 +22,14 @@ import datetime
 import matplotlib
 matplotlib.use('Agg')
 
+import fitsio
+
 import ephem
 
 from astrometry.util.plotutils import *
-from astrometry.util.fits import *
 from astrometry.util.starutil_numpy import hmsstring2ra, dmsstring2dec
 
-from nightlystrategy import (
-    ExposureFactor, getParserAndGlobals, setupGlobals,
-    GetAirmass, StartAndEndTimes, s_to_days, readTilesTable, GetNightlyStrategy,
-    WriteJSON)
+from nightlystrategy import ExposureFactor, getParserAndGlobals, setupGlobals
 
 from measure_raw_decam import measure_raw_decam
 
@@ -38,31 +37,26 @@ from tractor.sfd import SFDMap
 
 ps = PlotSequence('raw')
 
-parser,gvs = getParserAndGlobals()
+import optparse
+parser = optparse.OptionParser(usage='%prog')
 
 parser.add_option('--ext', help='Extension to read for computing observing conditions: default %default', default='N4')
+parser.add_option('--rawdata', help='Directory to monitor for new images: default %default', default='rawdata')
 
 opt,args = parser.parse_args()
+if len(args) != 0:
+    parser.print_help()
+    sys.exit(-1)
 
-if opt.date is None:
-    # Figure out the date.  Note that we have to figure out the date
-    # at the START of the night.
-    now = datetime.datetime.now()
-    # Let's make a new day start at 9am, so subtract 9 hours from now
-    nightstart = now - datetime.timedelta(0, 9 * 3600)
-    d = nightstart.date()
-    opt.date = '%04i-%02i-%02i' % (d.year, d.month, d.day)
-    print('Setting date to', opt.date)
+imagedir = opt.rawdata
+rawext = opt.ext
 
-    if opt.portion is None:
-        opt.portion = 1
-
-    if opt.passnumber is None:
-        opt.passnumber = '1'
-        
+# Get nightlystrategy data structures; use fake command-line args.
+# these don't matter at all, since we only use ExposureFactor
+parser,gvs = getParserAndGlobals()
+opt,args = parser.parse_args('--date 2015-01-01 --pass 1 --portion 1'.split())
 obs = setupGlobals(opt, gvs)
 
-imagedir = 'rawdata'
 lastimages = set(os.listdir(imagedir))
 
 print('Loading SFD maps...')
@@ -100,8 +94,8 @@ while True:
         fn = os.path.join(imagedir, newestimg)
         print('Found new file:', fn)
         try:
-            print('Trying to open image:', fn, 'extension:', opt.ext)
-            fitsio.read(fn, ext=opt.ext)
+            print('Trying to open image:', fn, 'extension:', rawext)
+            fitsio.read(fn, ext=rawext)
         except:
             print('Failed to open', fn, '-- maybe not fully written yet.')
             import traceback
@@ -116,8 +110,8 @@ while True:
 
     # Overwrite previous plots
     ps.skipto(0)
-    M = measure_raw_decam(fn, ext=opt.ext, ps=ps)
-    
+    M = measure_raw_decam(fn, ext=rawext, ps=ps)
+
     #M = measure_raw_decam('DECam_00488199.fits.fz')
     #M = {'seeing': 1.4890481099577366, 'airmass': 1.34,
     #'skybright': 18.383479116033314, 'transparency': 0.94488537276869045,
@@ -184,6 +178,6 @@ while True:
     
     print('Replan command:')
     print()
-    print('python nightlystrategy.py --seeg %(seeing).3f --seer %(seeing).3f --seez %(seeing).3f --sbg %(sbg).3f --sbr %(sbr).3f --sbz %(sbz).3f --transparency %(transparency).3f --start-date %(startdate)s --start-time %(starttime)s --end-date %(enddate)s --end-time %(endtime)s --date %(startdate)s --portion 1 --pass PASS' % plandict)
+    print('python2.7 nightlystrategy.py --seeg %(seeing).3f --seer %(seeing).3f --seez %(seeing).3f --sbg %(sbg).3f --sbr %(sbr).3f --sbz %(sbz).3f --transparency %(transparency).3f --start-date %(startdate)s --start-time %(starttime)s --end-date %(enddate)s --end-time %(endtime)s --date %(startdate)s --portion 1 --pass PASS' % plandict)
     print()
 
