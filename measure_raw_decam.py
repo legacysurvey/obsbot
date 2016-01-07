@@ -27,7 +27,9 @@ def measure_raw_decam(fn, ext='N4', ps=None):
     Reads the given file *fn*, extension *ext*', and measures a number of
     quantities that are useful for depth estimates:
 
-    Returns: dict containing:
+    Returns:
+    --------
+    dict containing:
 
     band : string, eg 'g'
 
@@ -42,6 +44,53 @@ def measure_raw_decam(fn, ext='N4', ps=None):
 
     transparency : float, fraction.  Atmospheric transparency, based
         on computed zeropoint versus canonical zeropoint.
+
+
+    Details:
+    --------
+
+    What this function does:
+        
+    - read raw image, apply bias and gain to the two amps & trim
+
+    - estimate sky level via sigma-clip of central pixels
+    (y in [1500,255), x in [500,1000); this is like decstat.pro)
+
+    -> sky brightness, assuming canonical zeropoint
+
+    - hack: remove sky gradients (or flat / gain / bias problems) by
+    subtracting first a column-wise and then row-wise median from the
+    image.
+
+    - hack: remove a 100-pixel margin
+
+    - assume a FWHM of 5 pixels, smooth by a gaussian and detect sources
+    above 20 sigma.  Within each 'blob' of pixels above threshold, take
+    the max pixel as the peak, and then compute the centroid in +- 5
+    pixel box around the peak.  Keep sources where the centroid is
+    within 1 pixel of the peak.
+
+    - aperture-photometer peaks with a radius of 3.5"
+
+    - I also tried computing a sky annulus, but it doesn't seem to work
+    better, so it's not used
+
+    - Read PS1 stars, apply color cut for stars, apply color
+      correction to DECam
+
+      - Match PS1 stars to our peaks
+
+      - Dumbly find dx,dy offset (via histogram peak)
+
+      - Sigma-clip to find mag offset PS1 to our apmags.
+
+      -> zeropoint & transparency (vs canonical zeropoint)
+
+      - For each matched star, cut out a +- 15 pixel box and use the
+      Tractor to fit a single-Gaussian PSF
+
+      - Take the median of the fit FWHMs -> FWHM estimate
+
     '''
 
     # aperture phot radii in arcsec

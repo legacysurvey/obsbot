@@ -1,6 +1,8 @@
 from __future__ import print_function
+import sys
 import time
 import json
+import datetime
 
 import matplotlib
 matplotlib.use('Agg')
@@ -12,38 +14,78 @@ from astrometry.util.fits import *
 
 from RemoteClient import RemoteClient
 
-from nightlystrategy import (ExposureFactor, getParserAndGlobals, setupGlobals,
-                             GetAirmass, StartAndEndTimes, s_to_days)
+from nightlystrategy import (
+    ExposureFactor, getParserAndGlobals, setupGlobals,
+    GetAirmass, StartAndEndTimes, s_to_days, readTilesTable, GetNightlyStrategy,
+    WriteJSON)
 from RemoteClient import RemoteClient
 
 from measure_raw_decam import measure_raw_decam
 
 
-M = measure_raw_decam('DECam_00488199.fits.fz')
-import sys
-sys.exit(0)
+if False:
+    M = measure_raw_decam('DECam_00488199.fits.fz')
+    sys.exit(0)
 
 if False:
     rc = RemoteClient()
     pid = rc.execute('get_propid')
     print('Got propid:', pid)
 
-
-
 ps = PlotSequence('raw')
 
-jsonfn = 'decals_2015-11-27_plan.json'
+
+
+parser,gvs = getParserAndGlobals()
+
+parser.add_option('--plan', help='Use the given plan file (JSON) rather than computing a new plan.')
+parser.add_option('--ext', help='Extension to read for computing observing conditions: default %default', default='N4')
+
+opt,args = parser.parse_args()
+
+if opt.date is None:
+    # Figure out the date.  Note that we have to figure out the date
+    # at the START of the night.
+    now = datetime.datetime.now()
+    # Let's make a new day start at 9am, so subtract 9 hours from now
+    nightstart = now - datetime.timedelta(0, 9 * 3600)
+    d = nightstart.date()
+    opt.date = '%04i-%02i-%02i' % (d.year, d.month, d.day)
+    print('Setting date to', opt.date)
+
+# If start time was not specified, set it to NOW.
+default_time = '00:00:00'
+if opt.start_time == default_time and opt.portion is None:
+    # Note that nightlystrategy.py takes UTC dates.
+    now = datetime.datetime.utcnow()
+    d = now.date()
+    opt.start_date = '%04i-%02i-%02i' % (d.year, d.month, d.day)
+    t = now.time()
+    opt.start_time = t.strftime('%H:%M:%S')
+    print('Setting start to %s %s UTC' % (opt.start_date, opt.start_time))
+
+if opt.portion is None:
+    opt.portion = 1
+    
+obs = setupGlobals(opt, gvs)
+
+#
+if opt.plan is None:
+    # the filename written by nightlystrategy.py
+    jsonfn = 'decals_%s_plan.json' % opt.date
+
+    # Generate nightly strategy.
+    tiles,survey_centers = readTilesTable(opt.tiles, gvs)
+    plan = GetNightlyStrategy(obs, opt.date, opt.portion, survey_centers,
+                              opt.passnumber, gvs)
+    WriteJSON(plan, jsonfn)
+
+else:
+    jsonfn = opt.plan
+    
 J = json.loads(open(jsonfn,'rb').read())
 
 tiles = fits_table('decam-tiles_obstatus.fits')
-
-ext = 'N4'
-date = '2015-11-17'
-passnum = 1
-parser,gvs = getParserAndGlobals()
-opt,args = parser.parse_args(('--date %s --pass %i --portion 1.0' %
-                              (date, passnum)).split())
-obs = setupGlobals(opt, gvs)
 
 imagedir = 'rawdata'
 lastimages = set(os.listdir(imagedir))
@@ -67,7 +109,7 @@ for j in J:
     fn = os.path.join(imagedir, newimgs[0])
     for i in range(10):
         try:
-            fitsio.read(fn, ext=ext)
+            fitsio.read(fn, ext=opt.ext)
         except:
             print('Failed to open', fn, '-- maybe not fully written yet.')
             import traceback
@@ -75,7 +117,7 @@ for j in J:
             time.sleep(3)
             continue
 
-    M = measure_raw_decam(fn, ext=ext, ps=ps)
+    M = measure_raw_decam(fn, ext=opt.ext, ps=ps)
     
     #M = measure_raw_decam('DECam_00488199.fits.fz')
     #M = {'seeing': 1.4890481099577366, 'airmass': 1.34,
