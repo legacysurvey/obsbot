@@ -85,7 +85,7 @@ else:
     
 J = json.loads(open(jsonfn,'rb').read())
 
-tiles = fits_table('decam-tiles_obstatus.fits')
+tiles = fits_table(opt.tiles)
 
 imagedir = 'rawdata'
 lastimages = set(os.listdir(imagedir))
