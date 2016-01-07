@@ -12,16 +12,13 @@ import ephem
 from astrometry.util.plotutils import *
 from astrometry.util.fits import *
 
-from RemoteClient import RemoteClient
-
 from nightlystrategy import (
     ExposureFactor, getParserAndGlobals, setupGlobals,
     GetAirmass, StartAndEndTimes, s_to_days, readTilesTable, GetNightlyStrategy,
     WriteJSON)
-from RemoteClient import RemoteClient
-
 from measure_raw_decam import measure_raw_decam
 
+from RemoteClient import RemoteClient
 
 if False:
     M = measure_raw_decam('DECam_00488199.fits.fz')
