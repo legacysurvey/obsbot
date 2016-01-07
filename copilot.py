@@ -79,8 +79,17 @@ while True:
         if len(newimgs) == 0:
             continue
 
-        fn = newimgs[0]
-        fn = os.path.join(imagedir, fn)
+        # Take the one with the latest timestamp.
+        latest = None
+        newestimg = None
+        for fn in newimgs:
+            st = os.stat(os.path.join(imagedir, fn))
+            t = st.st_mtime
+            if latest is None or t > latest:
+                newestimg = fn
+                latest = t
+
+        fn = os.path.join(imagedir, newestimg)
         print('Found new file:', fn)
         try:
             print('Trying to open image:', fn, 'extension:', opt.ext)
@@ -91,9 +100,14 @@ while True:
             traceback.print_exc()
             continue
         
+        images = images - set(newimgs)
+        images.add(newestimg)
+        #images.add(newimgs[0])
         lastimages = images
         break
 
+    # Overwrite previous plots
+    ps.skipto(0)
     M = measure_raw_decam(fn, ext=opt.ext, ps=ps)
     
     #M = measure_raw_decam('DECam_00488199.fits.fz')
