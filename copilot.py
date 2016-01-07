@@ -7,6 +7,13 @@ transparency, and advises whether & how to replan.
 '''
 from __future__ import print_function
 import sys
+
+try:
+    from collections import OrderedDict
+except:
+    print('Failed to import OrderedDict.  You are probably using python 2.6.  Please re-run with python2.7')
+    sys.exit(-1)
+
 import time
 import json
 import datetime
@@ -58,6 +65,7 @@ obs = setupGlobals(opt, gvs)
 imagedir = 'rawdata'
 lastimages = set(os.listdir(imagedir))
 
+print('Loading SFD maps...')
 sfd = SFDMap()
 
 while True:
