@@ -18,17 +18,16 @@ except:
 import time
 import json
 import datetime
-
 from glob import glob
+import optparse
 
 import matplotlib
 matplotlib.use('Agg')
 
 import fitsio
-
 import ephem
 
-from astrometry.util.plotutils import *
+from astrometry.util.plotutils import PlotSequence
 from astrometry.util.starutil_numpy import hmsstring2ra, dmsstring2dec
 
 from nightlystrategy import ExposureFactor, getParserAndGlobals, setupGlobals
@@ -37,8 +36,6 @@ from measure_raw_decam import measure_raw_decam
 
 from tractor.sfd import SFDMap
 
-
-import optparse
 parser = optparse.OptionParser(usage='%prog')
 
 parser.add_option('--ext', help='Extension to read for computing observing conditions: default %default', default='N4')
