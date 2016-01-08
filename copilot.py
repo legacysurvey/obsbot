@@ -104,17 +104,18 @@ while True:
         
         images = images - set(newimgs)
         images.add(newestimg)
-        #images.add(newimgs[0])
         lastimages = images
         break
 
-    # Start making QAplots.
-    expid = os.path.basename(fn)[6:14]
-    ps = PlotSequence('qa-'+expid)
-    ps.skipto(0)
+    # Read primary FITS header
+    phdr = fitsio.read_header(fn)
+    # Write QA plots to files named by the exposure number
+    expnum = phdr['EXPNUM']
+    ps = PlotSequence('qa-'+expnum)
+    # Measure the new image
     M = measure_raw_decam(fn, ext=rawext, ps=ps)
 
-
+    # (example results for testig)
     #M = {'seeing': 1.4890481099577366, 'airmass': 1.34,
     #'skybright': 18.383479116033314, 'transparency': 0.94488537276869045,
     #'band': 'z', 'zp': 26.442847814941093}
@@ -122,25 +123,21 @@ while True:
     print('Measurements:', M)
 
     gvs.transparency = M['transparency']
+    band = M['band']
 
-    # primary header
-    phdr = fitsio.read_header(fn)
     ra  = hmsstring2ra (phdr['RA'])
     dec = dmsstring2dec(phdr['DEC'])
     airmass = phdr['AIRMASS']
     actual_exptime = phdr['EXPTIME']
 
-    # Look up E(B-V)
+    # Look up E(B-V) in SFD map
     ebv = sfd.ebv(ra, dec)[0]
     print('E(B-V):', ebv)
 
-    band = M['band']
-    
     fakezp = -99
     expfactor = ExposureFactor(band, airmass, ebv, M['seeing'], fakezp,
                                M['skybright'], gvs)
     print('Exposure factor:', expfactor)
-
     exptime = expfactor * gvs.base_exptimes[band]
     print('Exptime (un-clipped)', exptime)
     exptime = np.clip(exptime, gvs.floor_exptimes[band], gvs.ceil_exptimes[band])
@@ -156,21 +153,18 @@ while True:
 
     print('Depth fraction: %6.3f' % (actual_exptime / exptime))
     
-    # If you were going to re-plan, you would run:
+    # If you were going to re-plan, you would run with these args:
     plandict = dict(seeing=M['seeing'], transparency=M['transparency'])
-
     # Assume the sky is as much brighter than canonical in each band... unlikely
     dsky = M['skybright'] - gvs.sb_dict[M['band']]
     for band in 'grz':
         plandict['sb'+band] = gvs.sb_dict[band] + dsky
-
     # Note that nightlystrategy.py takes UTC dates.
     now = datetime.datetime.utcnow()
     d = now.date()
     plandict['startdate'] = '%04i-%02i-%02i' % (d.year, d.month, d.day)
     t = now.time()
     plandict['starttime'] = t.strftime('%H:%M:%S')
-
     # Make an hour-long plan
     end = now + datetime.timedelta(0, 3600)
     d = end.date()
@@ -179,27 +173,28 @@ while True:
     plandict['endtime'] = t.strftime('%H:%M:%S')
 
     # Decide the pass.
-    if plandict['seeing']<1.3 and plandict['transparency']>0.95:
-        plandict['pass'] = 1        
-    if plandict['seeing']<1.3 and plandict['transparency']<0.95: 
-        plandict['pass'] = 2
-    if plandict['seeing']>1.3 and plandict['transparency']>0.95:
-        plandict['pass'] = 2
-    if plandict['seeing']>1.3 and plandict['transparency']<0.95:
-        plandict['pass'] = 3       
+    goodseeing = plandict['seeing']<1.3
+    photometric = plandict['transparency']>0.95
+
+    if goodseeing and photometric:
+        passnum = 1
+    elif goodseeing or photometric:
+        passunm = 2
+    else:
+        passnum = 3
+    plandict['pass'] = passnum
     
     print('Replan command:')
     print()
-    print('python2.7 nightlystrategy.py --seeg %(seeing).3f --seer %(seeing).3f --seez %(seeing).3f --sbg %(sbg).3f --sbr %(sbr).3f --sbz %(sbz).3f --transparency %(transparency).3f --start-date %(startdate)s --start-time %(starttime)s --end-date %(enddate)s --end-time %(endtime)s --date %(startdate)s --portion 1 --pass %(pass).1f' % plandict) 
+    print('python2.7 nightlystrategy.py --seeg %(seeing).3f --seer %(seeing).3f --seez %(seeing).3f --sbg %(sbg).3f --sbr %(sbr).3f --sbz %(sbz).3f --transparency %(transparency).3f --start-date %(startdate)s --start-time %(starttime)s --end-date %(enddate)s --end-time %(endtime)s --date %(startdate)s --portion 1 --pass %(pass)i' % plandict) 
     print()
 
     # Gather all the QAplots into a single pdf.
-    qafile = 'qa-'+expid+'.pdf'
-    pnglist = sorted(glob('qa-'+expid+'-??.png'))
-    cmd = 'convert {} {}'.format(' '.join(pnglist),qafile)
+    qafile = 'qa-'+expnum+'.pdf'
+    pnglist = sorted(glob('qa-'+expnum+'-??.png'))
+    cmd = 'convert {} {}'.format(' '.join(pnglist), qafile)
     print('Writing out {}'.format(qafile))
     print(cmd)
     os.system(cmd)
     [os.remove(png) for png in pnglist]
-    
-    
+

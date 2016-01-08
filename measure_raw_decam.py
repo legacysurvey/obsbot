@@ -573,9 +573,8 @@ def measure_raw_decam(fn, ext='N4', ps=None):
         plt.title('PSF fit')
         ps.savefig()
 
-
     return dict(band=band, airmass=airmass, seeing=fwhm, zp=zp_obs,
-                skybright=skybr, transparency=transparency)
+                skybright=skybr, transparency=transparency, primhdr=primhdr, hdr=hdr)
 
 def sensible_sigmaclip(arr, nsigma = 4.):
     goodpix,lo,hi = sigmaclip(arr, low=nsigma, high=nsigma)
