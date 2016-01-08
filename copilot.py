@@ -19,6 +19,8 @@ import time
 import json
 import datetime
 
+from glob import glob
+
 import matplotlib
 matplotlib.use('Agg')
 
@@ -35,7 +37,6 @@ from measure_raw_decam import measure_raw_decam
 
 from tractor.sfd import SFDMap
 
-ps = PlotSequence('raw')
 
 import optparse
 parser = optparse.OptionParser(usage='%prog')
@@ -62,6 +63,7 @@ lastimages = set(os.listdir(imagedir))
 print('Loading SFD maps...')
 sfd = SFDMap()
 
+print('Checking directory for new files:', imagedir)
 while True:
     first = True
     # Wait for a new image to appear
@@ -71,13 +73,11 @@ while True:
             time.sleep(5.)
         first = False
 
-        print('Checking directory for new files:', imagedir)
-        
         images = set(os.listdir(imagedir))
         newimgs = images - lastimages
         newimgs = list(newimgs)
         newimgs = [fn for fn in newimgs if fn.endswith('.fits.fz')]
-        print('Found new images:', newimgs)
+        #print('Found new images:', newimgs)
         if len(newimgs) == 0:
             continue
 
@@ -108,11 +108,13 @@ while True:
         lastimages = images
         break
 
-    # Overwrite previous plots
+    # Start making QAplots.
+    expid = os.path.basename(fn)[6:14]
+    ps = PlotSequence('qa-'+expid)
     ps.skipto(0)
     M = measure_raw_decam(fn, ext=rawext, ps=ps)
 
-    #M = measure_raw_decam('DECam_00488199.fits.fz')
+
     #M = {'seeing': 1.4890481099577366, 'airmass': 1.34,
     #'skybright': 18.383479116033314, 'transparency': 0.94488537276869045,
     #'band': 'z', 'zp': 26.442847814941093}
@@ -175,9 +177,29 @@ while True:
     plandict['enddate'] = '%04i-%02i-%02i' % (d.year, d.month, d.day)
     t = end.time()
     plandict['endtime'] = t.strftime('%H:%M:%S')
+
+    # Decide the pass.
+    if plandict['seeing']<1.3 and plandict['transparency']>0.95:
+        plandict['pass'] = 1        
+    if plandict['seeing']<1.3 and plandict['transparency']<0.95: 
+        plandict['pass'] = 2
+    if plandict['seeing']>1.3 and plandict['transparency']>0.95:
+        plandict['pass'] = 2
+    if plandict['seeing']>1.3 and plandict['transparency']<0.95:
+        plandict['pass'] = 3       
     
     print('Replan command:')
     print()
-    print('python2.7 nightlystrategy.py --seeg %(seeing).3f --seer %(seeing).3f --seez %(seeing).3f --sbg %(sbg).3f --sbr %(sbr).3f --sbz %(sbz).3f --transparency %(transparency).3f --start-date %(startdate)s --start-time %(starttime)s --end-date %(enddate)s --end-time %(endtime)s --date %(startdate)s --portion 1 --pass PASS' % plandict)
+    print('python2.7 nightlystrategy.py --seeg %(seeing).3f --seer %(seeing).3f --seez %(seeing).3f --sbg %(sbg).3f --sbr %(sbr).3f --sbz %(sbz).3f --transparency %(transparency).3f --start-date %(startdate)s --start-time %(starttime)s --end-date %(enddate)s --end-time %(endtime)s --date %(startdate)s --portion 1 --pass %(pass).1f' % plandict) 
     print()
 
+    # Gather all the QAplots into a single pdf.
+    qafile = 'qa-'+expid+'.pdf'
+    pnglist = sorted(glob('qa-'+expid+'-??.png'))
+    cmd = 'convert {} {}'.format(' '.join(pnglist),qafile)
+    print('Writing out {}'.format(qafile))
+    print(cmd)
+    os.system(cmd)
+    [os.remove(png) for png in pnglist]
+    
+    
