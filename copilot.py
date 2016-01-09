@@ -113,7 +113,7 @@ def process_image(fn, ext, gvs, sfd, opt):
     if goodseeing and photometric:
         passnum = 1
     elif goodseeing or photometric:
-        passunm = 2
+        passnum = 2
     else:
         passnum = 3
     plandict['pass'] = passnum
