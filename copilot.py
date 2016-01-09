@@ -111,8 +111,8 @@ while True:
     # Read primary FITS header
     phdr = fitsio.read_header(fn)
     # Write QA plots to files named by the exposure number
-    expnum = str(phdr['EXPNUM'])
-    ps = PlotSequence('qa-'+expnum)
+    expnum = phdr['EXPNUM']
+    ps = PlotSequence('qa-%i' % expnum)
     # Measure the new image
     M = measure_raw_decam(fn, ext=rawext, ps=ps)
 
@@ -193,8 +193,8 @@ while True:
     print()
 
     # Gather all the QAplots into a single pdf.
-    qafile = 'qa-'+expnum+'.pdf'
-    pnglist = sorted(glob('qa-'+expnum+'-??.png'))
+    qafile = 'qa-%i.pdf' % expnum
+    pnglist = sorted(glob('qa-%i-??.png' % expnum))
     cmd = 'convert {} {}'.format(' '.join(pnglist), qafile)
     print('Writing out {}'.format(qafile))
     print(cmd)
