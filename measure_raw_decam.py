@@ -1,10 +1,15 @@
 from __future__ import print_function
 import os
 import tempfile
-import fitsio
+import json
+
+if __name__ == '__main__':
+    import matplotlib
+    matplotlib.use('Agg')
 import numpy as np
 import pylab as plt
-import json
+
+import fitsio
 
 from scipy.stats import sigmaclip
 from scipy.ndimage.filters import gaussian_filter

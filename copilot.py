@@ -21,6 +21,8 @@ import datetime
 from glob import glob
 import optparse
 
+import numpy as np
+
 import matplotlib
 matplotlib.use('Agg')
 
@@ -40,6 +42,7 @@ parser = optparse.OptionParser(usage='%prog')
 
 parser.add_option('--ext', help='Extension to read for computing observing conditions: default %default', default='N4')
 parser.add_option('--rawdata', help='Directory to monitor for new images: default %default', default='rawdata')
+parser.add_option('--portion', help='Portion of the night: default %default', type=float, default='1.0')
 
 opt,args = parser.parse_args()
 if len(args) != 0:
@@ -48,6 +51,7 @@ if len(args) != 0:
 
 imagedir = opt.rawdata
 rawext = opt.ext
+portion = opt.portion
 
 # Get nightlystrategy data structures; use fake command-line args.
 # these don't matter at all, since we only use ExposureFactor
@@ -107,7 +111,7 @@ while True:
     # Read primary FITS header
     phdr = fitsio.read_header(fn)
     # Write QA plots to files named by the exposure number
-    expnum = phdr['EXPNUM']
+    expnum = str(phdr['EXPNUM'])
     ps = PlotSequence('qa-'+expnum)
     # Measure the new image
     M = measure_raw_decam(fn, ext=rawext, ps=ps)
@@ -180,10 +184,12 @@ while True:
     else:
         passnum = 3
     plandict['pass'] = passnum
+
+    plandict['portion'] = portion
     
     print('Replan command:')
     print()
-    print('python2.7 nightlystrategy.py --seeg %(seeing).3f --seer %(seeing).3f --seez %(seeing).3f --sbg %(sbg).3f --sbr %(sbr).3f --sbz %(sbz).3f --transparency %(transparency).3f --start-date %(startdate)s --start-time %(starttime)s --end-date %(enddate)s --end-time %(endtime)s --date %(startdate)s --portion 1 --pass %(pass)i' % plandict) 
+    print('python2.7 nightlystrategy.py --seeg %(seeing).3f --seer %(seeing).3f --seez %(seeing).3f --sbg %(sbg).3f --sbr %(sbr).3f --sbz %(sbz).3f --transparency %(transparency).3f --start-date %(startdate)s --start-time %(starttime)s --end-date %(enddate)s --end-time %(endtime)s --date %(startdate)s --portion %(portion)f --pass %(pass)i' % plandict) 
     print()
 
     # Gather all the QAplots into a single pdf.
