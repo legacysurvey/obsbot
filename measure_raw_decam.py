@@ -226,7 +226,7 @@ def measure_raw_decam(fn, ext='N4', ps=None):
         imax = np.argmax(subimg)
         y,x = np.unravel_index(imax, subimg.shape)
         if (x0+x) < P or (x0+x) > W-1-P or (y0+y) < P or (y0+y) > H-1-P:
-            print('Skipping edge peak', x0+x, y0+y)
+            #print('Skipping edge peak', x0+x, y0+y)
             continue
         xx.append(x0 + x)
         yy.append(y0 + y)
@@ -263,7 +263,7 @@ def measure_raw_decam(fn, ext='N4', ps=None):
 
     keep = (np.hypot(fx - xx, fy - yy) < 1)
     print(sum(keep), 'of', len(keep), 'stars have centroids within 1 of peaks')
-    print('mean dx', np.mean(fx-xx), 'dy', np.mean(fy-yy))
+    print('mean dx', np.mean(fx-xx), 'dy', np.mean(fy-yy), 'pixels')
     
     # Cut down to stars whose centroids are within 1 pixel of their peaks...
     assert(float(sum(keep)) / len(keep) > 0.9)
@@ -400,6 +400,8 @@ def measure_raw_decam(fn, ext='N4', ps=None):
         plt.axis(ax)
         ps.savefig()
 
+    print('Mean astrometric shift (arcsec): delta-ra=', -np.mean(dy)*0.263, 'delta-dec=', np.mean(dx)*0.263)
+        
     # Compute photometric offset compared to PS1
     # as the PS1 minus DECam-observed mags
     colorterm = ps1_to_decam(stars.median[I,:], band)

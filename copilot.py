@@ -49,12 +49,21 @@ def process_image(fn, ext, gvs, sfd, opt):
     # Measure the new image
     M = measure_raw_decam(fn, ext=ext, ps=ps)
 
+    # Gather all the QAplots into a single pdf and clean them up.
+    qafile = 'qa-%i.pdf' % expnum
+    pnglist = sorted(glob('qa-%i-??.png' % expnum))
+    cmd = 'convert {} {}'.format(' '.join(pnglist), qafile)
+    print('Writing out {}'.format(qafile))
+    #print(cmd)
+    os.system(cmd)
+    [os.remove(png) for png in pnglist]
+
     # (example results for testig)
     #M = {'seeing': 1.4890481099577366, 'airmass': 1.34,
     #'skybright': 18.383479116033314, 'transparency': 0.94488537276869045,
     #'band': 'z', 'zp': 26.442847814941093}
 
-    print('Measurements:', M)
+    #print('Measurements:', M)
 
     gvs.transparency = M['transparency']
     band = M['band']
@@ -125,15 +134,6 @@ def process_image(fn, ext, gvs, sfd, opt):
     print('python2.7 nightlystrategy.py --start-twi 10 --end-twi 10 --seeg %(seeing).3f --seer %(seeing).3f --seez %(seeing).3f --sbg %(sbg).3f --sbr %(sbr).3f --sbz %(sbz).3f --transparency %(transparency).3f --start-date %(startdate)s --start-time %(starttime)s --end-date %(enddate)s --end-time %(endtime)s --date %(startdate)s --portion %(portion)f --pass %(pass)i' % plandict) 
     print()
 
-    # Gather all the QAplots into a single pdf.
-    qafile = 'qa-%i.pdf' % expnum
-    pnglist = sorted(glob('qa-%i-??.png' % expnum))
-    cmd = 'convert {} {}'.format(' '.join(pnglist), qafile)
-    print('Writing out {}'.format(qafile))
-    print(cmd)
-    os.system(cmd)
-    [os.remove(png) for png in pnglist]
-
     return M, plandict, expnum
     
     
@@ -203,8 +203,8 @@ if __name__ == '__main__':
                 fitsio.read(fn, ext=rawext)
             except:
                 print('Failed to open', fn, '-- maybe not fully written yet.')
-                import traceback
-                traceback.print_exc()
+                #import traceback
+                #traceback.print_exc()
                 continue
             
             images = images - set(newimgs)
