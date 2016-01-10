@@ -122,7 +122,7 @@ def process_image(fn, ext, gvs, sfd, opt):
     
     print('Replan command:')
     print()
-    print('python2.7 nightlystrategy.py --seeg %(seeing).3f --seer %(seeing).3f --seez %(seeing).3f --sbg %(sbg).3f --sbr %(sbr).3f --sbz %(sbz).3f --transparency %(transparency).3f --start-date %(startdate)s --start-time %(starttime)s --end-date %(enddate)s --end-time %(endtime)s --date %(startdate)s --portion %(portion)f --pass %(pass)i' % plandict) 
+    print('python2.7 nightlystrategy.py --start-twi 10 --end-twi 10 --seeg %(seeing).3f --seer %(seeing).3f --seez %(seeing).3f --sbg %(sbg).3f --sbr %(sbr).3f --sbz %(sbz).3f --transparency %(transparency).3f --start-date %(startdate)s --start-time %(starttime)s --end-date %(enddate)s --end-time %(endtime)s --date %(startdate)s --portion %(portion)f --pass %(pass)i' % plandict) 
     print()
 
     # Gather all the QAplots into a single pdf.
