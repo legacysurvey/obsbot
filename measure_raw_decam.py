@@ -99,7 +99,7 @@ def measure_raw_decam(fn, ext='N4', ps=None):
     '''
 
     # aperture phot radii in arcsec
-    aprad = 3.5
+    aprad = 7.0
     skyrad = [7., 10.]
 
     minstar = 5
@@ -301,8 +301,15 @@ def measure_raw_decam(fn, ext='N4', ps=None):
         sky.append(s)
     sky = np.array(sky)
 
+    
     apflux2 = apflux - sky * (np.pi * aprad_pix**2)
-
+    good = (apflux2>0)*(apflux>0)
+    apflux = apflux[good]
+    apflux2 = apflux2[good]
+    fx = fx[good]
+    fy = fy[good]
+   
+    
     # HACK -- convert TPV WCS header to SIP.
     wcs = wcs_pv2sip_hdr(hdr)
     print('Converted WCS to', wcs)
@@ -707,7 +714,7 @@ def read_raw_decam(F, ext):
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description='Script to make measurements on raw DECam images to estimate sky brightness, PSF size, and zeropoint / transparency for exposure-time scaling.')
-    parser.add_argument('--out', '-o', dest='outfn', default='raw.fits',
+    parser.add_argument('--', '-o', dest='outfn', default='raw.fits',
                         help='Output file name')
     parser.add_argument('--ext', default=[], action='append',
                         help='FITS image extension to read: default "N4"; may be repeated')
@@ -731,7 +738,7 @@ if __name__ == '__main__':
         for ext in exts:
             print()
             print('Measuring', fn, 'ext', ext)
-            d = measure_raw_decam(fn, ext=ext, ps=ps)
+            d = measure_raw_decam(fn, ext=ext,ps=ps)
             d.update(filename=fn, ext=ext)
             for k,v in d.items():
                 if not k in vals:
