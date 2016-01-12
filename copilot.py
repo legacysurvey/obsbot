@@ -133,8 +133,8 @@ def process_image(fn, ext, gvs, sfd, opt, obs):
     plandict['date'] = '%04i-%02i-%02i' % (year, month, day)
 
     # Decide the pass.
-    goodseeing = plandict['seeing']<1.3
-    photometric = plandict['transparency']>0.95
+    goodseeing = plandict['seeing'] < 1.3
+    photometric = plandict['transparency'] > 0.9
 
     if goodseeing and photometric:
         passnum = 1
