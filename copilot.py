@@ -103,13 +103,15 @@ def process_image(fn, ext, gvs, sfd, opt, obs):
     for band in 'grz':
         plandict['sb'+band] = gvs.sb_dict[band] + dsky
     # Note that nightlystrategy.py takes UTC dates.
-    now = datetime.datetime.utcnow()
-    d = now.date()
+    start = datetime.datetime.utcnow()
+    # Start the strategy 5 minutes from now.
+    start += datetime.timedelta(0, 5*60)
+    d = start.date()
     plandict['startdate'] = '%04i-%02i-%02i' % (d.year, d.month, d.day)
-    t = now.time()
+    t = start.time()
     plandict['starttime'] = t.strftime('%H:%M:%S')
     # Make an hour-long plan
-    end = now + datetime.timedelta(0, 3600)
+    end = start + datetime.timedelta(0, 3600)
     d = end.date()
     plandict['enddate'] = '%04i-%02i-%02i' % (d.year, d.month, d.day)
     t = end.time()
