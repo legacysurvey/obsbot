@@ -38,7 +38,7 @@ from measure_raw_decam import measure_raw_decam
 
 from tractor.sfd import SFDMap
 
-def process_image(fn, ext, gvs, sfd, opt):
+def process_image(fn, ext, gvs, sfd, opt, obs):
     portion = opt.portion
 
     # Read primary FITS header
@@ -115,6 +115,23 @@ def process_image(fn, ext, gvs, sfd, opt):
     t = end.time()
     plandict['endtime'] = t.strftime('%H:%M:%S')
 
+    # Set "--date" to be the UTC date at previous sunset.
+    # (nightlystrategy will ask for the next setting of the sun below
+    # -18-degrees from that date to define the sn_18).  We could
+    # probably also get away with subtracting, like, 12 hours from
+    # now()...
+    sun = ephem.Sun()
+    obs.date = now
+    # not the proper horizon, but this doesn't matter -- just need it to
+    # be before -18-degree twilight.
+    obs.horizon = 0.
+    sunset = obs.previous_setting(sun)
+    # pyephem's Date.tuple() splits a date into y,m,d,h,m,s
+    d = sunset.tuple()
+    print('Date at sunset, UTC:', d)
+    year,month,day = d[:3]
+    plandict['date'] = '%04i-%02i-%02i' % (year, month, day)
+
     # Decide the pass.
     goodseeing = plandict['seeing']<1.3
     photometric = plandict['transparency']>0.95
@@ -131,7 +148,7 @@ def process_image(fn, ext, gvs, sfd, opt):
     
     print('Replan command:')
     print()
-    print('python2.7 nightlystrategy.py --seeg %(seeing).3f --seer %(seeing).3f --seez %(seeing).3f --sbg %(sbg).3f --sbr %(sbr).3f --sbz %(sbz).3f --transparency %(transparency).3f --start-date %(startdate)s --start-time %(starttime)s --end-date %(enddate)s --end-time %(endtime)s --date %(startdate)s --portion %(portion)f --pass %(pass)i' % plandict) 
+    print('python2.7 nightlystrategy.py --seeg %(seeing).3f --seer %(seeing).3f --seez %(seeing).3f --sbg %(sbg).3f --sbr %(sbr).3f --sbz %(sbz).3f --transparency %(transparency).3f --start-date %(startdate)s --start-time %(starttime)s --end-date %(enddate)s --end-time %(endtime)s --date %(date)s --portion %(portion)f --pass %(pass)i' % plandict) 
     print()
 
     return M, plandict, expnum
@@ -151,7 +168,7 @@ if __name__ == '__main__':
     rawext = opt.ext
 
     # Get nightlystrategy data structures; use fake command-line args.
-    # these don't matter at all, since we only use ExposureFactor
+    # these don't matter at all, since we only use the ExposureFactor() function
     parser,gvs = getParserAndGlobals()
     nsopt,nsargs = parser.parse_args('--date 2015-01-01 --pass 1 --portion 1'.split())
     obs = setupGlobals(nsopt, gvs)
@@ -162,7 +179,7 @@ if __name__ == '__main__':
     if len(args) > 0:
         for fn in args:
             print('Reading', fn)
-            process_image(fn, rawext, gvs, sfd, opt)
+            process_image(fn, rawext, gvs, sfd, opt, obs)
         sys.exit(0)
     
     
@@ -212,5 +229,5 @@ if __name__ == '__main__':
             lastimages = images
             break
 
-        process_image(fn, rawext, gvs, sfd, opt)
+        process_image(fn, rawext, gvs, sfd, opt, obs)
 
