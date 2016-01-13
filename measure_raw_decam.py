@@ -135,11 +135,9 @@ def measure_raw_decam(fn, ext='N4', ps=None):
 
     band = primhdr['FILTER']
     band = band.split()[0]
-    print('Band', band)
     exptime = primhdr['EXPTIME']
     airmass = primhdr['AIRMASS']
-    print('Exptime', exptime)
-    print('Airmass', airmass)
+    print('Band', band, 'Exptime', exptime, 'Airmass', airmass)
 
     nominal_cal = dict(
         g = (26.610,
@@ -159,8 +157,8 @@ def measure_raw_decam(fn, ext='N4', ps=None):
     sky,sig1 = sensible_sigmaclip(img[1500:2500, 500:1000])
 
     skybr = -2.5 * np.log10(sky/pixsc/pixsc/exptime) + zp0
-    print('Sky brightness: %8.2f mag/arcsec^2' % skybr)
-    print('Fiducial:       %8.2f mag/arcsec^2' % sky0)
+    print('Sky brightness: %8.3f mag/arcsec^2' % skybr)
+    print('Fiducial:       %8.3f mag/arcsec^2' % sky0)
 
     img -= sky
     
@@ -262,8 +260,8 @@ def measure_raw_decam(fn, ext='N4', ps=None):
         ps.savefig()
 
     keep = (np.hypot(fx - xx, fy - yy) < 1)
-    print(sum(keep), 'of', len(keep), 'stars have centroids within 1 of peaks')
-    print('mean dx', np.mean(fx-xx), 'dy', np.mean(fy-yy), 'pixels')
+    #print(sum(keep), 'of', len(keep), 'stars have centroids within 1 of peaks')
+    #print('mean dx', np.mean(fx-xx), 'dy', np.mean(fy-yy), 'pixels')
     
     # Cut down to stars whose centroids are within 1 pixel of their peaks...
     assert(float(sum(keep)) / len(keep) > 0.9)
@@ -312,7 +310,7 @@ def measure_raw_decam(fn, ext='N4', ps=None):
     
     # HACK -- convert TPV WCS header to SIP.
     wcs = wcs_pv2sip_hdr(hdr)
-    print('Converted WCS to', wcs)
+    #print('Converted WCS to', wcs)
 
     ra_ccd,dec_ccd = wcs.pixelxy2radec((W+1)/2., (H+1)/2.)
     
@@ -320,7 +318,7 @@ def measure_raw_decam(fn, ext='N4', ps=None):
     # and those with main sequence colors
     pscat = ps1cat(ccdwcs=wcs)
     stars = pscat.get_stars()
-    print('Got PS1 stars:', stars)
+    #print('Got PS1 stars:', len(stars))
 
     stars.gicolor = stars.median[:,0] - stars.median[:,2]
     keep = (stars.gicolor > 0.4) * (stars.gicolor < 2.7)
@@ -348,7 +346,7 @@ def measure_raw_decam(fn, ext='N4', ps=None):
     # Match PS1 to our detections, find offset
     radius = maxshift / pixsc
     I,J,d = match_xy(px, py, fx, fy, radius)
-    print(len(I), 'spatial matches with large radius', maxshift, 'arcsec')
+    #print(len(I), 'spatial matches with large radius', maxshift, 'arcsec')
 
     dx = px[I] - fx[J]
     dy = py[I] - fy[J]
@@ -382,7 +380,7 @@ def measure_raw_decam(fn, ext='N4', ps=None):
     # Refine with smaller search radius
     radius2 = 3. / pixsc
     I,J,d = match_xy(px, py, fx+shiftx, fy+shifty, radius2)
-    print(len(J), 'matches with small radius', 3, 'arcsec')
+    print(len(J), 'matches to PS1 with small radius', 3, 'arcsec')
     
     dx = px[I] - fx[J]
     dy = py[I] - fy[J]
@@ -400,7 +398,7 @@ def measure_raw_decam(fn, ext='N4', ps=None):
         plt.axis(ax)
         ps.savefig()
 
-    print('Mean astrometric shift (arcsec): delta-ra=', -np.mean(dy)*0.263, 'delta-dec=', np.mean(dx)*0.263)
+    #print('Mean astrometric shift (arcsec): delta-ra=', -np.mean(dy)*0.263, 'delta-dec=', np.mean(dx)*0.263)
         
     # Compute photometric offset compared to PS1
     # as the PS1 minus DECam-observed mags
@@ -438,13 +436,13 @@ def measure_raw_decam(fn, ext='N4', ps=None):
 
     dm = ps1mag - apmag[J]
     dmag,dsig = sensible_sigmaclip(dm, nsigma=2.5)
-    print('Mag offset', dmag)
-    print('Scatter', dsig)
+    print('Mag offset: %8.3f' % dmag)
+    print('Scatter:    %8.3f' % dsig)
 
     dm = ps1mag - apmag2[J]
     dmag2,dsig2 = sensible_sigmaclip(dm, nsigma=2.5)
-    print('Sky-sub mag offset', dmag2)
-    print('Scatter', dsig2)
+    #print('Sky-sub mag offset', dmag2)
+    #print('Scatter', dsig2)
 
     if ps is not None:
         plt.clf()
@@ -462,10 +460,10 @@ def measure_raw_decam(fn, ext='N4', ps=None):
     
     transparency = 10.**(-0.4 * (zp0 - zp_obs - kx * (1. - airmass)))
 
-    print('Zeropoint %6.2f' % zp_obs)
-    print('Fiducial  %6.2f' % zp0)
+    print('Zeropoint %6.3f' % zp_obs)
+    print('Fiducial  %6.3f' % zp0)
 
-    print('Transparency', transparency)
+    print('Transparency: %.3f' % transparency)
 
     fwhms = []
     psf_r = 15
@@ -553,7 +551,7 @@ def measure_raw_decam(fn, ext='N4', ps=None):
         plt.xlabel('FWHM (arcsec)')
         ps.savefig()
     # 
-    print('Median FWHM:', np.median(fwhms))
+    print('Median FWHM: %.3f' % np.median(fwhms))
 
     if ps is not None:
         plt.clf()
@@ -706,7 +704,7 @@ def read_raw_decam(F, ext):
     # ... and then cut that new image
     trim = parse_section(hdr['TRIMSEC'], slices=True)
     img = trimg[trim]
-    print('Trimmed image:', img.dtype, img.shape)
+    #print('Trimmed image:', img.dtype, img.shape)
 
     return img,hdr
     

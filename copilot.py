@@ -46,6 +46,7 @@ def process_image(fn, ext, gvs, sfd, opt, obs):
     # Write QA plots to files named by the exposure number
     expnum = phdr['EXPNUM']
     ps = PlotSequence('qa-%i' % expnum)
+    ps.printfn = False
     # Measure the new image
     M = measure_raw_decam(fn, ext=ext, ps=ps)
 
@@ -80,21 +81,21 @@ def process_image(fn, ext, gvs, sfd, opt, obs):
     fakezp = -99
     expfactor = ExposureFactor(band, airmass, ebv, M['seeing'], fakezp,
                                M['skybright'], gvs)
-    print('Exposure factor:', expfactor)
+    print('Exposure factor:              %6.3f' % expfactor)
     exptime = expfactor * gvs.base_exptimes[band]
-    print('Exptime (un-clipped)', exptime)
+    print('Target exposure time:         %6.1f' % exptime)
     exptime = np.clip(exptime, gvs.floor_exptimes[band], gvs.ceil_exptimes[band])
-    print('Clipped exptime', exptime)
+    print('Clipped exposure time:        %6.1f' % exptime)
     
     if band == 'z' and exptime > gvs.t_sat_max:
         exptime = gvs.t_sat_max
-        print('Reduced exposure time to avoid z-band saturation:', exptime)
+        print('Reduced exposure time to avoid z-band saturation: %6.1f', exptime)
 
     print
 
-    print('Actual exposure time taken:', actual_exptime)
+    print('Actual exposure time taken:   %6.1f' % actual_exptime)
 
-    print('Depth fraction: %6.3f' % (actual_exptime / exptime))
+    print('Depth (exposure time) factor: %6.3f' % (actual_exptime / exptime))
     
     # If you were going to re-plan, you would run with these args:
     plandict = dict(seeing=M['seeing'], transparency=M['transparency'])
