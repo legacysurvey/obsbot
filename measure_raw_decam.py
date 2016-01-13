@@ -27,7 +27,7 @@ import photutils
 
 import tractor
 
-def measure_raw_decam(fn, ext='N4', ps=None):
+def measure_raw_decam(fn, ext='N4', ps=None, read_raw=None):
     '''
     Reads the given file *fn*, extension *ext*', and measures a number of
     quantities that are useful for depth estimates:
@@ -109,7 +109,9 @@ def measure_raw_decam(fn, ext='N4', ps=None):
     F = fitsio.FITS(fn)
     primhdr = F[0].read_header()
 
-    img,hdr = read_raw_decam(F, ext)
+    if read_raw is None:
+        read_raw = read_raw_decam
+    img,hdr = read_raw(F, ext)
 
     M = 200
     mn,mx = np.percentile(img.ravel(), [25,98])
@@ -135,6 +137,8 @@ def measure_raw_decam(fn, ext='N4', ps=None):
 
     band = primhdr['FILTER']
     band = band.split()[0]
+    # HACK PTF: R -> r
+    band = band.lower()
     exptime = primhdr['EXPTIME']
     airmass = primhdr['AIRMASS']
     print('Band', band, 'Exptime', exptime, 'Airmass', airmass)

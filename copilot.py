@@ -38,17 +38,23 @@ from measure_raw_decam import measure_raw_decam
 
 from tractor.sfd import SFDMap
 
+def read_normal(F, ext):
+    img = F[ext].read()
+    hdr = F[ext].read_header()
+    return img,hdr
+
 def process_image(fn, ext, gvs, sfd, opt, obs):
     portion = opt.portion
 
     # Read primary FITS header
     phdr = fitsio.read_header(fn)
     # Write QA plots to files named by the exposure number
-    expnum = phdr['EXPNUM']
+    expnum = phdr.get('EXPNUM', 0)
     ps = PlotSequence('qa-%i' % expnum)
     ps.printfn = False
     # Measure the new image
     M = measure_raw_decam(fn, ext=ext, ps=ps)
+    #M = measure_raw_decam(fn, ext=ext, ps=ps, read_raw=read_normal)
 
     # Gather all the QAplots into a single pdf and clean them up.
     qafile = 'qa-%i.pdf' % expnum
@@ -162,6 +168,7 @@ if __name__ == '__main__':
     parser = optparse.OptionParser(usage='%prog')
     
     parser.add_option('--ext', help='Extension to read for computing observing conditions: default %default', default='N4')
+    parser.add_option('--extnum', type=int, help='Integer extension to read')
     parser.add_option('--rawdata', help='Directory to monitor for new images: default %default', default='rawdata')
     parser.add_option('--portion', help='Portion of the night: default %default', type=float, default='1.0')
 
@@ -169,7 +176,9 @@ if __name__ == '__main__':
 
     imagedir = opt.rawdata
     rawext = opt.ext
-
+    if opt.extnum is not None:
+        rawext = opt.extnum
+    
     # Get nightlystrategy data structures; use fake command-line args.
     # these don't matter at all, since we only use the ExposureFactor() function
     parser,gvs = getParserAndGlobals()
