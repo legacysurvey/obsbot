@@ -123,7 +123,7 @@ def process_image(fn, ext, gvs, sfd, opt, obs):
     # probably also get away with subtracting, like, 12 hours from
     # now()...
     sun = ephem.Sun()
-    obs.date = now
+    obs.date = datetime.datetime.utcnow()
     # not the proper horizon, but this doesn't matter -- just need it to
     # be before -18-degree twilight.
     obs.horizon = 0.
