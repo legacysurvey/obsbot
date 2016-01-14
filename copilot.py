@@ -181,17 +181,8 @@ if __name__ == '__main__':
     from django.conf import settings
     import obsdb
     obsdb.django_setup()
-    # basedir = os.path.dirname(__file__)
-    # settings.configure(INSTALLED_APPS=['obsdb'],
-    #                    MIDDLEWARE_CLASSES=[],
-    #                    DATABASES=dict(default=dict(
-    #                        ENGINE='django.db.backends.sqlite3',
-    #                        NAME=os.path.join(basedir,'obsdb','obsdb.sqlite3')))
-    #     )
-
     ccds = obsdb.MeasuredCCD.objects.all()
     print(ccds.count(), 'measured CCDs')
-
     
     # Get nightlystrategy data structures; use fake command-line args.
     # these don't matter at all, since we only use the ExposureFactor() function
