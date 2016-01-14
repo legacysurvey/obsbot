@@ -25,19 +25,133 @@ import numpy as np
 
 import matplotlib
 matplotlib.use('Agg')
+import pylab as plt
 
 import fitsio
 import ephem
 
 from astrometry.util.plotutils import PlotSequence
-from astrometry.util.starutil_numpy import hmsstring2ra, dmsstring2dec
+from astrometry.util.starutil_numpy import hmsstring2ra, dmsstring2dec, mjdtodate, datetomjd
 
 from nightlystrategy import ExposureFactor, getParserAndGlobals, setupGlobals
 
-from measure_raw_decam import measure_raw_decam
+from measure_raw_decam import measure_raw_decam, nominal_cal
 
 from tractor.sfd import SFDMap
 
+def plot_measurements(mm, ps, mjds=[], mjdrange=None):
+    from astrometry.util.fits import fits_table
+    T = fits_table()
+    for field in ['filename', 'extension', 'expnum', 'exptime', 'mjd_obs',
+                  'airmass', 'racenter', 'deccenter', 'rabore', 'decbore',
+                  'band', 'ebv', 'zeropoint', 'transparency', 'seeing',
+                  'sky', 'expfactor']:
+        g = getattr(mm[0], field)
+        if isinstance(g, basestring):
+            T.set(field, np.array([str(getattr(m, field)) for m in mm]))
+        else:
+            T.set(field, np.array([getattr(m, field) for m in mm]))
+    T.writeto('obsdb/obsdb.fits')
+
+    ccmap = dict(g='g', r='r', z='m')
+
+    #bands = 'grz'
+    bands = np.unique(T.band)
+    
+    TT = []
+    for band in bands:
+        G = T[T.band == band]
+        TT.append(G)
+
+    plt.clf()
+    plt.subplots_adjust(hspace=0.05)
+    
+    SP = 4
+    plt.subplot(SP,1,1)
+    for band,Tb in zip(bands, TT):
+        plt.plot(Tb.mjd_obs, Tb.seeing, 'x', color=ccmap[band])
+    plt.axhline(1.3, color='k', alpha=0.5)
+    plt.ylabel('Seeing (arcsec)')
+    #yl,yh = plt.ylim()
+    #plt.ylim(0, yh)
+
+    plt.subplot(SP,1,2)
+    for band,Tb in zip(bands, TT):
+        plt.plot(Tb.mjd_obs, Tb.sky, 'x', color=ccmap[band])
+        plt.axhline(nominal_cal[band][1], color=ccmap[band], alpha=0.5)
+    plt.ylabel('Sky (mag)')
+
+    plt.subplot(SP,1,3)
+    for band,Tb in zip(bands, TT):
+        plt.plot(Tb.mjd_obs, Tb.transparency, 'x', color=ccmap[band])
+    plt.axhline(1.0, color='k', alpha=0.5)
+    plt.axhline(0.9, color='k', ls='--', alpha=0.5)
+    plt.ylabel('Transparency')
+    yl,yh = plt.ylim()
+    plt.ylim(min(0.89, yl), max(yh, 1.01))
+    
+    plt.subplot(SP,1,4)
+    for band,Tb in zip(bands, TT):
+        plt.plot(Tb.mjd_obs, Tb.expfactor, 'x', color=ccmap[band])
+    plt.axhline(1.0, color='k', alpha=0.5)
+    plt.axhline(0.9, color='k', ls='--', alpha=0.5)
+    plt.axhline(1.1, color='k', ls='--', alpha=0.5)
+    plt.ylabel('Exposure factor')
+
+    plt.xlabel('MJD')
+    
+    if mjdrange is not None:
+        for sp in range(SP):
+            plt.subplot(SP,1,sp+1)
+            plt.xlim(mjdrange)
+
+    for sp in range(1, SP):
+        plt.subplot(SP,1,sp+1)
+        plt.xticks([])
+
+    plt.subplot(SP,1,SP)
+    xl,xh = plt.xlim()
+    if xh - xl < 2./24.:
+        # range of less than 2 hours: label every ten minutes
+        tx = []
+        tt = []
+        dl = mjdtodate(xl)
+        d = datetime.datetime(dl.year, dl.month, dl.day, dl.hour)
+        while True:
+            mjd = datetomjd(d)
+            if mjd > xh:
+                break
+            if mjd > xl:
+                tx.append(mjd)
+                tt.append(d.strftime('%H:%M'))
+            d += datetime.timedelta(0, 600)
+        plt.xticks(tx, tt)
+        plt.xlabel(dl.strftime('Time UTC starting %Y-%m-%d'))
+
+    elif xh - xl < 1:
+        # range of less than a day: label the hours
+        tx = []
+        tt = []
+        dl = mjdtodate(xl)
+        d = datetime.datetime(dl.year, dl.month, dl.day, dl.hour)
+        while True:
+            mjd = datetomjd(d)
+            if mjd > xh:
+                break
+            if mjd > xl:
+                tx.append(mjd)
+                tt.append(d.strftime('%H:%M'))
+            d += datetime.timedelta(0, 3600)
+        plt.xticks(tx, tt)
+        plt.xlabel(dl.strftime('Time UTC starting %Y-%m-%d'))
+
+    plt.xlim(xl,xh)
+
+        
+    ps.savefig()
+
+
+    
 def ephemdate_to_mjd(edate):
     # pyephem.Date is days since noon UT on the last day of 1899.
     # MJD is days since midnight UT on 1858/11/17
@@ -220,6 +334,12 @@ if __name__ == '__main__':
     obsdb.django_setup()
     ccds = obsdb.MeasuredCCD.objects.all()
     print(ccds.count(), 'measured CCDs')
+
+    ps = PlotSequence('recent')
+    mm = obsdb.MeasuredCCD.objects.all()
+    #plot_measurements(mm, ps, mjdrange=(57324, 57324.5))
+    plot_measurements(mm, ps, mjdrange=(57324.1, 57324.15))
+    sys.exit(0)
     
     # Get nightlystrategy data structures; use fake command-line args.
     # these don't matter at all, since we only use the ExposureFactor() function
@@ -285,5 +405,20 @@ if __name__ == '__main__':
 
         (M, plandict, expnum) = process_image(
             fn, rawext, gvs, sfd, opt, obs)
-        
 
+        ps = PlotSequence('recent')
+        #plot_recent(ps)
+
+        mjd_now = datetomjd(datetime.datetime.utcnow())
+        # an hour ago
+        mjd_start = mjd_now - 3600. / (24*3600.)
+
+        # mjd_obs >= mjd_start
+        mm = obsdb.MeasuredCCD.objects.filter(mjd_obs_gte=mjd_start)
+
+        ps = PlotSequence('recent')
+        plot_measurements(mm, ps, mjds=[(mjd_now,'Now')],
+                          mjdrange=(mjd_start, mjd_now))
+        
+        
+        

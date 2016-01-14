@@ -27,6 +27,20 @@ import photutils
 
 import tractor
 
+# zp, sky, kx
+nominal_cal = dict(
+    g = (26.610,
+         22.04,
+         0.17,),
+    r = (26.818,
+         20.91,
+         0.10,),
+    z = (26.484,
+         18.46,
+         0.06,),
+    )
+    
+
 def measure_raw_decam(fn, ext='N4', ps=None, read_raw=None):
     '''
     Reads the given file *fn*, extension *ext*', and measures a number of
@@ -143,18 +157,6 @@ def measure_raw_decam(fn, ext='N4', ps=None, read_raw=None):
     airmass = primhdr['AIRMASS']
     print('Band', band, 'Exptime', exptime, 'Airmass', airmass)
 
-    nominal_cal = dict(
-        g = (26.610,
-             22.04,
-             0.17,),
-        r = (26.818,
-             20.91,
-             0.10,),
-        z = (26.484,
-             18.46,
-             0.06,),
-        )
-    
     zp0, sky0, kx = nominal_cal[band]
 
     # Find the sky value and noise level
