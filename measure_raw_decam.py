@@ -365,9 +365,6 @@ def measure_raw_decam(fn, ext='N4', ps=None, read_raw=None):
     shiftx = (xe[mx] + xe[mx+1])/2.
     shifty = (ye[my] + ye[my+1])/2.
     
-    #shiftx = np.median(dx)
-    #shifty = np.median(dy)
-
     if ps is not None:
         plt.clf()
         plothist(px[I] - fx[J], py[I] - fy[J])
@@ -590,7 +587,8 @@ def measure_raw_decam(fn, ext='N4', ps=None, read_raw=None):
         ps.savefig()
 
     return dict(band=band, airmass=airmass, seeing=fwhm, zp=zp_obs,
-                skybright=skybr, transparency=transparency, primhdr=primhdr, hdr=hdr)
+                skybright=skybr, transparency=transparency, primhdr=primhdr,
+                hdr=hdr, wcs=wcs, ra_ccd=ra_ccd, dec_ccd=dec_ccd)
 
 def sensible_sigmaclip(arr, nsigma = 4.):
     goodpix,lo,hi = sigmaclip(arr, low=nsigma, high=nsigma)

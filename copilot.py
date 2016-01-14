@@ -38,12 +38,22 @@ from measure_raw_decam import measure_raw_decam
 
 from tractor.sfd import SFDMap
 
+def ephemdate_to_mjd(edate):
+    # pyephem.Date is days since noon UT on the last day of 1899.
+    # MJD is days since midnight UT on 1858/11/17
+    # This constant offset in days was computed via:
+    #   mjdnow = datetomjd(datetime.datetime.utcnow())
+    #   enow = ephem.now()
+    #   mjdnow - enow ==> 15019.499915068824
+    mjd = float(edate) + 15019.5
+    return mjd
+    
 def read_normal(F, ext):
     img = F[ext].read()
     hdr = F[ext].read_header()
     return img,hdr
 
-def process_image(fn, ext, gvs, sfd, opt, obs):
+def process_image(fn, ext, gvs, sfd, opt, obs, db=True):
     portion = opt.portion
 
     # Read primary FITS header
@@ -79,7 +89,7 @@ def process_image(fn, ext, gvs, sfd, opt, obs):
     dec = dmsstring2dec(phdr['DEC'])
     airmass = phdr['AIRMASS']
     actual_exptime = phdr['EXPTIME']
-
+    
     # Look up E(B-V) in SFD map
     ebv = sfd.ebv(ra, dec)[0]
     print('E(B-V):', ebv)
@@ -160,8 +170,35 @@ def process_image(fn, ext, gvs, sfd, opt, obs):
     print('python2.7 nightlystrategy.py --seeg %(seeing).3f --seer %(seeing).3f --seez %(seeing).3f --sbg %(sbg).3f --sbr %(sbr).3f --sbz %(sbz).3f --transparency %(transparency).3f --start-date %(startdate)s --start-time %(starttime)s --end-date %(enddate)s --end-time %(endtime)s --date %(date)s --portion %(portion)f --pass %(pass)i' % plandict) 
     print()
 
-    return M, plandict, expnum
+    rtn = (M, plandict, expnum)
+    if not db:
+        return rtn
 
+    import obsdb
+    m,created = obsdb.MeasuredCCD.objects.get_or_create(
+        filename=fn, extension=ext)
+
+    m.expnum = expnum
+    m.exptime = actual_exptime
+    m.mjd_obs = phdr['MJD-OBS']
+    m.airmass = airmass
+    m.racenter  = M['ra_ccd']
+    m.deccenter = M['dec_ccd']
+    m.rabore  = ra
+    m.decbore = dec
+    m.band = band
+    m.ebv  = ebv
+    m.zeropoint = M['zp']
+    m.transparency = M['transparency']
+    m.seeing = M['seeing']
+    m.sky = M['skybright']
+    m.expfactor = expfactor
+    
+    m.save()
+
+    return rtn
+
+    
 if __name__ == '__main__':
     
     parser = optparse.OptionParser(usage='%prog')
@@ -248,6 +285,5 @@ if __name__ == '__main__':
 
         (M, plandict, expnum) = process_image(
             fn, rawext, gvs, sfd, opt, obs)
-
         
 
