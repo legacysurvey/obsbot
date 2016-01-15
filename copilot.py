@@ -39,7 +39,8 @@ from measure_raw_decam import measure_raw_decam, nominal_cal
 
 from tractor.sfd import SFDMap
 
-def plot_measurements(mm, ps, mjds=[], mjdrange=None):
+
+def db_to_fits(mm):
     from astrometry.util.fits import fits_table
     T = fits_table()
     for field in ['filename', 'extension', 'expnum', 'exptime', 'mjd_obs',
@@ -51,7 +52,10 @@ def plot_measurements(mm, ps, mjds=[], mjdrange=None):
             T.set(field, np.array([str(getattr(m, field)) for m in mm]))
         else:
             T.set(field, np.array([getattr(m, field) for m in mm]))
-    T.writeto('obsdb/obsdb.fits')
+    return T
+
+def plot_measurements(mm, ps, mjds=[], mjdrange=None):
+    T = db_to_fits(mm)
 
     ccmap = dict(g='g', r='r', z='m')
 
@@ -167,9 +171,10 @@ def read_normal(F, ext):
     hdr = F[ext].read_header()
     return img,hdr
 
-def process_image(fn, ext, gvs, sfd, opt, obs, db=True):
+def process_image(fn, ext, gvs, sfd, opt, obs):
     portion = opt.portion
-
+    db = opt.db
+    
     # Read primary FITS header
     phdr = fitsio.read_header(fn)
     # Write QA plots to files named by the exposure number
@@ -312,6 +317,22 @@ def process_image(fn, ext, gvs, sfd, opt, obs, db=True):
 
     return rtn
 
+
+def plot_recent(opt):
+    ps = PlotSequence('recent')
+    mjd_now = datetomjd(datetime.datetime.utcnow())
+    # an hour ago
+    mjd_start = mjd_now - 3600. / (24*3600.)
+
+    # mjd_obs >= mjd_start
+    mm = obsdb.MeasuredCCD.objects.filter(mjd_obs__gte=mjd_start)
+
+    if not len(mm):
+        print('No recent measurements: start MJD', mjd_start)
+        return
+    plot_measurements(mm, ps, mjds=[(mjd_now,'Now')],
+                      mjdrange=(mjd_start, mjd_now))
+
     
 if __name__ == '__main__':
     
@@ -322,6 +343,11 @@ if __name__ == '__main__':
     parser.add_option('--rawdata', help='Directory to monitor for new images: default %default', default='rawdata')
     parser.add_option('--portion', help='Portion of the night: default %default', type=float, default='1.0')
 
+    parser.add_option('--no-db', dest='db', default=True, action='store_false',
+                      help='Do not append results to database')
+
+    parser.add_option('--fits', help='Write database to given FITS table')
+    
     opt,args = parser.parse_args()
 
     imagedir = opt.rawdata
@@ -332,14 +358,20 @@ if __name__ == '__main__':
     from django.conf import settings
     import obsdb
     obsdb.django_setup()
-    ccds = obsdb.MeasuredCCD.objects.all()
-    print(ccds.count(), 'measured CCDs')
 
-    ps = PlotSequence('recent')
-    mm = obsdb.MeasuredCCD.objects.all()
-    #plot_measurements(mm, ps, mjdrange=(57324, 57324.5))
-    plot_measurements(mm, ps, mjdrange=(57324.1, 57324.15))
-    sys.exit(0)
+    if opt.fits:
+        ccds = obsdb.MeasuredCCD.objects.all()
+        print(ccds.count(), 'measured CCDs')
+        T = db_to_fits(ccds)
+        T.writeto(opt.fits)
+        print('Wrote', opt.fits)
+        sys.exit(0)
+    
+    # ps = PlotSequence('recent')
+    # mm = obsdb.MeasuredCCD.objects.all()
+    # #plot_measurements(mm, ps, mjdrange=(57324, 57324.5))
+    # plot_measurements(mm, ps, mjdrange=(57324.1, 57324.15))
+    # sys.exit(0)
     
     # Get nightlystrategy data structures; use fake command-line args.
     # these don't matter at all, since we only use the ExposureFactor() function
@@ -354,6 +386,7 @@ if __name__ == '__main__':
         for fn in args:
             print('Reading', fn)
             process_image(fn, rawext, gvs, sfd, opt, obs)
+        plot_recent(opt)
         sys.exit(0)
     
     
@@ -406,19 +439,5 @@ if __name__ == '__main__':
         (M, plandict, expnum) = process_image(
             fn, rawext, gvs, sfd, opt, obs)
 
-        ps = PlotSequence('recent')
-        #plot_recent(ps)
-
-        mjd_now = datetomjd(datetime.datetime.utcnow())
-        # an hour ago
-        mjd_start = mjd_now - 3600. / (24*3600.)
-
-        # mjd_obs >= mjd_start
-        mm = obsdb.MeasuredCCD.objects.filter(mjd_obs_gte=mjd_start)
-
-        ps = PlotSequence('recent')
-        plot_measurements(mm, ps, mjds=[(mjd_now,'Now')],
-                          mjdrange=(mjd_start, mjd_now))
-        
-        
+        plot_recent(opt)
         
