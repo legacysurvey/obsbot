@@ -366,9 +366,11 @@ if __name__ == '__main__':
                       help='Plot recent data and quit')
 
     parser.add_option('--mjdstart', type=float, default=None,
-                      help='MJD at which to start plot')
+                      help='MJD (UTC) at which to start plot')
+
+    mjdnow = datetomjd(datetime.datetime.utcnow())
     parser.add_option('--mjdend', type=float, default=None,
-                      help='MJD at which to end plot')
+                      help='MJD (UTC) at which to end plot (default: now, which is %.3f)' % mjdnow)
     
     opt,args = parser.parse_args()
 
