@@ -10,6 +10,9 @@ def django_setup():
                            NAME=os.path.join(basedir,'obsdb','obsdb.sqlite3')))
         )
 
+    import django
+    django.setup()
+
     global MeasuredCCD
     import models
     MeasuredCCD = models.MeasuredCCD
