@@ -182,6 +182,14 @@ def process_image(fn, ext, gvs, sfd, opt, obs):
     
     # Read primary FITS header
     phdr = fitsio.read_header(fn)
+
+    filt = phdr['FILTER']
+    filt = filt.strip()
+    filt = filt.split()[0]
+    if filt == 'solid':
+        print('Solid (block) filter.')
+        return None, None, expnum
+
     # Write QA plots to files named by the exposure number
     expnum = phdr.get('EXPNUM', 0)
     ps = PlotSequence('qa-%i' % expnum)
@@ -369,6 +377,9 @@ if __name__ == '__main__':
                       help='MJD at which to start plot')
     parser.add_option('--mjdend', type=float, default=None,
                       help='MJD at which to end plot')
+
+    parser.add_option('--skip', action='store_true',
+                      help='Skip images that already exist in the database')
     
     opt,args = parser.parse_args()
 
@@ -413,6 +424,11 @@ if __name__ == '__main__':
     if len(args) > 0:
         for fn in args:
             print('Reading', fn)
+            if opt.skip:
+                mm = obsdb.MeasuredCCD.objects.filter(filename=fn, extension=rawext)
+                if mm.count():
+                    print('Found image', fn, 'in database.  Skipping.')
+                continue
             process_image(fn, rawext, gvs, sfd, opt, obs)
         plot_recent(opt)
         sys.exit(0)
