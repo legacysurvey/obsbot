@@ -206,7 +206,7 @@ def process_image(fn, ext, gvs, sfd, opt, obs, db=True):
     
     # Look up E(B-V) in SFD map
     ebv = sfd.ebv(ra, dec)[0]
-    print('E(B-V):', ebv)
+    print('E(B-V): %.3f' % ebv)
 
     fakezp = -99
     expfactor = ExposureFactor(band, airmass, ebv, M['seeing'], fakezp,
@@ -261,7 +261,7 @@ def process_image(fn, ext, gvs, sfd, opt, obs, db=True):
     sunset = obs.previous_setting(sun)
     # pyephem's Date.tuple() splits a date into y,m,d,h,m,s
     d = sunset.tuple()
-    print('Date at sunset, UTC:', d)
+    #print('Date at sunset, UTC:', d)
     year,month,day = d[:3]
     plandict['date'] = '%04i-%02i-%02i' % (year, month, day)
 
