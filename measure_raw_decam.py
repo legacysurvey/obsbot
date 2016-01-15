@@ -461,7 +461,7 @@ def measure_raw_decam(fn, ext='N4', ps=None, read_raw=None):
 
     zp_obs = zp0 + dmag
     
-    transparency = 10.**(-0.4 * (zp0 - zp_obs - kx * (1. - airmass)))
+    transparency = 10.**(-0.4 * (zp0 - zp_obs - kx * (airmass - 1.)))
 
     print('Zeropoint %6.3f' % zp_obs)
     print('Fiducial  %6.3f' % zp0)
