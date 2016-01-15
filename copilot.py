@@ -68,7 +68,7 @@ def plot_measurements(mm, ps, mjds=[], mjdrange=None):
         TT.append(G)
 
     plt.clf()
-    plt.subplots_adjust(hspace=0.05)
+    plt.subplots_adjust(hspace=0.1)
     
     SP = 4
     plt.subplot(SP,1,1)
@@ -109,10 +109,6 @@ def plot_measurements(mm, ps, mjds=[], mjdrange=None):
             plt.subplot(SP,1,sp+1)
             plt.xlim(mjdrange)
 
-    for sp in range(1, SP):
-        plt.subplot(SP,1,sp+1)
-        plt.xticks([])
-
     plt.subplot(SP,1,SP)
     xl,xh = plt.xlim()
     if xh - xl < 2./24.:
@@ -149,9 +145,18 @@ def plot_measurements(mm, ps, mjds=[], mjdrange=None):
         plt.xticks(tx, tt)
         plt.xlabel(dl.strftime('Time UTC starting %Y-%m-%d'))
 
+    else:
+        tx,tt = plt.xticks()
+
+    # Set consistent tick marks but no labels on top plots
+    tt = ['']*len(tx)
+    for sp in range(1, SP):
+        plt.subplot(SP,1,sp)
+        plt.xticks(tx,tt)
+        plt.xlim(xl,xh)
+
     plt.xlim(xl,xh)
 
-        
     ps.savefig()
 
 
@@ -320,18 +325,28 @@ def process_image(fn, ext, gvs, sfd, opt, obs):
 
 def plot_recent(opt):
     ps = PlotSequence('recent')
-    mjd_now = datetomjd(datetime.datetime.utcnow())
-    # an hour ago
-    mjd_start = mjd_now - 3600. / (24*3600.)
 
-    # mjd_obs >= mjd_start
-    mm = obsdb.MeasuredCCD.objects.filter(mjd_obs__gte=mjd_start)
+    if opt.mjdend is None:
+        # Now
+        mjd_end = datetomjd(datetime.datetime.utcnow())
+    else:
+        mjd_end = opt.mjdend
+    
+    if opt.mjdstart is None:
+        # an hour ago
+        mjd_start = mjd_end - 3600. / (24*3600.)
+    else:
+        mjd_start = opt.mjdstart
+        
+    # mjd_start <= mjd_obs <= mjd_end
+    mm = obsdb.MeasuredCCD.objects.filter(mjd_obs__gte=mjd_start,
+                                          mjd_obs__lte=mjd_end)
 
     if not len(mm):
-        print('No recent measurements: start MJD', mjd_start)
+        print('No measurements in MJD range', mjd_start, mjd_end)
         return
-    plot_measurements(mm, ps, mjds=[(mjd_now,'Now')],
-                      mjdrange=(mjd_start, mjd_now))
+    plot_measurements(mm, ps, #mjds=[(mjd_now,'Now')],
+                      mjdrange=(mjd_start, mjd_end))
 
     
 if __name__ == '__main__':
@@ -347,6 +362,13 @@ if __name__ == '__main__':
                       help='Do not append results to database')
 
     parser.add_option('--fits', help='Write database to given FITS table')
+    parser.add_option('--plot', action='store_true',
+                      help='Plot recent data and quit')
+
+    parser.add_option('--mjdstart', type=float, default=None,
+                      help='MJD at which to start plot')
+    parser.add_option('--mjdend', type=float, default=None,
+                      help='MJD at which to end plot')
     
     opt,args = parser.parse_args()
 
@@ -359,6 +381,8 @@ if __name__ == '__main__':
     import obsdb
     obsdb.django_setup()
 
+    plt.figure(figsize=(10,8))
+    
     if opt.fits:
         ccds = obsdb.MeasuredCCD.objects.all()
         print(ccds.count(), 'measured CCDs')
@@ -366,7 +390,11 @@ if __name__ == '__main__':
         T.writeto(opt.fits)
         print('Wrote', opt.fits)
         sys.exit(0)
-    
+
+    if opt.plot:
+        plot_recent(opt)
+        sys.exit(0)
+        
     # ps = PlotSequence('recent')
     # mm = obsdb.MeasuredCCD.objects.all()
     # #plot_measurements(mm, ps, mjdrange=(57324, 57324.5))
