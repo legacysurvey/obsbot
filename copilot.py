@@ -1,3 +1,4 @@
+#! /usr/bin/env python2.7
 '''
 
 This script is meant to be run during DECaLS observing.  It waits for
@@ -176,10 +177,17 @@ def read_normal(F, ext):
     hdr = F[ext].read_header()
     return img,hdr
 
+# SFD map isn't picklable, use global instead
+gSFD = None
+
 def process_image(fn, ext, gvs, sfd, opt, obs):
     portion = opt.portion
     db = opt.db
-    
+    print('Reading', fn)
+
+    if sfd is None:
+        sfd = gSFD
+
     # Read primary FITS header
     phdr = fitsio.read_header(fn)
     expnum = phdr.get('EXPNUM', 0)
@@ -330,9 +338,12 @@ def process_image(fn, ext, gvs, sfd, opt, obs):
 
     return rtn
 
+def bounce_process_image(X):
+    process_image(*X)
 
 def plot_recent(opt):
     ps = PlotSequence('recent')
+    import obsdb
 
     if opt.mjdend is None:
         # Now
@@ -357,8 +368,8 @@ def plot_recent(opt):
                       mjdrange=(mjd_start, mjd_end))
 
     
-if __name__ == '__main__':
-    
+def main():
+    global gSFD
     parser = optparse.OptionParser(usage='%prog')
     
     parser.add_option('--ext', help='Extension to read for computing observing conditions: default %default', default='N4')
@@ -429,23 +440,26 @@ if __name__ == '__main__':
     if len(args) > 0:
         mp = None
         if opt.threads > 1:
+            gSFD = sfd
             from astrometry.util.multiproc import multiproc
             mp = multiproc(opt.threads)
+
+        fns = []
         for fn in args:
-            print('Reading', fn)
-            fns = []
             if opt.skip:
                 mm = obsdb.MeasuredCCD.objects.filter(filename=fn, extension=rawext)
                 if mm.count():
                     print('Found image', fn, 'in database.  Skipping.')
                     continue
-                fns.append(fn)
+            fns.append(fn)
             
         if mp is None:
             for fn in fns:
                 process_image(fn, rawext, gvs, sfd, opt, obs)
         else:
-            mp.map(lambda x: process_image(x, rawext, gvs, sfd, opt, obs), fns)
+            sfd = None
+            mp.map(bounce_process_image,
+                   [(fn, rawext, gvs, sfd, opt, obs) for fn in fns])
         plot_recent(opt)
         sys.exit(0)
     
@@ -501,3 +515,5 @@ if __name__ == '__main__':
 
         plot_recent(opt)
         
+if __name__ == '__main__':
+    main()
