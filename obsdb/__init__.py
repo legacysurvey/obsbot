@@ -7,7 +7,8 @@ def django_setup():
                        MIDDLEWARE_CLASSES=[],
                        DATABASES=dict(default=dict(
                            ENGINE='django.db.backends.sqlite3',
-                           NAME=os.path.join(basedir,'obsdb','obsdb.sqlite3')))
+                           NAME=os.path.join(basedir,'obsdb','obsdb.sqlite3'))),
+                        ROOT_URLCONF='obsdb.urls',
         )
 
     import django
