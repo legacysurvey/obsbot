@@ -182,6 +182,7 @@ def process_image(fn, ext, gvs, sfd, opt, obs):
     
     # Read primary FITS header
     phdr = fitsio.read_header(fn)
+    expnum = phdr.get('EXPNUM', 0)
 
     filt = phdr['FILTER']
     filt = filt.strip()
@@ -191,7 +192,6 @@ def process_image(fn, ext, gvs, sfd, opt, obs):
         return None, None, expnum
 
     # Write QA plots to files named by the exposure number
-    expnum = phdr.get('EXPNUM', 0)
     ps = PlotSequence('qa-%i' % expnum)
     ps.printfn = False
     # Measure the new image
