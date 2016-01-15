@@ -382,6 +382,9 @@ if __name__ == '__main__':
 
     parser.add_option('--skip', action='store_true',
                       help='Skip images that already exist in the database')
+
+    parser.add_option('--threads', type=int, default=None,
+                      help='Run multi-threaded when processing list of files on command-line')
     
     opt,args = parser.parse_args()
 
@@ -424,14 +427,25 @@ if __name__ == '__main__':
     sfd = SFDMap()
     
     if len(args) > 0:
+        mp = None
+        if opt.threads > 1:
+            from astrometry.util.multiproc import multiproc
+            mp = multiproc(opt.threads)
         for fn in args:
             print('Reading', fn)
+            fns = []
             if opt.skip:
                 mm = obsdb.MeasuredCCD.objects.filter(filename=fn, extension=rawext)
                 if mm.count():
                     print('Found image', fn, 'in database.  Skipping.')
-                continue
-            process_image(fn, rawext, gvs, sfd, opt, obs)
+                    continue
+                fns.append(fn)
+            
+        if mp is None:
+            for fn in fns:
+                process_image(fn, rawext, gvs, sfd, opt, obs)
+        else:
+            mp.map(lambda x: process_image(x, rawext, gvs, sfd, opt, obs), fns)
         plot_recent(opt)
         sys.exit(0)
     
