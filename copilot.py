@@ -62,6 +62,7 @@ def plot_measurements(mm, ps, mjds=[], mjdrange=None):
 
     #bands = 'grz'
     bands = np.unique(T.band)
+    print('Unique bands:', bands)
     
     TT = []
     for band in bands:
@@ -257,8 +258,8 @@ def process_image(fn, ext, gvs, sfd, opt, obs):
     plandict = dict(seeing=M['seeing'], transparency=M['transparency'])
     # Assume the sky is as much brighter than canonical in each band... unlikely
     dsky = M['skybright'] - gvs.sb_dict[M['band']]
-    for band in 'grz':
-        plandict['sb'+band] = gvs.sb_dict[band] + dsky
+    for b in 'grz':
+        plandict['sb'+b] = gvs.sb_dict[b] + dsky
     # Note that nightlystrategy.py takes UTC dates.
     start = datetime.datetime.utcnow()
     # Start the strategy 5 minutes from now.
