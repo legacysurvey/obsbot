@@ -397,6 +397,8 @@ def main():
 
     parser.add_option('--threads', type=int, default=None,
                       help='Run multi-threaded when processing list of files on command-line')
+
+    parser.add_option('--fix-db', action='store_true')
     
     opt,args = parser.parse_args()
 
@@ -419,6 +421,18 @@ def main():
         print('Wrote', opt.fits)
         sys.exit(0)
 
+    if opt.fix_db:
+        ccds = obsdb.MeasuredCCD.objects.all()
+        print(ccds.count(), 'measured CCDs')
+        for ccd in ccds:
+            hdr = fitsio.read_header(ccd.filename, ext=0)
+            band = primhdr['FILTER']
+            band = band.split()[0]
+            ccd.band = band
+            ccd.save()
+            print('Fixed', ccd.filename)
+        sys.exit(0)
+            
     if opt.plot:
         plot_recent(opt)
         sys.exit(0)
