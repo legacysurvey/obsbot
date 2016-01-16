@@ -72,39 +72,49 @@ def plot_measurements(mm, ps, gvs, mjds=[], mjdrange=None):
     plt.clf()
     plt.subplots_adjust(hspace=0.1, top=0.98, right=0.95, left=0.1)
     
-    SP = 6
+    SP = 5
     plt.subplot(SP,1,1)
     for band,Tb in zip(bands, TT):
-        plt.plot(Tb.mjd_obs, Tb.seeing, 'x', color=ccmap[band])
+        plt.plot(Tb.mjd_obs, Tb.seeing, '.', color=ccmap[band])
+    yl,yh = plt.ylim()
     plt.axhline(1.3, color='k', alpha=0.5)
+    plt.axhline(1.2, color='k', alpha=0.1)
+    plt.axhline(1.0, color='k', alpha=0.1)
+    plt.axhline(0.8, color='k', alpha=0.1)
+    plt.ylim(yl,yh)
     plt.ylabel('Seeing (arcsec)')
     #yl,yh = plt.ylim()
     #plt.ylim(0, yh)
 
     plt.subplot(SP,1,2)
     for band,Tb in zip(bands, TT):
-        plt.plot(Tb.mjd_obs, Tb.sky, 'x', color=ccmap[band])
+        plt.plot(Tb.mjd_obs, Tb.sky, '.', color=ccmap[band])
         plt.axhline(nominal_cal[band][1], color=ccmap[band], alpha=0.5)
     plt.ylabel('Sky (mag)')
 
     plt.subplot(SP,1,3)
+    mx = 1.2
     for band,Tb in zip(bands, TT):
-        plt.plot(Tb.mjd_obs, Tb.transparency, 'x', color=ccmap[band])
+        plt.plot(Tb.mjd_obs, Tb.transparency, '.', color=ccmap[band])
+        I = np.flatnonzero(Tb.transparency > mx)
+        if len(I):
+            plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', mec=ccmap[band],
+                     mfc='none')
     plt.axhline(1.0, color='k', alpha=0.5)
     plt.axhline(0.9, color='k', ls='--', alpha=0.5)
     plt.ylabel('Transparency')
     yl,yh = plt.ylim()
-    plt.ylim(min(0.89, yl), max(yh, 1.01))
+    plt.ylim(min(0.89, yl), min(mx, max(yh, 1.01)))
     
-    plt.subplot(SP,1,4)
-    for band,Tb in zip(bands, TT):
-        plt.plot(Tb.mjd_obs, Tb.expfactor, 'x', color=ccmap[band])
-    plt.axhline(1.0, color='k', alpha=0.5)
-    plt.axhline(0.9, color='k', ls='--', alpha=0.5)
-    plt.axhline(1.1, color='k', ls='--', alpha=0.5)
-    plt.ylabel('Target exposure factor')
+    # plt.subplot(SP,1,4)
+    # for band,Tb in zip(bands, TT):
+    #     plt.plot(Tb.mjd_obs, Tb.expfactor, '.', color=ccmap[band])
+    # plt.axhline(1.0, color='k', alpha=0.5)
+    # plt.axhline(0.9, color='k', ls='--', alpha=0.5)
+    # plt.axhline(1.1, color='k', ls='--', alpha=0.5)
+    # plt.ylabel('Target exposure factor')
 
-    plt.subplot(SP,1,5)
+    plt.subplot(SP,1,4)
     for band,Tb in zip(bands, TT):
         basetime = gvs.base_exptimes[band]
         lo,hi = gvs.floor_exptimes[band], gvs.ceil_exptimes[band]
@@ -114,25 +124,34 @@ def plot_measurements(mm, ps, gvs, mjds=[], mjdrange=None):
             clipped = np.minimum(clipped, gvs.t_sat_max)
         Tb.clipped_exptime = clipped
         Tb.depth_factor = Tb.exptime / clipped
-        I = np.flatnonzero(exptime != clipped)
+        I = np.flatnonzero(exptime > clipped)
         if len(I):
-            plt.plot(Tb.mjd_obs[I], exptime[I], 's', mec=ccmap[band],
+            plt.plot(Tb.mjd_obs[I], exptime[I], 'v', mec=ccmap[band],
                      mfc='none', alpha=0.5)
-        plt.plot(Tb.mjd_obs, clipped, 'x', color=ccmap[band])
+        I = np.flatnonzero(exptime < clipped)
+        if len(I):
+            plt.plot(Tb.mjd_obs[I], exptime[I], '^', mec=ccmap[band],
+                     mfc='none', alpha=0.5)
+        plt.plot(Tb.mjd_obs, clipped, '.', color=ccmap[band])
     yl,yh = plt.ylim()
     for band,Tb in zip(bands, TT):
+
+        dt = dict(g=-0.5,r=+0.5,z=0)[band]
+
+        basetime = gvs.base_exptimes[band]
+        plt.axhline(basetime+dt, color=ccmap[band], alpha=0.2)
         lo,hi = gvs.floor_exptimes[band], gvs.ceil_exptimes[band]
-        plt.axhline(lo, color=ccmap[band], ls='--', alpha=0.5)
-        plt.axhline(hi, color=ccmap[band], ls='--', alpha=0.5)
+        plt.axhline(lo+dt, color=ccmap[band], ls='--', alpha=0.5)
+        plt.axhline(hi+dt, color=ccmap[band], ls='--', alpha=0.5)
         if band == 'z':
             plt.axhline(gvs.t_sat_max, color=ccmap[band], ls='--', alpha=0.5)
     plt.ylim(yl,yh)
-    plt.ylabel('Exposure time (s)')
+    plt.ylabel('Target exposure time (s)')
 
-    plt.subplot(SP,1,6)
+    plt.subplot(SP,1,5)
     mn,mx = 0.6, 1.4
     for band,Tb in zip(bands, TT):
-        plt.plot(Tb.mjd_obs, Tb.depth_factor, 'x', color=ccmap[band])
+        plt.plot(Tb.mjd_obs, Tb.depth_factor, '.', color=ccmap[band])
         # lower and upper limits
         I = np.flatnonzero(Tb.depth_factor < mn)
         if len(I):
@@ -144,7 +163,7 @@ def plot_measurements(mm, ps, gvs, mjds=[], mjdrange=None):
     plt.axhline(0.9, color='k', ls='--', alpha=0.5)
     plt.axhline(1.1, color='k', ls='--', alpha=0.5)
     plt.ylim(mn,mx)
-    plt.ylabel('Exposure factor')
+    plt.ylabel('Depth factor')
     
     plt.xlabel('MJD')
     
