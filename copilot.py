@@ -55,7 +55,7 @@ def db_to_fits(mm):
             T.set(field, np.array([getattr(m, field) for m in mm]))
     return T
 
-def plot_measurements(mm, ps, mjds=[], mjdrange=None):
+def plot_measurements(mm, ps, gvs, mjds=[], mjdrange=None):
     T = db_to_fits(mm)
 
     ccmap = dict(g='g', r='r', z='m')
@@ -70,9 +70,9 @@ def plot_measurements(mm, ps, mjds=[], mjdrange=None):
         TT.append(G)
 
     plt.clf()
-    plt.subplots_adjust(hspace=0.1)
+    plt.subplots_adjust(hspace=0.1, top=0.98, right=0.95, left=0.1)
     
-    SP = 4
+    SP = 6
     plt.subplot(SP,1,1)
     for band,Tb in zip(bands, TT):
         plt.plot(Tb.mjd_obs, Tb.seeing, 'x', color=ccmap[band])
@@ -102,8 +102,50 @@ def plot_measurements(mm, ps, mjds=[], mjdrange=None):
     plt.axhline(1.0, color='k', alpha=0.5)
     plt.axhline(0.9, color='k', ls='--', alpha=0.5)
     plt.axhline(1.1, color='k', ls='--', alpha=0.5)
-    plt.ylabel('Exposure factor')
+    plt.ylabel('Target exposure factor')
 
+    plt.subplot(SP,1,5)
+    for band,Tb in zip(bands, TT):
+        basetime = gvs.base_exptimes[band]
+        lo,hi = gvs.floor_exptimes[band], gvs.ceil_exptimes[band]
+        exptime = basetime * Tb.expfactor
+        clipped = np.clip(exptime, lo, hi)
+        if band == 'z':
+            clipped = np.minimum(clipped, gvs.t_sat_max)
+        Tb.clipped_exptime = clipped
+        Tb.depth_factor = Tb.exptime / clipped
+        I = np.flatnonzero(exptime != clipped)
+        if len(I):
+            plt.plot(Tb.mjd_obs[I], exptime[I], 's', mec=ccmap[band],
+                     mfc='none', alpha=0.5)
+        plt.plot(Tb.mjd_obs, clipped, 'x', color=ccmap[band])
+    yl,yh = plt.ylim()
+    for band,Tb in zip(bands, TT):
+        lo,hi = gvs.floor_exptimes[band], gvs.ceil_exptimes[band]
+        plt.axhline(lo, color=ccmap[band], ls='--', alpha=0.5)
+        plt.axhline(hi, color=ccmap[band], ls='--', alpha=0.5)
+        if band == 'z':
+            plt.axhline(gvs.t_sat_max, color=ccmap[band], ls='--', alpha=0.5)
+    plt.ylim(yl,yh)
+    plt.ylabel('Exposure time (s)')
+
+    plt.subplot(SP,1,6)
+    mn,mx = 0.6, 1.4
+    for band,Tb in zip(bands, TT):
+        plt.plot(Tb.mjd_obs, Tb.depth_factor, 'x', color=ccmap[band])
+        # lower and upper limits
+        I = np.flatnonzero(Tb.depth_factor < mn)
+        if len(I):
+            plt.plot(Tb.mjd_obs[I], [mn]*len(I), 'v', mec=ccmap[band], mfc='none')
+        I = np.flatnonzero(Tb.depth_factor > mx)
+        if len(I):
+            plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', mec=ccmap[band], mfc='none')
+    plt.axhline(1.0, color='k', alpha=0.5)
+    plt.axhline(0.9, color='k', ls='--', alpha=0.5)
+    plt.axhline(1.1, color='k', ls='--', alpha=0.5)
+    plt.ylim(mn,mx)
+    plt.ylabel('Exposure factor')
+    
     plt.xlabel('MJD')
     
     if mjdrange is not None:
@@ -342,7 +384,7 @@ def process_image(fn, ext, gvs, sfd, opt, obs):
 def bounce_process_image(X):
     process_image(*X)
 
-def plot_recent(opt):
+def plot_recent(opt, gvs):
     ps = PlotSequence('recent')
     import obsdb
 
@@ -365,7 +407,7 @@ def plot_recent(opt):
     if not len(mm):
         print('No measurements in MJD range', mjd_start, mjd_end)
         return
-    plot_measurements(mm, ps, #mjds=[(mjd_now,'Now')],
+    plot_measurements(mm, ps, gvs, #mjds=[(mjd_now,'Now')],
                       mjdrange=(mjd_start, mjd_end))
 
     
@@ -411,7 +453,7 @@ def main():
     import obsdb
     obsdb.django_setup()
 
-    plt.figure(figsize=(10,8))
+    plt.figure(figsize=(10,10))
     
     if opt.fits:
         ccds = obsdb.MeasuredCCD.objects.all()
@@ -438,10 +480,6 @@ def main():
 
         sys.exit(0)
             
-    if opt.plot:
-        plot_recent(opt)
-        sys.exit(0)
-        
     # ps = PlotSequence('recent')
     # mm = obsdb.MeasuredCCD.objects.all()
     # #plot_measurements(mm, ps, mjdrange=(57324, 57324.5))
@@ -454,6 +492,10 @@ def main():
     nsopt,nsargs = parser.parse_args('--date 2015-01-01 --pass 1 --portion 1'.split())
     obs = setupGlobals(nsopt, gvs)
 
+    if opt.plot:
+        plot_recent(opt, gvs)
+        sys.exit(0)
+        
     print('Loading SFD maps...')
     sfd = SFDMap()
     
@@ -480,7 +522,7 @@ def main():
             sfd = None
             mp.map(bounce_process_image,
                    [(fn, rawext, gvs, sfd, opt, obs) for fn in fns])
-        plot_recent(opt)
+        plot_recent(opt, gvs)
         sys.exit(0)
     
     
@@ -533,7 +575,7 @@ def main():
         (M, plandict, expnum) = process_image(
             fn, rawext, gvs, sfd, opt, obs)
 
-        plot_recent(opt)
+        plot_recent(opt, gvs)
         
 if __name__ == '__main__':
     main()
