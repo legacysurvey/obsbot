@@ -501,10 +501,14 @@ def measure_raw_decam(fn, ext='N4', ps=None, read_raw=None):
 
         tim.freezeAllBut('psf')
         psf.freezeAllBut('sigmas')
-        #tr.printThawedParams()
+
+        # print('Optimizing params:')
+        # tr.printThawedParams()
+
         #print('Parameter step sizes:', tr.getStepSizes())
+        optargs = dict(priors=False, shared_params=False)
         for step in range(50):
-            dlnp,x,alpha = tr.optimize()
+            dlnp,x,alpha = tr.optimize(**optargs)
             #print('dlnp', dlnp)
             #print('src', src)
             #print('psf', psf)
@@ -512,8 +516,11 @@ def measure_raw_decam(fn, ext='N4', ps=None, read_raw=None):
                 break
         # Now fit only the PSF size
         tr.freezeParam('catalog')
+        # print('Optimizing params:')
+        # tr.printThawedParams()
+
         for step in range(50):
-            dlnp,x,alpha = tr.optimize()
+            dlnp,x,alpha = tr.optimize(**optargs)
             #print('dlnp', dlnp)
             #print('src', src)
             #print('psf', psf)
