@@ -425,12 +425,17 @@ def main():
         ccds = obsdb.MeasuredCCD.objects.all()
         print(ccds.count(), 'measured CCDs')
         for ccd in ccds:
-            hdr = fitsio.read_header(ccd.filename, ext=0)
-            band = primhdr['FILTER']
-            band = band.split()[0]
-            ccd.band = band
-            ccd.save()
-            print('Fixed', ccd.filename)
+            try:
+                hdr = fitsio.read_header(ccd.filename, ext=0)
+                band = hdr['FILTER']
+                band = band.split()[0]
+                ccd.band = band
+                ccd.save()
+                print('Fixed', ccd.filename)
+            except:
+                import traceback
+                traceback.print_exc()
+
         sys.exit(0)
             
     if opt.plot:
