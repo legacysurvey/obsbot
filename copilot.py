@@ -234,11 +234,6 @@ def ephemdate_to_mjd(edate):
     mjd = float(edate) + 15019.5
     return mjd
     
-def read_normal(F, ext):
-    img = F[ext].read()
-    hdr = F[ext].read_header()
-    return img,hdr
-
 # SFD map isn't picklable, use global instead
 gSFD = None
 
@@ -266,7 +261,6 @@ def process_image(fn, ext, gvs, sfd, opt, obs):
     ps.printfn = False
     # Measure the new image
     M = measure_raw_decam(fn, ext=ext, ps=ps)
-    #M = measure_raw_decam(fn, ext=ext, ps=ps, read_raw=read_normal)
 
     # Gather all the QAplots into a single pdf and clean them up.
     qafile = 'qa-%i.pdf' % expnum
