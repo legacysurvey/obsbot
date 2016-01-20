@@ -61,7 +61,7 @@ ps1_to_mosaic = ps1_to_decam
 
 class RawMeasurer(object):
     def __init__(self, fn, ext, aprad=7., skyrad_inner=7., skyrad_outer=10.,
-                 minstar=5, pixscale=0.262, maxshift=60.):
+                 minstar=5, pixscale=0.262, maxshift=120.):#maxshift=60.):
         '''
         aprad: float
         Aperture photometry radius in arcsec
@@ -115,7 +115,13 @@ class RawMeasurer(object):
         #band = band.lower()
         return band
 
-    def run(self, ps=None):
+    def match_ps1_stars(px, py, fullx, fully, radius, stars):
+        I,J,d = match_xy(px, py, fullx, fully, radius)
+        dx = px[I] - fullx[J]
+        dy = py[I] - fully[J]
+        return I,J,dx,dy
+
+    def run(self, ps=None, focus=False, momentsize=5):
         fn = self.fn
         ext = self.ext
         pixsc = self.pixscale
@@ -123,9 +129,9 @@ class RawMeasurer(object):
         F = fitsio.FITS(fn)
         primhdr = F[0].read_header()
         img,hdr = self.read_raw(F, ext)
-
-        wcs = self.get_wcs(hdr)
-
+        self.primhdr = primhdr
+        self.hdr = hdr
+        
         mn,mx = np.percentile(img.ravel(), [25,98])
         kwa = dict(vmin=mn, vmax=mx)
         
@@ -221,7 +227,7 @@ class RawMeasurer(object):
         peaks = (detsn > self.det_thresh)
     
         # "Peak" region to centroid
-        P = 5
+        P = momentsize
     
         # HACK -- Just keep the brightest pixel in each blob!
         H,W = img.shape
@@ -320,42 +326,46 @@ class RawMeasurer(object):
             plt.clf()
             plt.subplot(2,1,1)
             mx = np.percentile(np.append(mx2,my2), 99)
-            ha = dict(histtype='step', range=(0,mx), bins=20)
+            ha = dict(histtype='step', range=(0,mx), bins=50)
             plt.hist(mx2, color='b', label='mx2', **ha)
             plt.hist(my2, color='r', label='my2', **ha)
             plt.hist(mxy, color='g', label='mxy', **ha)
             plt.legend()
+            plt.xlim(0,mx)
             plt.subplot(2,1,2)
             mx = np.percentile(np.append(wmx2,wmy2), 99)
-            ha = dict(histtype='step', range=(0,mx), bins=20, lw=3, alpha=0.3)
+            ha = dict(histtype='step', range=(0,mx), bins=50, lw=3, alpha=0.3)
             plt.hist(wmx2, color='b', label='wx2', **ha)
             plt.hist(wmy2, color='r', label='wy2', **ha)
             plt.hist(wmxy, color='g', label='wxy', **ha)
             plt.legend()
+            plt.xlim(0,mx)
             plt.suptitle('Source moments')
             ps.savefig()
 
             #mx = np.percentile(np.abs(np.append(mxy,wmxy)), 99)
             plt.clf()
             plt.subplot(2,1,1)
-            ha = dict(histtype='step', range=(0,1), bins=20)
+            ha = dict(histtype='step', range=(0,1), bins=50)
             plt.hist(ell, color='g', label='ell', **ha)
             plt.hist(well, color='g', lw=3, alpha=0.3, label='windowed ell', **ha)
             plt.legend()
             plt.subplot(2,1,2)
-            ha = dict(histtype='step', range=(-90,90), bins=20)
+            ha = dict(histtype='step', range=(-90,90), bins=50)
             plt.hist(theta, color='g', label='theta', **ha)
             plt.hist(wtheta, color='g', lw=3, alpha=0.3,
                      label='windowed theta', **ha)
+            plt.xlim(-90,90)
             plt.legend()
             plt.suptitle('Source ellipticities & angles')
             ps.savefig()
             
         # Cut down to stars whose centroids are within 1 pixel of their peaks...
         keep = (np.hypot(fx - xx, fy - yy) < 1)
-        #print(sum(keep), 'of', len(keep), 'stars have centroids within 1 of peaks')
+        print(sum(keep), 'of', len(keep), 'stars have centroids within 1 of peaks')
+
         #print('mean dx', np.mean(fx-xx), 'dy', np.mean(fy-yy), 'pixels')
-        assert(float(sum(keep)) / len(keep) > 0.9)
+        #assert(float(sum(keep)) / len(keep) > 0.9)
         fx = fx[keep]
         fy = fy[keep]
     
@@ -411,7 +421,7 @@ class RawMeasurer(object):
         ok,px,py = wcs.radec2pixelxy(stars.ra, stars.dec)
         px -= 1
         py -= 1
-    
+        
         if ps is not None:
             kwa = dict(vmin=-3*sig1, vmax=50*sig1, cmap='hot')
             plt.clf()
@@ -428,14 +438,15 @@ class RawMeasurer(object):
         # we trimmed the image before running detection; re-add that margin
         fullx = fx + trim_x0
         fully = fy + trim_y0
-            
+
         # Match PS1 to our detections, find offset
         radius = self.maxshift / pixsc
-        I,J,d = match_xy(px, py, fullx, fully, radius)
+
+        I,J,dx,dy = self.match_ps1_stars(px, py, fullx, fully, radius, stars)
+        #I,J,d = match_xy(px, py, fullx, fully, radius)
+        #dx = px[I] - fullx[J]
+        #dy = py[I] - fully[J]
         #print(len(I), 'spatial matches with large radius', maxshift, 'arcsec')
-    
-        dx = px[I] - fullx[J]
-        dy = py[I] - fully[J]
     
         histo,xe,ye = np.histogram2d(dx, dy, bins=2*int(np.ceil(radius)),
                                      range=((-radius,radius),(-radius,radius)))
@@ -447,28 +458,34 @@ class RawMeasurer(object):
         
         if ps is not None:
             plt.clf()
-            plothist(px[I] - fullx[J], py[I] - fully[J],
-                     range=((-radius,radius),(-radius,radius)))
+            plothist(dx, dy, range=((-radius,radius),(-radius,radius)))
             plt.xlabel('dx (pixels)')
             plt.ylabel('dy (pixels)')
             plt.title('Offsets to PS1 stars')
             ax = plt.axis()
             plt.axhline(0, color='b')
             plt.axvline(0, color='b')
-            plt.plot(shiftx, shifty, 'm+', ms=15, mew=3)
+            plt.plot(shiftx, shifty, 'o', mec='m', mfc='none', ms=15, mew=3)
             plt.axis(ax)
             ps.savefig()
     
         # Refine with smaller search radius
         radius2 = 3. / pixsc
-        I,J,d = match_xy(px, py, fullx+shiftx, fully+shifty, radius2)
+        I,J,dx,dy = self.match_ps1_stars(px, py, fullx+shiftx, fully+shifty,
+                                         radius2, stars)
+        # I,J,d = match_xy(px, py, fullx+shiftx, fully+shifty, radius2)
         print(len(J), 'matches to PS1 with small radius', 3, 'arcsec')
         
-        dx = px[I] - (fullx[J] + shiftx)
-        dy = py[I] - (fully[J] + shifty)
-        shiftx = np.median(dx)
-        shifty = np.median(dy)
-    
+        #dx = px[I] - (fullx[J] + shiftx)
+        #dy = py[I] - (fully[J] + shifty)
+        shiftx2 = np.median(dx)
+        shifty2 = np.median(dy)
+
+        print('Stage-1 shift', shiftx, shifty)
+        print('Stage-2 shift', shiftx2, shifty2)
+        sx = shiftx + shiftx2
+        sy = shifty + shifty2
+
         if self.debug and ps is not None:
             plt.clf()
             plothist(dx, dy, range=((-radius2,radius2),(-radius2,radius2)))
@@ -478,10 +495,29 @@ class RawMeasurer(object):
             ax = plt.axis()
             plt.axhline(0, color='b')
             plt.axvline(0, color='b')
-            plt.plot(shiftx, shifty, 'm+', ms=15, mew=3)
+            plt.plot(shiftx2, shifty2, 'o', mec='m', mfc='none', ms=15, mew=3)
             plt.axis(ax)
             ps.savefig()
-    
+
+        if ps is not None:
+            kwa = dict(vmin=-3*sig1, vmax=50*sig1, cmap='hot')
+            plt.clf()
+            dimshow(img, **kwa)
+            ax = plt.axis()
+            plt.plot(fx[J], fy[J], 'go', mec='g', mfc='none', ms=10)
+            plt.plot(px[I]-sx-trim_x0, py[I]-sy-trim_y0, 'm+', ms=10)
+            plt.axis(ax)
+            plt.title('Matched PS1 stars')
+            plt.colorbar()
+            ps.savefig()
+
+        if focus:
+            return dict(img=img, fx=fx, fy=fy, px=px-trim_x0-sx, py=py-trim_y0-sy,
+                        dx=sx, dy=sy, sig1=sig1, stars=stars, band=band,
+                        moments=(mx2,my2,mxy,theta,a,b,ell),
+                        wmoments=(wmx2,wmy2,wmxy,wtheta,wa,wb,well))
+            
+            
         #print('Mean astrometric shift (arcsec): delta-ra=', -np.mean(dy)*0.263, 'delta-dec=', np.mean(dx)*0.263)
             
         # Compute photometric offset compared to PS1
@@ -548,6 +584,7 @@ class RawMeasurer(object):
         fwhms = []
         psf_r = 15
         for i,(xi,yi,fluxi) in enumerate(zip(fx[J],fy[J],apflux[J])):
+            print('Fitting source', i, 'of', len(J))
             ix = int(np.round(xi))
             iy = int(np.round(yi))
             xlo = max(0, ix-psf_r)
@@ -561,8 +598,8 @@ class RawMeasurer(object):
             ie = np.zeros_like(pix)
             ie[keep] = 1. / sig1
             #print('fitting source at', ix,iy)
-            # print('number of active pixels:', np.sum(ie > 0))
-            
+            print('number of active pixels:', np.sum(ie > 0), 'shape', ie.shape)
+
             psf = tractor.NCircularGaussianPSF([4.], [1.])
             tim = tractor.Image(data=pix, inverr=ie, psf=psf)
             src = tractor.PointSource(tractor.PixPos(xi-xlo, yi-ylo),
