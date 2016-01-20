@@ -40,6 +40,19 @@ decam_nominal_cal = dict(
          0.06,),
     )
 
+### FIXME
+# zp, sky, kx
+mosaic_nominal_cal = decam_nominal_cal
+# dict(
+#     z = (26.484,
+#          18.46,
+#          0.06,),
+#     )
+# Color terms
+ps1_to_mosaic = ps1_to_decam
+
+
+
 class RawMeasurer(object):
     def __init__(self, fn, ext, aprad=7., skyrad_inner=7., skyrad_outer=10.,
                  minstar=5, pixscale=0.262, maxshift=45.):
@@ -571,9 +584,52 @@ class DECamMeasurer(RawMeasurer):
 
     def colorterm_ps1_to_observed(self, ps1stars, band):
         return ps1_to_decam(ps1stars, band)
-            
 
-def measure_raw_decam(fn, ext='N4', ps=None, read_raw=None):
+
+class MosaicMeasurer(RawMeasurer):
+
+    def read_raw(self, F, ext):
+        '''
+        F: fitsio FITS object
+        '''
+        img = F[ext].read()
+        hdr = F[ext].read_header()
+        img = img.astype(np.float32)
+        # Subtract median overscan and multiply by gains 
+        dataA = parse_section(hdr['DATASEC'], slices=True)
+        biasA = parse_section(hdr['BIASSEC'], slices=True)
+        gainA = hdr['GAIN']
+        img[dataA] = (img[dataA] - np.median(img[biasA])) * gainA
+    
+        # Trim the image
+        trimA = parse_section(hdr['TRIMSEC'], slices=True)
+        # zero out all but the trim section
+        trimg = img[trimA]
+        img[:,:,] = 0
+        img[trimA] = trimg
+        return img,hdr
+
+    def get_nominal_cal(self, band):
+        return mosaic_nominal_cal[band]
+
+    def get_sky_and_sigma(self, img):
+        sky,sig1 = sensible_sigmaclip(img)
+        return sky,sig1
+
+    def get_wcs(self, hdr):
+        # Older images have ZPX, newer TPV.
+        if hdr['CTYPE1'] == 'RA---TPV':
+            wcs = wcs_pv2sip_hdr(hdr)
+        else:
+            wcs = Tan(hdr)
+        return wcs
+
+    def colorterm_ps1_to_observed(self, ps1stars, band):
+        return ps1_to_mosaic(ps1stars, band)
+
+    
+
+def measure_raw_decam(fn, ext='N4', ps=None):
     '''
     Reads the given file *fn*, extension *ext*', and measures a number of
     quantities that are useful for depth estimates:
@@ -643,11 +699,25 @@ def measure_raw_decam(fn, ext='N4', ps=None, read_raw=None):
       - Take the median of the fit FWHMs -> FWHM estimate
 
     '''
-
     meas = DECamMeasurer(fn, ext)
     results = meas.run(ps)
     return results
 
+def measure_raw_mosaic(fn, ext='im4', ps=None):
+    meas = MosaicMeasurer(fn, ext)
+    results = meas.run(ps)
+    return results
+
+def measure_raw(fn, **kwargs):
+    primhdr = fitsio.read_header(fn)
+        
+    if primhdr.get('INSTRUME',None).strip() == 'Mosaic3':
+        return measure_raw_mosaic(fn, **kwargs)
+
+    if primhdr.get('INSTRUME',None).strip() == 'DECam':
+        return measure_raw_decan(fn, **kwargs)
+
+    return None
 
 def sensible_sigmaclip(arr, nsigma = 4.):
     goodpix,lo,hi = sigmaclip(arr, low=nsigma, high=nsigma)
