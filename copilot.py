@@ -276,7 +276,8 @@ def process_image(fn, ext, gvs, sfd, opt, obs):
     print('Writing out {}'.format(qafile))
     #print(cmd)
     os.system(cmd)
-    [os.remove(png) for png in pnglist]
+    if not opt.keep_plots:
+        [os.remove(png) for png in pnglist]
 
     # (example results for testig)
     #M = {'seeing': 1.4890481099577366, 'airmass': 1.34,
@@ -379,7 +380,7 @@ def process_image(fn, ext, gvs, sfd, opt, obs):
 
     import obsdb
     m,created = obsdb.MeasuredCCD.objects.get_or_create(
-        filename=fn, extension=ext)
+        filename=fn, extension=M['extension'])
 
     m.camera = M['camera']
     m.expnum = expnum
@@ -448,6 +449,9 @@ def main():
     parser.add_option('--plot', action='store_true',
                       help='Plot recent data and quit')
 
+    parser.add_option('--keep-plots', action='store_true',
+                      help='Do not remove PNG-format plots (normally merged into PDF)')
+    
     parser.add_option('--mjdstart', type=float, default=None,
                       help='MJD (UTC) at which to start plot')
 

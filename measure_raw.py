@@ -61,7 +61,7 @@ ps1_to_mosaic = ps1_to_decam
 
 class RawMeasurer(object):
     def __init__(self, fn, ext, aprad=7., skyrad_inner=7., skyrad_outer=10.,
-                 minstar=5, pixscale=0.262, maxshift=45.):
+                 minstar=5, pixscale=0.262, maxshift=60.):
         '''
         aprad: float
         Aperture photometry radius in arcsec
@@ -150,6 +150,8 @@ class RawMeasurer(object):
 
         img,trim_x0,trim_y0 = self.trim_edges(img)
 
+        fullH,fullW = img.shape
+
         if self.debug and ps is not None:
             plt.clf()
             dimshow(img, **kwa)
@@ -227,6 +229,10 @@ class RawMeasurer(object):
         slices = find_objects(blobs)
         xx,yy = [],[]
         fx,fy = [],[]
+
+        mx2,my2,mxy = [],[],[]
+        wmx2,wmy2,wmxy = [],[],[]
+
         for i,slc in enumerate(slices):
             y0 = slc[0].start
             x0 = slc[1].start
@@ -244,7 +250,48 @@ class RawMeasurer(object):
             fx.append(x0+x-P+cx)
             fy.append(y0+y-P+cy)
             #print('x,y', x0+x, y0+y, 'vs centroid', x0+x-P+cx, y0+y-P+cy)
-    
+
+            ### HACK -- measure source ellipticity
+            # go back to the image (not detection map)
+            #subimg = img[slc]
+            subimg = img[y0+y-P: y0+y+P+1, x0+x-P: x0+x+P+1].copy()
+            subimg /= subimg.sum()
+            ph,pw = subimg.shape
+            px,py = np.meshgrid(np.arange(pw), np.arange(ph))
+            mx2.append(np.sum(subimg * (px - cx)**2))
+            my2.append(np.sum(subimg * (py - cy)**2))
+            mxy.append(np.sum(subimg * (px - cx)*(py - cy)))
+            # Gaussian windowed version
+            s = 1.
+            wimg = subimg * np.exp(-0.5 * ((px - cx)**2 + (py - cy)**2) / s**2)
+            wimg /= np.sum(wimg)
+            wmx2.append(np.sum(wimg * (px - cx)**2))
+            wmy2.append(np.sum(wimg * (py - cy)**2))
+            wmxy.append(np.sum(wimg * (px - cx)*(py - cy)))
+
+        mx2 = np.array(mx2)
+        my2 = np.array(my2)
+        mxy = np.array(mxy)
+        wmx2 = np.array(wmx2)
+        wmy2 = np.array(wmy2)
+        wmxy = np.array(wmxy)
+
+        # semi-major/minor axes and position angle
+        theta = np.rad2deg(np.arctan2(2 * mxy, mx2 - my2) / 2.)
+        theta = np.abs(theta) * np.sign(mxy)
+        s = np.sqrt(((mx2 - my2)/2.)**2 + mxy**2)
+        a = np.sqrt((mx2 + my2) / 2. + s)
+        b = np.sqrt((mx2 + my2) / 2. - s)
+        ell = 1. - b/a
+
+        wtheta = np.rad2deg(np.arctan2(2 * wmxy, wmx2 - wmy2) / 2.)
+        wtheta = np.abs(wtheta) * np.sign(wmxy)
+        ws = np.sqrt(((wmx2 - wmy2)/2.)**2 + wmxy**2)
+        wa = np.sqrt((wmx2 + wmy2) / 2. + ws)
+        wb = np.sqrt((wmx2 + wmy2) / 2. - ws)
+        well = 1. - wb/wa
+
+            
         fx = np.array(fx)
         fy = np.array(fy)
         xx = np.array(xx)
@@ -268,21 +315,50 @@ class RawMeasurer(object):
             plt.title('Detected sources (2)')
             plt.axis(ax)
             ps.savefig()
-    
+
+        if ps is not None:
+            plt.clf()
+            plt.subplot(2,1,1)
+            mx = np.percentile(np.append(mx2,my2), 99)
+            ha = dict(histtype='step', range=(0,mx), bins=20)
+            plt.hist(mx2, color='b', label='mx2', **ha)
+            plt.hist(my2, color='r', label='my2', **ha)
+            plt.hist(mxy, color='g', label='mxy', **ha)
+            plt.legend()
+            plt.subplot(2,1,2)
+            mx = np.percentile(np.append(wmx2,wmy2), 99)
+            ha = dict(histtype='step', range=(0,mx), bins=20, lw=3, alpha=0.3)
+            plt.hist(wmx2, color='b', label='wx2', **ha)
+            plt.hist(wmy2, color='r', label='wy2', **ha)
+            plt.hist(wmxy, color='g', label='wxy', **ha)
+            plt.legend()
+            plt.suptitle('Source moments')
+            ps.savefig()
+
+            #mx = np.percentile(np.abs(np.append(mxy,wmxy)), 99)
+            plt.clf()
+            plt.subplot(2,1,1)
+            ha = dict(histtype='step', range=(0,1), bins=20)
+            plt.hist(ell, color='g', label='ell', **ha)
+            plt.hist(well, color='g', lw=3, alpha=0.3, label='windowed ell', **ha)
+            plt.legend()
+            plt.subplot(2,1,2)
+            ha = dict(histtype='step', range=(-90,90), bins=20)
+            plt.hist(theta, color='g', label='theta', **ha)
+            plt.hist(wtheta, color='g', lw=3, alpha=0.3,
+                     label='windowed theta', **ha)
+            plt.legend()
+            plt.suptitle('Source ellipticities & angles')
+            ps.savefig()
+            
+        # Cut down to stars whose centroids are within 1 pixel of their peaks...
         keep = (np.hypot(fx - xx, fy - yy) < 1)
         #print(sum(keep), 'of', len(keep), 'stars have centroids within 1 of peaks')
         #print('mean dx', np.mean(fx-xx), 'dy', np.mean(fy-yy), 'pixels')
-        
-        # Cut down to stars whose centroids are within 1 pixel of their peaks...
         assert(float(sum(keep)) / len(keep) > 0.9)
-    
         fx = fx[keep]
         fy = fy[keep]
     
-        # we trimmed the image before running detection; re-add that margin
-        fx += trim_x0
-        fy += trim_y0
-        
         apxy = np.vstack((fx, fy)).T
         ap = []
         aprad_pix = self.aprad / pixsc
@@ -317,7 +393,7 @@ class RawMeasurer(object):
         fy = fy[good]
 
         wcs = self.get_wcs(hdr)
-        ra_ccd,dec_ccd = wcs.pixelxy2radec((W+1)/2., (H+1)/2.)
+        ra_ccd,dec_ccd = wcs.pixelxy2radec((fullW+1)/2., (fullH+1)/2.)
         
         # Read in the PS1 catalog, and keep those within 0.25 deg of CCD center
         # and those with main sequence colors
@@ -347,14 +423,19 @@ class RawMeasurer(object):
             plt.title('PS1 stars')
             plt.colorbar()
             ps.savefig()
-        
+
+
+        # we trimmed the image before running detection; re-add that margin
+        fullx = fx + trim_x0
+        fully = fy + trim_y0
+            
         # Match PS1 to our detections, find offset
         radius = self.maxshift / pixsc
-        I,J,d = match_xy(px, py, fx, fy, radius)
+        I,J,d = match_xy(px, py, fullx, fully, radius)
         #print(len(I), 'spatial matches with large radius', maxshift, 'arcsec')
     
-        dx = px[I] - fx[J]
-        dy = py[I] - fy[J]
+        dx = px[I] - fullx[J]
+        dy = py[I] - fully[J]
     
         histo,xe,ye = np.histogram2d(dx, dy, bins=2*int(np.ceil(radius)),
                                      range=((-radius,radius),(-radius,radius)))
@@ -366,35 +447,38 @@ class RawMeasurer(object):
         
         if ps is not None:
             plt.clf()
-            plothist(px[I] - fx[J], py[I] - fy[J])
+            plothist(px[I] - fullx[J], py[I] - fully[J],
+                     range=((-radius,radius),(-radius,radius)))
             plt.xlabel('dx (pixels)')
             plt.ylabel('dy (pixels)')
-            plt.title('DECam to PS1 matches')
+            plt.title('Offsets to PS1 stars')
             ax = plt.axis()
-            plt.plot(shiftx, shifty, 'm+', ms=15)
             plt.axhline(0, color='b')
             plt.axvline(0, color='b')
+            plt.plot(shiftx, shifty, 'm+', ms=15, mew=3)
             plt.axis(ax)
             ps.savefig()
     
         # Refine with smaller search radius
         radius2 = 3. / pixsc
-        I,J,d = match_xy(px, py, fx+shiftx, fy+shifty, radius2)
+        I,J,d = match_xy(px, py, fullx+shiftx, fully+shifty, radius2)
         print(len(J), 'matches to PS1 with small radius', 3, 'arcsec')
         
-        dx = px[I] - fx[J]
-        dy = py[I] - fy[J]
+        dx = px[I] - (fullx[J] + shiftx)
+        dy = py[I] - (fully[J] + shifty)
         shiftx = np.median(dx)
         shifty = np.median(dy)
     
-        if False and ps is not None:
+        if self.debug and ps is not None:
             plt.clf()
-            plothist(dx, dy)
+            plothist(dx, dy, range=((-radius2,radius2),(-radius2,radius2)))
             plt.xlabel('dx (pixels)')
             plt.ylabel('dy (pixels)')
-            plt.title('DECam to PS1 matches')
+            plt.title('Offsets to PS1 stars')
             ax = plt.axis()
-            plt.plot(shiftx, shifty, 'm.')
+            plt.axhline(0, color='b')
+            plt.axvline(0, color='b')
+            plt.plot(shiftx, shifty, 'm+', ms=15, mew=3)
             plt.axis(ax)
             ps.savefig()
     
@@ -473,9 +557,10 @@ class RawMeasurer(object):
             xx,yy = np.meshgrid(np.arange(xlo,xhi), np.arange(ylo,yhi))
             r2 = (xx - xi)**2 + (yy - yi)**2
             keep = (r2 < psf_r**2)
-            pix = img[ylo:yhi, xlo:xhi]
+            pix = img[ylo:yhi, xlo:xhi].copy()
             ie = np.zeros_like(pix)
             ie[keep] = 1. / sig1
+            #print('fitting source at', ix,iy)
             # print('number of active pixels:', np.sum(ie > 0))
             
             psf = tractor.NCircularGaussianPSF([4.], [1.])
@@ -592,7 +677,8 @@ class RawMeasurer(object):
 
         return dict(band=band, airmass=airmass, seeing=fwhm, zp=zp_obs,
                     skybright=skybr, transparency=transparency, primhdr=primhdr,
-                    hdr=hdr, wcs=wcs, ra_ccd=ra_ccd, dec_ccd=dec_ccd)
+                    hdr=hdr, wcs=wcs, ra_ccd=ra_ccd, dec_ccd=dec_ccd,
+                    extension=ext, camera=camera)
     
 
 
