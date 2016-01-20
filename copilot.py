@@ -376,6 +376,7 @@ def process_image(fn, ext, gvs, sfd, opt, obs):
     m,created = obsdb.MeasuredCCD.objects.get_or_create(
         filename=fn, extension=ext)
 
+    m.camera = M['camera']
     m.expnum = expnum
     m.exptime = actual_exptime
     m.mjd_obs = phdr['MJD-OBS']

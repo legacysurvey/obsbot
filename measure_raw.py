@@ -564,7 +564,10 @@ class RawMeasurer(object):
                        ['image slice (y)', 'image slice (x)', 'fit'])
             plt.title('PSF fit')
             ps.savefig()
-    
+
+        camera = primhdr.get('INSTRUME','').strip().lower()
+        # -> "decam" / "mosaic3"
+
         return dict(band=band, airmass=airmass, seeing=fwhm, zp=zp_obs,
                     skybright=skybr, transparency=transparency, primhdr=primhdr,
                     hdr=hdr, wcs=wcs, ra_ccd=ra_ccd, dec_ccd=dec_ccd)
