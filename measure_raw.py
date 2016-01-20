@@ -18,7 +18,7 @@ from scipy.ndimage.filters import median_filter
 
 from astrometry.util.plotutils import *
 from astrometry.util.fits import *
-from astrometry.util.util import wcs_pv2sip_hdr
+from astrometry.util.util import wcs_pv2sip_hdr, Tan
 from astrometry.libkd.spherematch import match_xy
 
 from legacyanalysis.ps1cat import ps1cat, ps1_to_decam
@@ -84,6 +84,8 @@ class RawMeasurer(object):
         # Detection threshold
         self.det_thresh = 20
 
+        self.debug = True
+        
     def remove_sky_gradients(self, img):
         # Ugly removal of sky gradients by subtracting median in first x and then y
         H,W = img.shape
@@ -122,16 +124,39 @@ class RawMeasurer(object):
         primhdr = F[0].read_header()
         img,hdr = self.read_raw(F, ext)
 
-        M = 200
+        wcs = self.get_wcs(hdr)
+
         mn,mx = np.percentile(img.ravel(), [25,98])
         kwa = dict(vmin=mn, vmax=mx)
+        
+        if self.debug and ps is not None:
+            plt.clf()
+            dimshow(img, **kwa)
+            plt.title('Raw image')
+            ps.savefig()
+    
+            M = 200
+            plt.clf()
+            plt.subplot(2,2,1)
+            dimshow(img[-M:, :M], ticks=False, **kwa)
+            plt.subplot(2,2,2)
+            dimshow(img[-M:, -M:], ticks=False, **kwa)
+            plt.subplot(2,2,3)
+            dimshow(img[:M, :M], ticks=False, **kwa)
+            plt.subplot(2,2,4)
+            dimshow(img[:M, -M:], ticks=False, **kwa)
+            plt.suptitle('Raw image corners')
+            ps.savefig()
 
-        if False and ps is not None:
+        img,trim_x0,trim_y0 = self.trim_edges(img)
+
+        if self.debug and ps is not None:
             plt.clf()
             dimshow(img, **kwa)
             plt.title('Trimmed image')
             ps.savefig()
     
+            M = 200
             plt.clf()
             plt.subplot(2,2,1)
             dimshow(img[-M:, :M], ticks=False, **kwa)
@@ -143,12 +168,11 @@ class RawMeasurer(object):
             dimshow(img[:M, -M:], ticks=False, **kwa)
             plt.suptitle('Trimmed corners')
             ps.savefig()
-    
+            
         band = self.get_band(primhdr)
         exptime = primhdr['EXPTIME']
         airmass = primhdr['AIRMASS']
         print('Band', band, 'Exptime', exptime, 'Airmass', airmass)
-    
         zp0, sky0, kx = self.get_nominal_cal(band)
     
         # Find the sky value and noise level
@@ -173,13 +197,11 @@ class RawMeasurer(object):
             plt.colorbar()
             ps.savefig()
 
-        cimg,trim_x0,trim_y0 = self.trim_edges(img)
-        
         # Detect & aperture-photometer stars
         fwhm = self.nominal_fwhm
         psfsig = fwhm / 2.35
         psfnorm = 1./(2. * np.sqrt(np.pi) * psfsig)
-        detsn = gaussian_filter(cimg / sig1, psfsig) / psfnorm
+        detsn = gaussian_filter(img / sig1, psfsig) / psfnorm
     
         if False and ps is not None:
             plt.clf()
@@ -595,7 +617,12 @@ class DECamMeasurer(RawMeasurer):
         return ps1_to_decam(ps1stars, band)
 
 
-class MosaicMeasurer(RawMeasurer):
+class Mosaic3Measurer(RawMeasurer):
+
+    def get_band(self, primhdr):
+        band = super(Mosaic3Measurer,self).get_band(primhdr)
+        # "zd" -> "z"
+        return band[0]
 
     def read_raw(self, F, ext):
         '''
@@ -604,17 +631,20 @@ class MosaicMeasurer(RawMeasurer):
         img = F[ext].read()
         hdr = F[ext].read_header()
         img = img.astype(np.float32)
+        #print('img qts', np.percentile(img.ravel(), [0,25,50,75,100]))
         # Subtract median overscan and multiply by gains 
         dataA = parse_section(hdr['DATASEC'], slices=True)
         biasA = parse_section(hdr['BIASSEC'], slices=True)
         gainA = hdr['GAIN']
-        img[dataA] = (img[dataA] - np.median(img[biasA])) * gainA
+        b = np.median(img[biasA])
+        #print('subtracting bias', b)
+        img[dataA] = (img[dataA] - b) * gainA
     
         # Trim the image
         trimA = parse_section(hdr['TRIMSEC'], slices=True)
         # zero out all but the trim section
-        trimg = img[trimA]
-        img[:,:,] = 0
+        trimg = img[trimA].copy()
+        img[:,:] = 0
         img[trimA] = trimg
         return img,hdr
 
@@ -622,14 +652,26 @@ class MosaicMeasurer(RawMeasurer):
         return mosaic_nominal_cal[band]
 
     def get_sky_and_sigma(self, img):
-        sky,sig1 = sensible_sigmaclip(img)
-        return sky,sig1
+        # Spline sky model to handle (?) ghost / pupil?
+        from tractor.splinesky import SplineSky
+
+        splinesky = SplineSky.BlantonMethod(img, None, 256)
+        skyimg = np.zeros_like(img)
+        splinesky.addTo(skyimg)
+        
+        mnsky,sig1 = sensible_sigmaclip(img - skyimg)
+        return skyimg,sig1
+
+    def remove_sky_gradients(self, img):
+        pass
 
     def get_wcs(self, hdr):
         # Older images have ZPX, newer TPV.
         if hdr['CTYPE1'] == 'RA---TPV':
             wcs = wcs_pv2sip_hdr(hdr)
         else:
+            hdr['CTYPE1'] = 'RA---TAN'
+            hdr['CTYPE2'] = 'DEC--TAN'
             wcs = Tan(hdr)
         return wcs
 
@@ -712,8 +754,8 @@ def measure_raw_decam(fn, ext='N4', ps=None):
     results = meas.run(ps)
     return results
 
-def measure_raw_mosaic(fn, ext='im4', ps=None):
-    meas = MosaicMeasurer(fn, ext)
+def measure_raw_mosaic3(fn, ext='im4', ps=None):
+    meas = Mosaic3Measurer(fn, ext)
     results = meas.run(ps)
     return results
 
@@ -721,7 +763,7 @@ def measure_raw(fn, **kwargs):
     primhdr = fitsio.read_header(fn)
         
     if primhdr.get('INSTRUME',None).strip() == 'Mosaic3':
-        return measure_raw_mosaic(fn, **kwargs)
+        return measure_raw_mosaic3(fn, **kwargs)
 
     if primhdr.get('INSTRUME',None).strip() == 'DECam':
         return measure_raw_decan(fn, **kwargs)

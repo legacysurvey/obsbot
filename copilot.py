@@ -260,9 +260,14 @@ def process_image(fn, ext, gvs, sfd, opt, obs):
 
     # Write QA plots to files named by the exposure number
     ps = PlotSequence('qa-%i' % expnum)
-    ps.printfn = False
+
+    #ps.printfn = False
+
     # Measure the new image
-    M = measure_raw(fn, ext=ext, ps=ps)
+    kwa = {}
+    if ext is not None:
+        kwa.update(ext=ext)
+    M = measure_raw(fn, ps=ps, **kwa)
 
     # Gather all the QAplots into a single pdf and clean them up.
     qafile = 'qa-%i.pdf' % expnum
@@ -431,7 +436,7 @@ def main():
     global gSFD
     parser = optparse.OptionParser(usage='%prog')
     
-    parser.add_option('--ext', help='Extension to read for computing observing conditions: default %default', default='N4')
+    parser.add_option('--ext', help='Extension to read for computing observing conditions: default "N4" for DECam, "im4" for Mosaic3', default=None)
     parser.add_option('--extnum', type=int, help='Integer extension to read')
     parser.add_option('--rawdata', help='Directory to monitor for new images: default %default', default='rawdata')
     parser.add_option('--portion', help='Portion of the night: default %default', type=float, default='1.0')
