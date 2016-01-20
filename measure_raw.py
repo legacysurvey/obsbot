@@ -27,6 +27,12 @@ import photutils
 
 import tractor
 
+def get_nominal_cal(cam, band):
+    if cam.lower() in ['decam']:
+        return decam_nominal_cal[band]
+    if cam.lower() in ['mosaic', 'mosaic3']:
+        return mosaic_nominal_cal[band]
+
 # zp, sky, kx
 decam_nominal_cal = dict(
     g = (26.610,

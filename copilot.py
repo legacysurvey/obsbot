@@ -36,7 +36,7 @@ from astrometry.util.starutil_numpy import hmsstring2ra, dmsstring2dec, mjdtodat
 
 from nightlystrategy import ExposureFactor, getParserAndGlobals, setupGlobals
 
-from measure_raw_decam import measure_raw_decam, nominal_cal
+from measure_raw import measure_raw, get_nominal_cal
 
 from tractor.sfd import SFDMap
 
@@ -88,8 +88,10 @@ def plot_measurements(mm, ps, gvs, mjds=[], mjdrange=None):
 
     plt.subplot(SP,1,2)
     for band,Tb in zip(bands, TT):
+        nom = get_nominal_cal(Tb.camera[0], band)
+        zp0,sky0,kx0 = nom
         plt.plot(Tb.mjd_obs, Tb.sky, '.', color=ccmap[band])
-        plt.axhline(nominal_cal[band][1], color=ccmap[band], alpha=0.5)
+        plt.axhline(sky0, color=ccmap[band], alpha=0.5)
     plt.ylabel('Sky (mag)')
 
     plt.subplot(SP,1,3)
@@ -260,7 +262,7 @@ def process_image(fn, ext, gvs, sfd, opt, obs):
     ps = PlotSequence('qa-%i' % expnum)
     ps.printfn = False
     # Measure the new image
-    M = measure_raw_decam(fn, ext=ext, ps=ps)
+    M = measure_raw(fn, ext=ext, ps=ps)
 
     # Gather all the QAplots into a single pdf and clean them up.
     qafile = 'qa-%i.pdf' % expnum

@@ -16,7 +16,7 @@ from nightlystrategy import (
     ExposureFactor, getParserAndGlobals, setupGlobals,
     GetAirmass, StartAndEndTimes, s_to_days, readTilesTable, GetNightlyStrategy,
     WriteJSON)
-from measure_raw_decam import measure_raw_decam
+from measure_raw import measure_raw_decam
 
 from RemoteClient import RemoteClient
 
