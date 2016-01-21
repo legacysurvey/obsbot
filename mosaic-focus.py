@@ -98,12 +98,11 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
         (wmx2,wmy2,wmxy,wtheta,wa,wb,well) = meas['wmoments']
         
         radius2 = 3. / self.pixscale
-        # Mosaic focus: un-duplicated
         I,J,d = match_xy(px, py, fx, fy, radius2)
-        print('De-duplicated:', len(I), 'matches')
-        
+
         if ps is not None:
             kwa = dict(vmin=-3*sig1, vmax=50*sig1, cmap='gray')
+
             plt.clf()
             dimshow(img, **kwa)
             ax = plt.axis()
@@ -123,28 +122,24 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
             plt.colorbar()
             ps.savefig()
 
-        hdr = self.hdr
-        nsteps = hdr['FOCNEXPO']
-        steppix = hdr['FOCSHIFT']
-        shifts = np.append(0, (2+np.arange(nsteps-1))*steppix)
-
         ps1band = ps1cat.ps1band[band]
         ps1mag = stars.median[I, ps1band]
 
+        # Choose the brightest PS1 stars not near an edge
+        hdr = self.hdr
+        shifts = self.get_focus_shifts(hdr)
         S = 20
         H,W = img.shape
-
-        miny = fy[J] - max(shifts)
-        maxy = fy[J] - min(shifts)
+        miny = fy[J] + min(shifts)
+        maxy = fy[J] + max(shifts)
         edge = reduce(np.logical_or, [fx[J] < S, fx[J]+S >= W,
                                       miny  < S, maxy +S >= H])
         K = np.argsort(ps1mag + 1000*edge)
-        
+
         nstars = 10
         plt.clf()
         plt.subplots_adjust(hspace=0, wspace=0)
         sp = 1
-        S = 20
         for shifty in shifts:
             for k in K[:nstars]:
                 plt.subplot(len(shifts), nstars, sp)
@@ -152,45 +147,40 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
                 i = I[k]
                 j = J[k]
                 x = fx[j]
-                y = fy[j] - shifty
+                y = fy[j] + shifty
                 dimshow(img[y-S:y+S+1, x-S:x+S+1], ticks=False, **kwa)
                 if shifty == 0.:
                     print('Plotting focus sweep star at', x,y)
-
         plt.suptitle('Focus sweep stars')
         ps.savefig()
-            
-        JJ = []
-        for shifty in shifts:
-            print('shifty:', shifty)
-            I2,J2,d = match_xy(px, py - shifty, fx, fy, radius2)
-            print('Matched', len(I2), 'PS1 stars')
-            JJ.append(J2)
 
-        xl = min(shifts) - 0.5 * np.abs(steppix)
-        xh = max(shifts) + 0.5 * np.abs(steppix)
-        Jx = [np.random.normal(size=len(Ji)) *(0.1 * np.abs(steppix)) for Ji in JJ]
+        # We no longer detect & measure each of the shifted sources,
+        # so this doesn't work.
+        # 
+        # xl = min(shifts) - 0.5 * np.abs(steppix)
+        # xh = max(shifts) + 0.5 * np.abs(steppix)
+        # Jx = [np.random.normal(size=len(Ji)) *(0.1 * np.abs(steppix))
+        # for Ji in JJ]
+        # for YY,TT in [([mx2, my2, mxy], ['mx2', 'my2', 'mxy']),
+        #               ([wmx2,wmy2,wmxy],['wx2', 'wy2', 'wxy']),
+        #               ([ma,mb, mell,mtheta],['ma', 'mb', 'mell', 'mtheta']),
+        #               ([wa,wb, well,wtheta],['wa', 'wb', 'well', 'wtheta']),
+        #               ]:
+        #     plt.clf()
+        #     for i,(Y,name) in enumerate(zip(YY,TT)):
+        #         plt.subplot(len(YY),1,1+i)
+        #         for Ji,jx,shifty in zip(JJ, Jx, shifts):
+        #             plt.plot(shifty+jx, Y[Ji], 'b.', alpha=0.25)
+        #             # HACK
+        #             if not 'theta' in name:
+        #                 plt.plot(shifty, np.median(Y[Ji]), 'ro')
+        #         plt.ylim(*np.percentile(np.hstack([Y[Ji] for Ji in JJ]), [5,95]))
+        #         plt.ylabel(name)
+        #         plt.xlim(xl,xh)
+        #         plt.suptitle('Focus sweep measurements')
+        #     ps.savefig()
 
-        for YY,TT in [([mx2, my2, mxy], ['mx2', 'my2', 'mxy']),
-                      ([wmx2,wmy2,wmxy],['wx2', 'wy2', 'wxy']),
-                      ([ma,mb, mell,mtheta],['ma', 'mb', 'mell', 'mtheta']),
-                      ([wa,wb, well,wtheta],['wa', 'wb', 'well', 'wtheta']),
-                      ]:
-            plt.clf()
-            for i,(Y,name) in enumerate(zip(YY,TT)):
-                plt.subplot(len(YY),1,1+i)
-                for Ji,jx,shifty in zip(JJ, Jx, shifts):
-                    plt.plot(shifty+jx, Y[Ji], 'b.', alpha=0.25)
-                    # HACK
-                    if not 'theta' in name:
-                        plt.plot(shifty, np.median(Y[Ji]), 'ro')
-                plt.ylim(*np.percentile(np.hstack([Y[Ji] for Ji in JJ]), [5,95]))
-                plt.ylabel(name)
-                plt.xlim(xl,xh)
-                plt.suptitle('Focus sweep measurements')
-            ps.savefig()
-
-        meas.update(I=I, J=J, K=K, shifts=shifts)
+        meas.update(I=I, J=J, K=K)
 
         return meas
             
@@ -325,9 +315,9 @@ if __name__ == '__main__':
 
     meas = Mosaic3FocusMeas('mos3_62914.fits.gz', 'im4')
 
-    R = meas.run(ps=ps)
-    import sys
-    sys.exit(0)
+    #R = meas.run(ps=ps)
+    #import sys
+    #sys.exit(0)
     
     pfn = 'meas.pickle'
     if os.path.exists(pfn):
@@ -342,20 +332,17 @@ if __name__ == '__main__':
     J = R['J']
     fx = R['fx']
     fy = R['fy']
-    shifts = R['shifts']
     img = R['img']
     sig1 = R['sig1']
     apflux = R['apflux']
-
     hdr = R['hdr']
 
-    # these are value in microns
-    focstart = hdr['FOCSTART']
+    ps = PlotSequence('focus2')
+    
+    shifts = meas.get_focus_shifts(hdr)
+    focus = meas.get_focus_values(hdr)
     focstep  = hdr['FOCSTEP']
 
-    # assume...
-    focvals = focstart + np.arange(len(shifts)) * focstep
-    
     allfocus = []
     allshifts = []
     allfocus = []
@@ -367,13 +354,13 @@ if __name__ == '__main__':
         yi = fy[j]
         fluxi = apflux[j]
         print('Fitting star at', xi,yi)
-        for shifty,foc in zip(shifts, focvals):
+        for shifty,foc in zip(shifts, focus):
             j = J[k]
             xi = fx[j]
-            yi = fy[j] - shifty
+            yi = fy[j] + shifty
 
-            p = meas.fit_general_gaussian(img, sig1, xi, yi, fluxi, ps=ps if ik ==0 else None)
-
+            p = meas.fit_general_gaussian(img, sig1, xi, yi, fluxi,
+                                          ps=ps if ik ==0 else None)
             print('PSF variance:', p)
             allshifts.append(shifty)
             allfocus.append(foc)

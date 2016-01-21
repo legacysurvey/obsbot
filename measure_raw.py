@@ -421,7 +421,7 @@ class RawMeasurer(object):
         py -= 1
         
         if ps is not None:
-            kwa = dict(vmin=-3*sig1, vmax=50*sig1, cmap='hot')
+            kwa = dict(vmin=-3*sig1, vmax=50*sig1, cmap='gray')
             plt.clf()
             dimshow(img, **kwa)
             ax = plt.axis()
@@ -498,7 +498,7 @@ class RawMeasurer(object):
             ps.savefig()
 
         if ps is not None:
-            kwa = dict(vmin=-3*sig1, vmax=50*sig1, cmap='hot')
+            kwa = dict(vmin=-3*sig1, vmax=50*sig1, cmap='gray')
             plt.clf()
             dimshow(img, **kwa)
             ax = plt.axis()
