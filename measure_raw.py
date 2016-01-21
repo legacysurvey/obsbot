@@ -512,10 +512,12 @@ class RawMeasurer(object):
             ps.savefig()
 
         if focus:
-            return dict(img=img, fx=fx, fy=fy, px=px-trim_x0-sx, py=py-trim_y0-sy,
+            return dict(img=img, hdr=hdr, primhdr=primhdr,
+                        fx=fx, fy=fy, px=px-trim_x0-sx, py=py-trim_y0-sy,
                         dx=sx, dy=sy, sig1=sig1, stars=stars, band=band,
                         moments=(mx2,my2,mxy,theta,a,b,ell),
-                        wmoments=(wmx2,wmy2,wmxy,wtheta,wa,wb,well))
+                        wmoments=(wmx2,wmy2,wmxy,wtheta,wa,wb,well),
+                        apflux=apflux, apflux2=apflux2)
             
             
         #print('Mean astrometric shift (arcsec): delta-ra=', -np.mean(dy)*0.263, 'delta-dec=', np.mean(dx)*0.263)
