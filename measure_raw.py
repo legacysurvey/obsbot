@@ -115,12 +115,29 @@ class RawMeasurer(object):
         #band = band.lower()
         return band
 
-    def match_ps1_stars(px, py, fullx, fully, radius, stars):
+    def match_ps1_stars(self, px, py, fullx, fully, radius, stars):
         I,J,d = match_xy(px, py, fullx, fully, radius)
         dx = px[I] - fullx[J]
         dy = py[I] - fully[J]
         return I,J,dx,dy
 
+    def detection_map(self, img, sig1, psfsig, ps):
+        psfnorm = 1./(2. * np.sqrt(np.pi) * psfsig)
+        detsn = gaussian_filter(img / sig1, psfsig) / psfnorm
+        # zero out the edges -- larger margin here?
+        detsn[0 ,:] = 0
+        detsn[:, 0] = 0
+        detsn[-1,:] = 0
+        detsn[:,-1] = 0
+        return detsn
+
+    def detect_sources(self, detsn, thresh, ps):
+        # HACK -- Just keep the brightest pixel in each blob!
+        peaks = (detsn > thresh)
+        blobs,nblobs = label(peaks)
+        slices = find_objects(blobs)
+        return slices
+        
     def run(self, ps=None, focus=False, momentsize=5):
         fn = self.fn
         ext = self.ext
@@ -205,39 +222,20 @@ class RawMeasurer(object):
             plt.colorbar()
             ps.savefig()
 
-        # Detect & aperture-photometer stars
+        # Detect stars
         fwhm = self.nominal_fwhm
         psfsig = fwhm / 2.35
-        psfnorm = 1./(2. * np.sqrt(np.pi) * psfsig)
-        detsn = gaussian_filter(img / sig1, psfsig) / psfnorm
+        detsn = self.detection_map(img, sig1, psfsig, ps)
     
-        if False and ps is not None:
-            plt.clf()
-            dimshow(detsn, vmin=-3, vmax=50, cmap='hot')
-            plt.colorbar()
-            plt.title('Detection S/N')
-            ps.savefig()
-    
-        # zero out the edges -- larger margin here?
-        detsn[0 ,:] = 0
-        detsn[:, 0] = 0
-        detsn[-1,:] = 0
-        detsn[:,-1] = 0
-    
-        peaks = (detsn > self.det_thresh)
-    
-        # "Peak" region to centroid
-        P = momentsize
-    
-        # HACK -- Just keep the brightest pixel in each blob!
-        H,W = img.shape
-        blobs,nblobs = label(peaks)
-        slices = find_objects(blobs)
+        slices = self.detect_sources(detsn, self.det_thresh, ps)
+        
         xx,yy = [],[]
         fx,fy = [],[]
-
         mx2,my2,mxy = [],[],[]
         wmx2,wmy2,wmxy = [],[],[]
+        # "Peak" region to centroid
+        P = momentsize
+        H,W = img.shape
 
         for i,slc in enumerate(slices):
             y0 = slc[0].start
