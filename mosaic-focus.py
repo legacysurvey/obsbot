@@ -32,25 +32,7 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
         f0 = hdr['FOCSTART']
         return f0 + step * np.arange(nsteps)
     
-    # def match_ps1_stars(self, px, py, fullx, fully, radius, stars):
-    #     # check hdr for focus sequence offsets
-    #     shifts = self.get_focus_shifts(self.hdr)
-    #     print('Focus shifts:', shifts)
-    # 
-    #     # Duplicate "px","py" for each offset.
-    #     # We *subtract* shift because we want to infer the un-shifted location
-    #     allpx = np.hstack([px] * len(shifts))
-    #     allpy = np.hstack([py - s for s in shifts])
-    #     
-    #     I,J,d = match_xy(allpx, allpy, fullx, fully, radius)
-    #     dx = allpx[I] - fullx[J]
-    #     dy = allpy[I] - fully[J]
-    #     # de-duplicate
-    #     I = I % len(px)
-    #     return I,J,dx,dy
-
     def detection_map(self, img, sig1, psfsig, ps):
-        # Shift-and-add the image
         shifts = self.get_focus_shifts(self.hdr)
         print('Focus shifts:', shifts)
 
@@ -61,28 +43,11 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
             dimshow(img, **kwa)
             ps.savefig()
             
-        # shadd = np.zeros_like(img)
-        # for dy in -shifts:
-        #     if dy == 0:
-        #         shadd += img
-        #     elif dy > 0:
-        #         shadd[dy:,:] += img[:-dy,:]
-        #     elif dy < 0:
-        #         shadd[:dy,:] += img[-dy:,:]
-        # 
-        # if ps is not None:
-        #     plt.clf()
-        #     dimshow(shadd, **kwa)
-        #     plt.title('Shift-n-add')
-        #     ps.savefig()
-        #         
-        # psfnorm = 1./(2. * np.sqrt(np.pi) * psfsig)
-        # detsn = gaussian_filter(shadd / sig1, psfsig) / psfnorm
-
+        # Compute detection map
         psfnorm = 1./(2. * np.sqrt(np.pi) * psfsig)
         detsn = gaussian_filter(img / sig1, psfsig) / psfnorm
         
-        # Take the *minimum* of the image and shifted versions of itself
+        # Take the *minimum* of the detmap and shifted versions of itself.
         minimg = detsn.copy()
         for dy in -shifts:
             if dy == 0:
@@ -96,14 +61,11 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
 
         if ps is not None:
             plt.clf()
-            #dimshow(shadd, **kwa)
-            #plt.title('Shift-n-add')
             dimshow(minimg, **kwa)
             plt.title('Min image')
             ps.savefig()
 
         detsn = minimg
-            
         # zero out the edges -- larger margin here?
         detsn[0 ,:] = 0
         detsn[:, 0] = 0
@@ -111,45 +73,6 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
         detsn[:,-1] = 0
         return detsn
 
-    # def detect_sources(self, detsn, thresh, ps):
-    #     slices = super(Mosaic3FocusMeas, self).detect_sources(detsn, thresh, ps)
-    # 
-    #     #shifts = self.get_focus_shifts(self.hdr)
-    # 
-    #     # Order by peak flux.  For each source, suppress other sources at += shifts
-    #     pky,pkx,flux = [],[],[]
-    #     for slc in slices:
-    #         y0 = slc[0].start
-    #         x0 = slc[1].start
-    #         subimg = detsn[slc]
-    #         imax = np.argmax(subimg)
-    #         y,x = np.unravel_index(imax, subimg.shape)
-    #         pky.append(y+y0)
-    #         pkx.append(x+x0)
-    #         flux.append(subimg.flat[imax])
-    #     I = np.argsort(-np.array(flux))
-    #     pkx = np.array(pkx)
-    #     pky = np.array(pky)
-    # 
-    #     suppressed = np.zeros(detsn.shape, bool)
-    #     keepi = []
-    #     S = 2
-    # 
-    #     hdr = self.hdr
-    #     nsteps = hdr['FOCNEXPO']
-    #     steppix = np.abs(hdr['FOCSHIFT'])
-    # 
-    #     H,W = detsn.shape
-    #     for i,x,y in zip(I, pkx[I], pky[I]):
-    #         if suppressed[y,x]:
-    #             continue
-    #         keepi.append(i)
-    #         for j in range(-nsteps, nsteps+1):
-    #             ys = y + steppix * j
-    #             suppressed[np.clip(ys-S,0,H) : np.clip(ys+S+1,0,H),
-    #                        max(0,x-S) : min(W,x+S+1)] = True
-    #     return [slices[i] for i in keepi]
-    
     def trim_edges(self, img):
         # Trim off some edge pixels.
         # In the focus images, the bottom ~300 pixels are funky.
