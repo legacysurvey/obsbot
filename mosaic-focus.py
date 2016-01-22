@@ -93,7 +93,8 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
         sig1=meas['sig1']
         stars=meas['stars']
         band=meas['band']
-
+        apflux = meas['apflux']
+        
         (mx2 ,my2 ,mxy ,mtheta,ma,mb,mell) = meas['moments' ]
         (wmx2,wmy2,wmxy,wtheta,wa,wb,well) = meas['wmoments']
         
@@ -182,6 +183,42 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
 
         meas.update(I=I, J=J, K=K)
 
+        shifts = self.get_focus_shifts(hdr)
+        focus = self.get_focus_values(hdr)
+    
+        allfocus = []
+        #allshifts = []
+        allcxx,allcyy,allcxy = [],[],[]
+        nstars = 40
+        for ik,k in enumerate(K[:nstars]):
+            j = J[k]
+            xi = fx[j]
+            yi = fy[j]
+            fluxi = apflux[j]
+            print('Fitting star at', xi,yi)
+            for shifty,foc in zip(shifts, focus):
+                j = J[k]
+                xi = fx[j]
+                yi = fy[j] + shifty
+                p = self.fit_general_gaussian(img, sig1, xi, yi, fluxi,
+                                              ps=ps if ik ==0 else None)
+                #print('PSF variance:', p)
+                #allshifts.append(shifty)
+                allfocus.append(foc)
+                allcxx.append(p[0])
+                allcyy.append(p[1])
+                allcxy.append(p[2])
+    
+        allfocus  = np.array(allfocus)
+        #allshifts = np.array(allshifts)
+        allcxx = np.array(allcxx)
+        allcyy = np.array(allcyy)
+        allcxy = np.array(allcxy)
+
+        meas.update(shifts=shifts, focus=focus,
+                    allfocus=allfocus, allcxx=allcxx, allcyy=allcyy,
+                    allcxy=allcxy)
+    
         return meas
             
 
@@ -261,22 +298,8 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
             traceback.print_exc()
             pass
                 
-        # Now also fit the source params
-        # tr.thawParam('catalog')
-        # print('Optimizing params:')
-        # tr.printThawedParams()
-        # 
-        # try:
-        #     for step in range(50):
-        #         dlnp,x,alpha = tr.optimize(**optargs)
-        #         if dlnp == 0:
-        #             break
-        # except:
-        #     import traceback
-        #     traceback.print_exc()
-        #     pass
-
-        #print('Fit PSF:', tim.psf)
+        # Don't need to re-fit source params because PSF ampl and mean
+        # can fit for flux and position.
 
         if doplot:
             mod2 = tr.getModelImage(0)
@@ -328,71 +351,65 @@ if __name__ == '__main__':
         pickle_to_file(R, pfn)
         print('Wrote', pfn)
 
-    K = R['K']
-    J = R['J']
-    fx = R['fx']
-    fy = R['fy']
-    img = R['img']
-    sig1 = R['sig1']
-    apflux = R['apflux']
-    hdr = R['hdr']
+    # K = R['K']
+    # J = R['J']
+    # fx = R['fx']
+    # fy = R['fy']
+    # img = R['img']
+    # sig1 = R['sig1']
+    # apflux = R['apflux']
+    # hdr = R['hdr']
 
-    ps = PlotSequence('focus2')
+    allfocus = R['allfocus']
+    allcxx   = R['allcxx']
+    allcxy   = R['allcxy']
+    allcyy   = R['allcyy']
     
-    shifts = meas.get_focus_shifts(hdr)
-    focus = meas.get_focus_values(hdr)
-    focstep  = hdr['FOCSTEP']
+    ps = PlotSequence('focus2')
 
-    allfocus = []
-    allshifts = []
-    allfocus = []
-    allcxx,allcyy,allcxy = [],[],[]
-    nstars = 40
-    for ik,k in enumerate(K[:nstars]):
-        j = J[k]
-        xi = fx[j]
-        yi = fy[j]
-        fluxi = apflux[j]
-        print('Fitting star at', xi,yi)
-        for shifty,foc in zip(shifts, focus):
-            j = J[k]
-            xi = fx[j]
-            yi = fy[j] + shifty
+    for Y,name in [(allcxx, 'PSF CXX'), (allcyy, 'PSF CYY')]:
+        plt.clf()
 
-            p = meas.fit_general_gaussian(img, sig1, xi, yi, fluxi,
-                                          ps=ps if ik ==0 else None)
-            print('PSF variance:', p)
-            allshifts.append(shifty)
-            allfocus.append(foc)
-            allcxx.append(p[0])
-            allcyy.append(p[1])
-            allcxy.append(p[2])
+        X,I = np.unique(allfocus, return_inverse=True)
+        Ymn,Ysig = np.zeros(len(X)), np.zeros(len(X))
+        for i in range(len(X)):
+            J = np.flatnonzero(I == i)
+            yi = Y[J]
+            #y1,ymn,y2 = np.percentile(yi, [25,50,75])
+            # 2 * 0.6745 = inter-quartile range for a Gaussian
+            #ysig = (y1 - y2) / (2. * 0.6745)
+            y1,ymn,y2 = np.percentile(yi, [16,50,84])
+            ysig = (y1 - y2) / 2
+            Ymn [i] = ymn
+            Ysig[i] = ysig
+        plt.plot(allfocus, Y, 'b.', alpha=0.25)
+        plt.errorbar(X, Ymn, yerr=Ysig, fmt='o', color='g')
 
-    allfocus  = np.array(allfocus)
-    allshifts = np.array(allshifts)
-    allcxx = np.array(allcxx)
-    allcyy = np.array(allcyy)
-    allcxy = np.array(allcxy)
+        xmn = np.median(X)
+        dx = (np.max(X) - np.min(X)) / 2.
+        # Rescale xx in [-1,1]
+        xx = (X - xmn) / dx
+        print('xx', xx)
+        A = np.zeros((len(xx),3))
+        A[:,0] = 1.
+        A[:,1] = xx
+        A[:,2] = xx**2
+        wt = 1. / Ysig
+        A *= wt[:,np.newaxis]
+        b = Ymn * wt
+        R = np.linalg.lstsq(A, b)
+        s = R[0]
+        print('Least-squares solution:', s)
 
-    plt.clf()
-    Y = allcxx
-    #yl,yh = np.percentile(Y, [5, 95])
-    plt.plot(allfocus, Y, 'b.', alpha=0.25)
-    #plt.ylim(yl,yh)
-    plt.ylim(0, 16)
-    plt.xlabel('Focus shift (um)')
-    plt.ylabel('PSF CXX')
-    ps.savefig()
-
-    plt.clf()
-    Y = allcyy
-    #yl,yh = np.percentile(Y, [5, 95])
-    plt.plot(allfocus, Y, 'b.', alpha=0.25)
-    #plt.ylim(yl,yh)
-    plt.ylim(0, 16)
-    plt.xlabel('Focus shift (um)')
-    plt.ylabel('PSF CYY')
-    ps.savefig()
+        ax = plt.axis()
+        xx = np.linspace(ax[0], ax[1], 500)
+        rx = (xx - xmn)/dx
+        plt.plot(xx, s[0] + rx*s[1] + rx**2*s[2], 'b-', alpha=0.5)
+        plt.axis(ax)
+        plt.ylim(0, 16)
+        plt.xlabel('Focus shift (um)')
+        plt.ylabel(name)
+        ps.savefig()
 
     plt.clf()
     Y = allcxy
