@@ -478,14 +478,9 @@ class RawMeasurer(object):
         radius2 = 3. / pixsc
         I,J,dx,dy = self.match_ps1_stars(px, py, fullx+shiftx, fully+shifty,
                                          radius2, stars)
-        # I,J,d = match_xy(px, py, fullx+shiftx, fully+shifty, radius2)
         print(len(J), 'matches to PS1 with small radius', 3, 'arcsec')
-        
-        #dx = px[I] - (fullx[J] + shiftx)
-        #dy = py[I] - (fully[J] + shifty)
         shiftx2 = np.median(dx)
         shifty2 = np.median(dy)
-
         #print('Stage-1 shift', shiftx, shifty)
         #print('Stage-2 shift', shiftx2, shifty2)
         sx = shiftx + shiftx2

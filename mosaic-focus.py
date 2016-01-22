@@ -33,14 +33,6 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
         return f0 + step * np.arange(nsteps)
     
     def detection_map(self, img, sig1, psfsig, ps):
-        #print('Focus shifts:', shifts)
-        # if ps is not None:
-        #     mn,mx = np.percentile(img.ravel(), [25,98])
-        #     kwa = dict(vmin=mn, vmax=mx)
-        #     plt.clf()
-        #     dimshow(img, **kwa)
-        #     ps.savefig()
-            
         # Compute detection map
         psfnorm = 1./(2. * np.sqrt(np.pi) * psfsig)
         detsn = gaussian_filter(img / sig1, psfsig) / psfnorm
@@ -66,12 +58,6 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
             plt.colorbar()
             ps.savefig()
 
-            # plt.clf()
-            # plt.hist(minimg.ravel(), range=(-10,30), bins=100)
-            # plt.title('Min image')
-            # ps.savefig()
-
-            
         detsn = minimg
         # zero out the edges -- larger margin here?
         detsn[0 ,:] = 0
@@ -82,11 +68,20 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
 
     def trim_edges(self, img):
         # Trim off some edge pixels.
-        # In the focus images, the bottom ~300 pixels are funky.
         trim = self.edge_trim
-        bottom = 300
-        cimg = img[bottom:-trim, trim:-trim]
-        return cimg, trim, bottom
+
+        # In the focus images, the bottom ~300 pixels are funky when shift<0
+        # Top 300 pixels when shift>0
+        hdr = self.hdr
+        steppix = hdr['FOCSHIFT']
+        if steppix < 0:
+            bottom = 300
+            cimg = img[bottom:-trim, trim:-trim]
+            return cimg, trim, bottom
+        else:
+            top = 300
+            cimg = img[trim:-top, trim:-trim]
+            return cimg, trim, trim
 
     def run(self, ps=None):
         meas = super(Mosaic3FocusMeas, self).run(ps=ps, focus=True)
@@ -102,27 +97,15 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
         band=meas['band']
         apflux = meas['apflux']
         
-        (mx2 ,my2 ,mxy ,mtheta,ma,mb,mell) = meas['moments' ]
-        (wmx2,wmy2,wmxy,wtheta,wa,wb,well) = meas['wmoments']
+        # (mx2 ,my2 ,mxy ,mtheta,ma,mb,mell) = meas['moments' ]
+        # (wmx2,wmy2,wmxy,wtheta,wa,wb,well) = meas['wmoments']
         
         radius2 = 3. / self.pixscale
         I,J,d = match_xy(px, py, fx, fy, radius2)
 
+        # Choose the brightest PS1 stars not near an edge
         ps1band = ps1cat.ps1band[band]
         ps1mag = stars.median[I, ps1band]
-        
-        # if ps is not None:
-        #     kwa = dict(vmin=-3*sig1, vmax=50*sig1, cmap='gray')
-        #     plt.clf()
-        #     dimshow(img, **kwa)
-        #     ax = plt.axis()
-        #     plt.plot(px, py, 'o', mec='m', mfc='none', ms=6)
-        #     plt.axis(ax)
-        #     plt.title('All PS1 stars')
-        #     plt.colorbar()
-        #     ps.savefig()
-
-        # Choose the brightest PS1 stars not near an edge
         hdr = self.hdr
         shifts = self.get_focus_shifts(hdr)
         S = 20
@@ -133,7 +116,7 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
                                       miny  < S, maxy +S >= H])
         K = np.argsort(ps1mag + 1000*edge)
 
-        nstars = 10
+        nstars = min(10, len(K))
         plt.clf()
         plt.subplots_adjust(hspace=0, wspace=0)
         sp = 1
@@ -153,41 +136,13 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
         plt.suptitle('Focus sweep stars')
         ps.savefig()
 
-        # We no longer detect & measure each of the shifted sources,
-        # so this doesn't work.
-        # 
-        # xl = min(shifts) - 0.5 * np.abs(steppix)
-        # xh = max(shifts) + 0.5 * np.abs(steppix)
-        # Jx = [np.random.normal(size=len(Ji)) *(0.1 * np.abs(steppix))
-        # for Ji in JJ]
-        # for YY,TT in [([mx2, my2, mxy], ['mx2', 'my2', 'mxy']),
-        #               ([wmx2,wmy2,wmxy],['wx2', 'wy2', 'wxy']),
-        #               ([ma,mb, mell,mtheta],['ma', 'mb', 'mell', 'mtheta']),
-        #               ([wa,wb, well,wtheta],['wa', 'wb', 'well', 'wtheta']),
-        #               ]:
-        #     plt.clf()
-        #     for i,(Y,name) in enumerate(zip(YY,TT)):
-        #         plt.subplot(len(YY),1,1+i)
-        #         for Ji,jx,shifty in zip(JJ, Jx, shifts):
-        #             plt.plot(shifty+jx, Y[Ji], 'b.', alpha=0.25)
-        #             # HACK
-        #             if not 'theta' in name:
-        #                 plt.plot(shifty, np.median(Y[Ji]), 'ro')
-        #         plt.ylim(*np.percentile(np.hstack([Y[Ji] for Ji in JJ]), [5,95]))
-        #         plt.ylabel(name)
-        #         plt.xlim(xl,xh)
-        #         plt.suptitle('Focus sweep measurements')
-        #     ps.savefig()
-
         meas.update(I=I, J=J, K=K)
 
         shifts = self.get_focus_shifts(hdr)
         focus = self.get_focus_values(hdr)
     
         allfocus = []
-        #allshifts = []
         allcxx,allcyy,allcxy = [],[],[]
-        #nstars = 40
         nstars = 21
         for ik,k in enumerate(K[:nstars]):
             j = J[k]
@@ -202,14 +157,12 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
                 p = self.fit_general_gaussian(img, sig1, xi, yi, fluxi,
                                               ps=ps if ik ==0 else None)
                 #print('PSF variance:', p)
-                #allshifts.append(shifty)
                 allfocus.append(foc)
                 allcxx.append(p[0])
                 allcyy.append(p[1])
                 allcxy.append(p[2])
     
         allfocus  = np.array(allfocus)
-        #allshifts = np.array(allshifts)
         allcxx = np.array(allcxx)
         allcyy = np.array(allcyy)
         allcxy = np.array(allcxy)
@@ -228,9 +181,6 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
             for i in range(len(X)):
                 J = np.flatnonzero(I == i)
                 yi = Y[J]
-                #y1,ymn,y2 = np.percentile(yi, [25,50,75])
-                # 2 * 0.6745 = inter-quartile range for a Gaussian
-                #ysig = (y1 - y2) / (2. * 0.6745)
                 y1,ymn,y2 = np.percentile(yi, [16,50,84])
                 ysig = (y1 - y2) / 2
                 Ymn [i] = ymn
@@ -242,7 +192,6 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
             dx = (np.max(X) - np.min(X)) / 2.
             # Rescale xx in [-1,1]
             xx = (X - xmn) / dx
-            #print('xx', xx)
             A = np.zeros((len(xx),3))
             A[:,0] = 1.
             A[:,1] = xx
@@ -252,8 +201,7 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
             b = Ymn * wt
             R = np.linalg.lstsq(A, b)
             s = R[0]
-            print('Least-squares quadratic:', s)
-    
+            #print('Least-squares quadratic:', s)
             ax = plt.axis()
             xx = np.linspace(ax[0], ax[1], 500)
             rx = (xx - xmn)/dx
@@ -275,9 +223,7 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
         
         plt.clf()
         Y = allcxy
-        #yl,yh = np.percentile(Y, [5, 95])
         plt.plot(allfocus, Y, 'b.', alpha=0.25)
-        #plt.ylim(yl,yh)
         plt.ylim(-2,2)
         plt.xlabel('Focus shift (um)')
         plt.ylabel('PSF CXY')
