@@ -150,8 +150,8 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
                 x = fx[j]
                 y = fy[j] + shifty
                 dimshow(img[y-S:y+S+1, x-S:x+S+1], ticks=False, **kwa)
-                if shifty == 0.:
-                    print('Plotting focus sweep star at', x,y)
+                #if shifty == 0.:
+                #    print('Plotting focus sweep star at', x,y)
         plt.suptitle('Focus sweep stars')
         ps.savefig()
 
@@ -189,13 +189,14 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
         allfocus = []
         #allshifts = []
         allcxx,allcyy,allcxy = [],[],[]
-        nstars = 40
+        #nstars = 40
+        nstars = 21
         for ik,k in enumerate(K[:nstars]):
             j = J[k]
             xi = fx[j]
             yi = fy[j]
             fluxi = apflux[j]
-            print('Fitting star at', xi,yi)
+            #print('Fitting star at', xi,yi)
             for shifty,foc in zip(shifts, focus):
                 j = J[k]
                 xi = fx[j]
@@ -218,7 +219,76 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
         meas.update(shifts=shifts, focus=focus,
                     allfocus=allfocus, allcxx=allcxx, allcyy=allcyy,
                     allcxy=allcxy)
+
+        FF = []
+
+        for Y,name in [(allcxx, 'PSF CXX'), (allcyy, 'PSF CYY')]:
+            plt.clf()
     
+            X,I = np.unique(allfocus, return_inverse=True)
+            Ymn,Ysig = np.zeros(len(X)), np.zeros(len(X))
+            for i in range(len(X)):
+                J = np.flatnonzero(I == i)
+                yi = Y[J]
+                #y1,ymn,y2 = np.percentile(yi, [25,50,75])
+                # 2 * 0.6745 = inter-quartile range for a Gaussian
+                #ysig = (y1 - y2) / (2. * 0.6745)
+                y1,ymn,y2 = np.percentile(yi, [16,50,84])
+                ysig = (y1 - y2) / 2
+                Ymn [i] = ymn
+                Ysig[i] = ysig
+            plt.plot(allfocus, Y, 'b.', alpha=0.25)
+            plt.errorbar(X, Ymn, yerr=Ysig, fmt='o', color='g')
+    
+            xmn = np.median(X)
+            dx = (np.max(X) - np.min(X)) / 2.
+            # Rescale xx in [-1,1]
+            xx = (X - xmn) / dx
+            #print('xx', xx)
+            A = np.zeros((len(xx),3))
+            A[:,0] = 1.
+            A[:,1] = xx
+            A[:,2] = xx**2
+            wt = 1. / Ysig
+            A *= wt[:,np.newaxis]
+            b = Ymn * wt
+            R = np.linalg.lstsq(A, b)
+            s = R[0]
+            print('Least-squares quadratic:', s)
+    
+            ax = plt.axis()
+            xx = np.linspace(ax[0], ax[1], 500)
+            rx = (xx - xmn)/dx
+            plt.plot(xx, s[0] + rx*s[1] + rx**2*s[2], 'b-', alpha=0.5)
+            plt.axis(ax)
+            plt.ylim(0, 16)
+            plt.xlabel('Focus shift (um)')
+            plt.ylabel(name)
+            fbest = -s[1] / (2. * s[2])
+            fbest = fbest * dx + xmn
+            print('Focus position from %s: %.1f' % (name, fbest))
+            plt.title('Focus: %.1f' % fbest)
+            plt.axvline(fbest, color='b')
+            ps.savefig()
+            FF.append(fbest)
+
+        fmean = np.mean(FF)
+        print('Mean focus: %.1f' % fmean)
+        
+        plt.clf()
+        Y = allcxy
+        #yl,yh = np.percentile(Y, [5, 95])
+        plt.plot(allfocus, Y, 'b.', alpha=0.25)
+        #plt.ylim(yl,yh)
+        plt.ylim(-2,2)
+        plt.xlabel('Focus shift (um)')
+        plt.ylabel('PSF CXY')
+        plt.axhline(0, color='k', alpha=0.25)
+        for f in FF:
+            plt.axvline(f, color='b', alpha=0.5)
+        plt.axvline(fmean, color='b')
+        ps.savefig()
+        
         return meas
             
 
@@ -280,7 +350,7 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
 
         # Now switch to a non-isotropic PSF
         s = psf.sigmas[0]
-        print('Isotropic fit sigma', s)
+        #print('Isotropic fit sigma', s)
         s = np.clip(s, 1., 5.)
         tim.psf = tractor.GaussianMixturePSF(1., 0., 0., s**2, s**2, 0.)
         
@@ -332,92 +402,24 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
         
         
 if __name__ == '__main__':
+    import sys
     from astrometry.util.file import *
+    import optparse
+
+    parser = optparse.OptionParser(usage='%prog <mosaic image file.fits, eg mos3_62914.fits.gz>')
+    parser.add_option('--ext', help='Extension to read: default %default',
+                      default="im4")
+    parser.add_option('--plot-prefix', default='focus',
+                      help='Filename prefix for plots')
+    opt,args = parser.parse_args()
+
+    if len(args) == 0:
+        parser.print_help()
+        sys.exit(-1)
     
-    ps = PlotSequence('focus')
+    ps = PlotSequence(opt.plot_prefix)
 
-    meas = Mosaic3FocusMeas('mos3_62914.fits.gz', 'im4')
-
-    #R = meas.run(ps=ps)
-    #import sys
-    #sys.exit(0)
-    
-    pfn = 'meas.pickle'
-    if os.path.exists(pfn):
-        print('Reading', pfn)
-        R = unpickle_from_file(pfn)
-    else:
-        R = meas.run(ps=ps)
-        pickle_to_file(R, pfn)
-        print('Wrote', pfn)
-
-    # K = R['K']
-    # J = R['J']
-    # fx = R['fx']
-    # fy = R['fy']
-    # img = R['img']
-    # sig1 = R['sig1']
-    # apflux = R['apflux']
-    # hdr = R['hdr']
-
-    allfocus = R['allfocus']
-    allcxx   = R['allcxx']
-    allcxy   = R['allcxy']
-    allcyy   = R['allcyy']
-    
-    ps = PlotSequence('focus2')
-
-    for Y,name in [(allcxx, 'PSF CXX'), (allcyy, 'PSF CYY')]:
-        plt.clf()
-
-        X,I = np.unique(allfocus, return_inverse=True)
-        Ymn,Ysig = np.zeros(len(X)), np.zeros(len(X))
-        for i in range(len(X)):
-            J = np.flatnonzero(I == i)
-            yi = Y[J]
-            #y1,ymn,y2 = np.percentile(yi, [25,50,75])
-            # 2 * 0.6745 = inter-quartile range for a Gaussian
-            #ysig = (y1 - y2) / (2. * 0.6745)
-            y1,ymn,y2 = np.percentile(yi, [16,50,84])
-            ysig = (y1 - y2) / 2
-            Ymn [i] = ymn
-            Ysig[i] = ysig
-        plt.plot(allfocus, Y, 'b.', alpha=0.25)
-        plt.errorbar(X, Ymn, yerr=Ysig, fmt='o', color='g')
-
-        xmn = np.median(X)
-        dx = (np.max(X) - np.min(X)) / 2.
-        # Rescale xx in [-1,1]
-        xx = (X - xmn) / dx
-        print('xx', xx)
-        A = np.zeros((len(xx),3))
-        A[:,0] = 1.
-        A[:,1] = xx
-        A[:,2] = xx**2
-        wt = 1. / Ysig
-        A *= wt[:,np.newaxis]
-        b = Ymn * wt
-        R = np.linalg.lstsq(A, b)
-        s = R[0]
-        print('Least-squares solution:', s)
-
-        ax = plt.axis()
-        xx = np.linspace(ax[0], ax[1], 500)
-        rx = (xx - xmn)/dx
-        plt.plot(xx, s[0] + rx*s[1] + rx**2*s[2], 'b-', alpha=0.5)
-        plt.axis(ax)
-        plt.ylim(0, 16)
-        plt.xlabel('Focus shift (um)')
-        plt.ylabel(name)
-        ps.savefig()
-
-    plt.clf()
-    Y = allcxy
-    #yl,yh = np.percentile(Y, [5, 95])
-    plt.plot(allfocus, Y, 'b.', alpha=0.25)
-    #plt.ylim(yl,yh)
-    plt.ylim(-2,2)
-    plt.xlabel('Focus shift (um)')
-    plt.ylabel('PSF CXY')
-    ps.savefig()
-    
+    for fn in args:
+        meas = Mosaic3FocusMeas(fn, opt.ext)
+        meas.run(ps)
+        

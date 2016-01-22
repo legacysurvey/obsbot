@@ -360,7 +360,7 @@ class RawMeasurer(object):
             
         # Cut down to stars whose centroids are within 1 pixel of their peaks...
         keep = (np.hypot(fx - xx, fy - yy) < 1)
-        print(sum(keep), 'of', len(keep), 'stars have centroids within 1 of peaks')
+        #print(sum(keep), 'of', len(keep), 'stars have centroids within 1 of peaks')
 
         #print('mean dx', np.mean(fx-xx), 'dy', np.mean(fy-yy), 'pixels')
         #assert(float(sum(keep)) / len(keep) > 0.9)
@@ -479,8 +479,8 @@ class RawMeasurer(object):
         shiftx2 = np.median(dx)
         shifty2 = np.median(dy)
 
-        print('Stage-1 shift', shiftx, shifty)
-        print('Stage-2 shift', shiftx2, shifty2)
+        #print('Stage-1 shift', shiftx, shifty)
+        #print('Stage-2 shift', shiftx2, shifty2)
         sx = shiftx + shiftx2
         sy = shifty + shifty2
 
