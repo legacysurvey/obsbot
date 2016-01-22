@@ -116,7 +116,9 @@ class RawMeasurer(object):
         return band
 
     def match_ps1_stars(self, px, py, fullx, fully, radius, stars):
+        #print('Matching', len(px), 'PS1 and', len(fullx), 'detected stars with radius', radius)
         I,J,d = match_xy(px, py, fullx, fully, radius)
+        #print(len(I), 'matches')
         dx = px[I] - fullx[J]
         dy = py[I] - fully[J]
         return I,J,dx,dy
@@ -148,26 +150,27 @@ class RawMeasurer(object):
         img,hdr = self.read_raw(F, ext)
         self.primhdr = primhdr
         self.hdr = hdr
-        
+
+        # pre sky-sub
         mn,mx = np.percentile(img.ravel(), [25,98])
-        kwa = dict(vmin=mn, vmax=mx)
+        self.imgkwa = dict(vmin=mn, vmax=mx, cmap='gray')
         
         if self.debug and ps is not None:
             plt.clf()
-            dimshow(img, **kwa)
+            dimshow(img, **self.imgkwa)
             plt.title('Raw image')
             ps.savefig()
     
             M = 200
             plt.clf()
             plt.subplot(2,2,1)
-            dimshow(img[-M:, :M], ticks=False, **kwa)
+            dimshow(img[-M:, :M], ticks=False, **self.imgkwa)
             plt.subplot(2,2,2)
-            dimshow(img[-M:, -M:], ticks=False, **kwa)
+            dimshow(img[-M:, -M:], ticks=False, **self.imgkwa)
             plt.subplot(2,2,3)
-            dimshow(img[:M, :M], ticks=False, **kwa)
+            dimshow(img[:M, :M], ticks=False, **self.imgkwa)
             plt.subplot(2,2,4)
-            dimshow(img[:M, -M:], ticks=False, **kwa)
+            dimshow(img[:M, -M:], ticks=False, **self.imgkwa)
             plt.suptitle('Raw image corners')
             ps.savefig()
 
@@ -177,20 +180,20 @@ class RawMeasurer(object):
 
         if self.debug and ps is not None:
             plt.clf()
-            dimshow(img, **kwa)
+            dimshow(img, **self.imgkwa)
             plt.title('Trimmed image')
             ps.savefig()
     
             M = 200
             plt.clf()
             plt.subplot(2,2,1)
-            dimshow(img[-M:, :M], ticks=False, **kwa)
+            dimshow(img[-M:, :M], ticks=False, **self.imgkwa)
             plt.subplot(2,2,2)
-            dimshow(img[-M:, -M:], ticks=False, **kwa)
+            dimshow(img[-M:, -M:], ticks=False, **self.imgkwa)
             plt.subplot(2,2,3)
-            dimshow(img[:M, :M], ticks=False, **kwa)
+            dimshow(img[:M, :M], ticks=False, **self.imgkwa)
             plt.subplot(2,2,4)
-            dimshow(img[:M, -M:], ticks=False, **kwa)
+            dimshow(img[:M, -M:], ticks=False, **self.imgkwa)
             plt.suptitle('Trimmed corners')
             ps.savefig()
             
@@ -212,12 +215,13 @@ class RawMeasurer(object):
 
         self.remove_sky_gradients(img)
 
+        # Post sky-sub
         mn,mx = np.percentile(img.ravel(), [25,98])
-        kwa = dict(vmin=mn, vmax=mx)
+        self.imgkwa = dict(vmin=mn, vmax=mx, cmap='gray')
         
         if ps is not None:
             plt.clf()
-            dimshow(img, **kwa)
+            dimshow(img, **self.imgkwa)
             plt.title('Sky-sub image: %s-%s' % (os.path.basename(fn).replace('.fits','').replace('.fz',''), ext))
             plt.colorbar()
             ps.savefig()
@@ -228,6 +232,10 @@ class RawMeasurer(object):
         detsn = self.detection_map(img, sig1, psfsig, ps)
     
         slices = self.detect_sources(detsn, self.det_thresh, ps)
+        print(len(slices), 'sources detected')
+        if len(slices) < 20:
+            slices = self.detect_sources(detsn, 10., ps)
+            print(len(slices), 'sources detected')
         
         xx,yy = [],[]
         fx,fy = [],[]
@@ -302,71 +310,67 @@ class RawMeasurer(object):
         yy = np.array(yy)
             
         if ps is not None:
-            # plt.clf()
-            # dimshow(detsn, vmin=-3, vmax=50, cmap='hot')
-            # ax = plt.axis()
-            # plt.plot(xx, yy, 'go', mec='g', mfc='none', ms=10)
-            # plt.colorbar()
-            # plt.title('Detected sources')
-            # plt.axis(ax)
-            # ps.savefig()
     
             plt.clf()
-            dimshow(detsn, vmin=-3, vmax=50, cmap='hot')
+            dimshow(detsn, vmin=-3, vmax=50, cmap='gray')
             ax = plt.axis()
             plt.plot(fx, fy, 'go', mec='g', mfc='none', ms=10)
             plt.colorbar()
-            plt.title('Detected sources (2)')
+            plt.title('Detected sources')
             plt.axis(ax)
             ps.savefig()
 
-        if ps is not None:
-            plt.clf()
-            plt.subplot(2,1,1)
-            mx = np.percentile(np.append(mx2,my2), 99)
-            ha = dict(histtype='step', range=(0,mx), bins=50)
-            plt.hist(mx2, color='b', label='mx2', **ha)
-            plt.hist(my2, color='r', label='my2', **ha)
-            plt.hist(mxy, color='g', label='mxy', **ha)
-            plt.legend()
-            plt.xlim(0,mx)
-            plt.subplot(2,1,2)
-            mx = np.percentile(np.append(wmx2,wmy2), 99)
-            ha = dict(histtype='step', range=(0,mx), bins=50, lw=3, alpha=0.3)
-            plt.hist(wmx2, color='b', label='wx2', **ha)
-            plt.hist(wmy2, color='r', label='wy2', **ha)
-            plt.hist(wmxy, color='g', label='wxy', **ha)
-            plt.legend()
-            plt.xlim(0,mx)
-            plt.suptitle('Source moments')
-            ps.savefig()
-
-            #mx = np.percentile(np.abs(np.append(mxy,wmxy)), 99)
-            plt.clf()
-            plt.subplot(2,1,1)
-            ha = dict(histtype='step', range=(0,1), bins=50)
-            plt.hist(ell, color='g', label='ell', **ha)
-            plt.hist(well, color='g', lw=3, alpha=0.3, label='windowed ell', **ha)
-            plt.legend()
-            plt.subplot(2,1,2)
-            ha = dict(histtype='step', range=(-90,90), bins=50)
-            plt.hist(theta, color='g', label='theta', **ha)
-            plt.hist(wtheta, color='g', lw=3, alpha=0.3,
-                     label='windowed theta', **ha)
-            plt.xlim(-90,90)
-            plt.legend()
-            plt.suptitle('Source ellipticities & angles')
-            ps.savefig()
+            # show centroids too
+            # plt.plot(xx, yy, 'go', mec='g', mfc='none', ms=8)
+            # plt.axis(ax)
+            # ps.savefig()
+            
+        # if ps is not None:
+        #     plt.clf()
+        #     plt.subplot(2,1,1)
+        #     mx = np.percentile(np.append(mx2,my2), 99)
+        #     ha = dict(histtype='step', range=(0,mx), bins=50)
+        #     plt.hist(mx2, color='b', label='mx2', **ha)
+        #     plt.hist(my2, color='r', label='my2', **ha)
+        #     plt.hist(mxy, color='g', label='mxy', **ha)
+        #     plt.legend()
+        #     plt.xlim(0,mx)
+        #     plt.subplot(2,1,2)
+        #     mx = np.percentile(np.append(wmx2,wmy2), 99)
+        #     ha = dict(histtype='step', range=(0,mx), bins=50, lw=3, alpha=0.3)
+        #     plt.hist(wmx2, color='b', label='wx2', **ha)
+        #     plt.hist(wmy2, color='r', label='wy2', **ha)
+        #     plt.hist(wmxy, color='g', label='wxy', **ha)
+        #     plt.legend()
+        #     plt.xlim(0,mx)
+        #     plt.suptitle('Source moments')
+        #     ps.savefig()
+        # 
+        #     #mx = np.percentile(np.abs(np.append(mxy,wmxy)), 99)
+        #     plt.clf()
+        #     plt.subplot(2,1,1)
+        #     ha = dict(histtype='step', range=(0,1), bins=50)
+        #     plt.hist(ell, color='g', label='ell', **ha)
+        #     plt.hist(well, color='g', lw=3, alpha=0.3, label='windowed ell', **ha)
+        #     plt.legend()
+        #     plt.subplot(2,1,2)
+        #     ha = dict(histtype='step', range=(-90,90), bins=50)
+        #     plt.hist(theta, color='g', label='theta', **ha)
+        #     plt.hist(wtheta, color='g', lw=3, alpha=0.3,
+        #              label='windowed theta', **ha)
+        #     plt.xlim(-90,90)
+        #     plt.legend()
+        #     plt.suptitle('Source ellipticities & angles')
+        #     ps.savefig()
             
         # Cut down to stars whose centroids are within 1 pixel of their peaks...
-        keep = (np.hypot(fx - xx, fy - yy) < 1)
-        #print(sum(keep), 'of', len(keep), 'stars have centroids within 1 of peaks')
-
+        #keep = (np.hypot(fx - xx, fy - yy) < 2)
+        #print(sum(keep), 'of', len(keep), 'stars have centroids within 2 of peaks')
         #print('mean dx', np.mean(fx-xx), 'dy', np.mean(fy-yy), 'pixels')
         #assert(float(sum(keep)) / len(keep) > 0.9)
-        fx = fx[keep]
-        fy = fy[keep]
-    
+        #fx = fx[keep]
+        #fy = fy[keep]
+
         apxy = np.vstack((fx, fy)).T
         ap = []
         aprad_pix = self.aprad / pixsc
@@ -409,29 +413,30 @@ class RawMeasurer(object):
         stars = pscat.get_stars()
         #print('Got PS1 stars:', len(stars))
     
-        stars.gicolor = stars.median[:,0] - stars.median[:,2]
-        keep = (stars.gicolor > 0.4) * (stars.gicolor < 2.7)
-        stars.cut(keep)
-        if len(stars) == 0:
-            print('No overlap or too few stars in PS1')
-            return None
-    
+        # we add the color term later
+        ps1band = ps1cat.ps1band[band]
+        stars.mag = stars.median[:, ps1band]
+        
         ok,px,py = wcs.radec2pixelxy(stars.ra, stars.dec)
         px -= 1
         py -= 1
         
         if ps is not None:
-            kwa = dict(vmin=-3*sig1, vmax=50*sig1, cmap='gray')
-            plt.clf()
-            dimshow(img, **kwa)
+            #kwa = dict(vmin=-3*sig1, vmax=50*sig1, cmap='gray')
+            # Add to the 'detected sources' plot
+            # mn,mx = np.percentile(img.ravel(), [50,99])
+            # kwa = dict(vmin=mn, vmax=mx, cmap='gray')
+            # plt.clf()
+            # dimshow(img, **kwa)
             ax = plt.axis()
-            plt.plot(fx, fy, 'go', mec='g', mfc='none', ms=10)
-            plt.plot(px, py, 'm.')
+            #plt.plot(fx, fy, 'go', mec='g', mfc='none', ms=10)
+            K = np.argsort(stars.mag)
+            plt.plot(px[K[:10]]-trim_x0, py[K[:10]]-trim_y0, 'o', mec='m', mfc='none',ms=12,mew=2)
+            plt.plot(px[K[10:]]-trim_x0, py[K[10:]]-trim_y0, 'o', mec='m', mfc='none', ms=8)
             plt.axis(ax)
             plt.title('PS1 stars')
-            plt.colorbar()
+            #plt.colorbar()
             ps.savefig()
-
 
         # we trimmed the image before running detection; re-add that margin
         fullx = fx + trim_x0
@@ -441,13 +446,15 @@ class RawMeasurer(object):
         radius = self.maxshift / pixsc
 
         I,J,dx,dy = self.match_ps1_stars(px, py, fullx, fully, radius, stars)
-        #I,J,d = match_xy(px, py, fullx, fully, radius)
-        #dx = px[I] - fullx[J]
-        #dy = py[I] - fully[J]
-        #print(len(I), 'spatial matches with large radius', maxshift, 'arcsec')
-    
-        histo,xe,ye = np.histogram2d(dx, dy, bins=2*int(np.ceil(radius)),
+        print(len(I), 'spatial matches with large radius', self.maxshift,
+              'arcsec,', radius, 'pix')
+
+        bins = 2*int(np.ceil(radius))
+        #print('Histogramming with', bins, 'bins')
+        histo,xe,ye = np.histogram2d(dx, dy, bins=bins,
                                      range=((-radius,radius),(-radius,radius)))
+        # smooth histogram before finding peak -- fuzzy matching
+        histo = gaussian_filter(histo, 1.)
         histo = histo.T
         mx = np.argmax(histo)
         my,mx = np.unravel_index(mx, histo.shape)
@@ -498,17 +505,45 @@ class RawMeasurer(object):
             ps.savefig()
 
         if ps is not None:
-            kwa = dict(vmin=-3*sig1, vmax=50*sig1, cmap='gray')
+            mn,mx = np.percentile(img.ravel(), [50,99])
+            kwa2 = dict(vmin=mn, vmax=mx, cmap='gray')
             plt.clf()
-            dimshow(img, **kwa)
+            dimshow(img, **kwa2)
             ax = plt.axis()
-            plt.plot(fx[J], fy[J], 'go', mec='g', mfc='none', ms=10)
-            plt.plot(px[I]-sx-trim_x0, py[I]-sy-trim_y0, 'm+', ms=10)
+            plt.plot(fx[J], fy[J], 'go', mec='g', mfc='none', ms=10, mew=2)
+            plt.plot(px[I]-sx-trim_x0, py[I]-sy-trim_y0, 'm+', ms=10, mew=2)
             plt.axis(ax)
             plt.title('Matched PS1 stars')
             plt.colorbar()
             ps.savefig()
 
+            plt.clf()
+            dimshow(img, **kwa2)
+            ax = plt.axis()
+            plt.plot(fx[J], fy[J], 'go', mec='g', mfc='none', ms=10, mew=2)
+            K = np.argsort(stars.mag)
+            plt.plot(px[K[:10]]-sx-trim_x0, py[K[:10]]-sy-trim_y0, 'o', mec='m', mfc='none',ms=12,mew=2)
+            plt.plot(px[K[10:]]-sx-trim_x0, py[K[10:]]-sy-trim_y0, 'o', mec='m', mfc='none', ms=8,mew=2)
+            plt.axis(ax)
+            plt.title('All PS1 stars')
+            plt.colorbar()
+            ps.savefig()
+            
+        # Now cut to just *stars* with good colors
+        stars.gicolor = stars.median[:,0] - stars.median[:,2]
+        keep = (stars.gicolor > 0.4) * (stars.gicolor < 2.7)
+        stars.cut(keep)
+        if len(stars) == 0:
+            print('No overlap or too few stars in PS1')
+            return None
+        px = px[keep]
+        py = py[keep]
+        # Re-match
+        I,J,dx,dy = self.match_ps1_stars(px, py, fullx+sx, fully+sy,
+                                         radius2, stars)
+        print('Cut to', len(stars), 'PS1 stars with good colors; matched', len(I))
+
+            
         if focus:
             return dict(img=img, hdr=hdr, primhdr=primhdr,
                         fx=fx, fy=fy, px=px-trim_x0-sx, py=py-trim_y0-sy,
@@ -522,9 +557,9 @@ class RawMeasurer(object):
             
         # Compute photometric offset compared to PS1
         # as the PS1 minus observed mags
-        colorterm = self.colorterm_ps1_to_observed(stars.median[I,:], band)
-        ps1band = ps1cat.ps1band[band]
-        ps1mag = stars.median[I, ps1band] + colorterm
+        colorterm = self.colorterm_ps1_to_observed(stars.mag, band)
+        stars.mag += colorterm
+        ps1mag = stars.mag[I]
         
         if False and ps is not None:
             plt.clf()
@@ -651,13 +686,13 @@ class RawMeasurer(object):
                 plt.clf()
                 plt.subplot(2,2,1)
                 plt.title('Image')
-                dimshow(pix, **kwa)
+                dimshow(pix, **self.imgkwa)
                 plt.subplot(2,2,2)
                 plt.title('Initial model')
-                dimshow(mod0, **kwa)
+                dimshow(mod0, **self.imgkwa)
                 plt.subplot(2,2,3)
                 plt.title('Final model')
-                dimshow(mod1, **kwa)
+                dimshow(mod1, **self.imgkwa)
                 plt.subplot(2,2,4)
                 plt.title('Final chi')
                 dimshow(chi1, vmin=-10, vmax=10)

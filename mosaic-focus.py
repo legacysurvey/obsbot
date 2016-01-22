@@ -33,15 +33,13 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
         return f0 + step * np.arange(nsteps)
     
     def detection_map(self, img, sig1, psfsig, ps):
-        shifts = self.get_focus_shifts(self.hdr)
-        print('Focus shifts:', shifts)
-
-        if ps is not None:
-            mn,mx = np.percentile(img.ravel(), [25,98])
-            kwa = dict(vmin=mn, vmax=mx)
-            plt.clf()
-            dimshow(img, **kwa)
-            ps.savefig()
+        #print('Focus shifts:', shifts)
+        # if ps is not None:
+        #     mn,mx = np.percentile(img.ravel(), [25,98])
+        #     kwa = dict(vmin=mn, vmax=mx)
+        #     plt.clf()
+        #     dimshow(img, **kwa)
+        #     ps.savefig()
             
         # Compute detection map
         psfnorm = 1./(2. * np.sqrt(np.pi) * psfsig)
@@ -49,6 +47,7 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
         
         # Take the *minimum* of the detmap and shifted versions of itself.
         minimg = detsn.copy()
+        shifts = self.get_focus_shifts(self.hdr)
         for dy in -shifts:
             if dy == 0:
                 continue
@@ -60,11 +59,19 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
                 minimg[dy:,:] = 0
 
         if ps is not None:
+            kwa = dict(vmin=-3, vmax=20, cmap='gray')
             plt.clf()
             dimshow(minimg, **kwa)
-            plt.title('Min image')
+            plt.title('Min image (detection S/N)')
+            plt.colorbar()
             ps.savefig()
 
+            # plt.clf()
+            # plt.hist(minimg.ravel(), range=(-10,30), bins=100)
+            # plt.title('Min image')
+            # ps.savefig()
+
+            
         detsn = minimg
         # zero out the edges -- larger margin here?
         detsn[0 ,:] = 0
@@ -101,30 +108,19 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
         radius2 = 3. / self.pixscale
         I,J,d = match_xy(px, py, fx, fy, radius2)
 
-        if ps is not None:
-            kwa = dict(vmin=-3*sig1, vmax=50*sig1, cmap='gray')
-
-            plt.clf()
-            dimshow(img, **kwa)
-            ax = plt.axis()
-            plt.plot(fx[J], fy[J], 'go', mec='g', mfc='none', ms=10)
-            plt.plot(px[I], py[I], 'm+', ms=10)
-            plt.axis(ax)
-            plt.title('Matched PS1 stars')
-            plt.colorbar()
-            ps.savefig()
-
-            plt.clf()
-            dimshow(img, **kwa)
-            ax = plt.axis()
-            plt.plot(px, py, 'o', mec='m', mfc='none', ms=6)
-            plt.axis(ax)
-            plt.title('All PS1 stars')
-            plt.colorbar()
-            ps.savefig()
-
         ps1band = ps1cat.ps1band[band]
         ps1mag = stars.median[I, ps1band]
+        
+        # if ps is not None:
+        #     kwa = dict(vmin=-3*sig1, vmax=50*sig1, cmap='gray')
+        #     plt.clf()
+        #     dimshow(img, **kwa)
+        #     ax = plt.axis()
+        #     plt.plot(px, py, 'o', mec='m', mfc='none', ms=6)
+        #     plt.axis(ax)
+        #     plt.title('All PS1 stars')
+        #     plt.colorbar()
+        #     ps.savefig()
 
         # Choose the brightest PS1 stars not near an edge
         hdr = self.hdr
@@ -141,6 +137,8 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
         plt.clf()
         plt.subplots_adjust(hspace=0, wspace=0)
         sp = 1
+        mn,mx = np.percentile(img.ravel(), [50,99])
+        kwa = dict(vmin=mn, vmax=mx, cmap='gray')
         for shifty in shifts:
             for k in K[:nstars]:
                 plt.subplot(len(shifts), nstars, sp)
