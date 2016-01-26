@@ -552,7 +552,7 @@ class RawMeasurer(object):
             
         # Compute photometric offset compared to PS1
         # as the PS1 minus observed mags
-        colorterm = self.colorterm_ps1_to_observed(stars.mag, band)
+        colorterm = self.colorterm_ps1_to_observed(stars.median, band)
         stars.mag += colorterm
         ps1mag = stars.mag[I]
         
@@ -614,7 +614,7 @@ class RawMeasurer(object):
         fwhms = []
         psf_r = 15
         for i,(xi,yi,fluxi) in enumerate(zip(fx[J],fy[J],apflux[J])):
-            print('Fitting source', i, 'of', len(J))
+            #print('Fitting source', i, 'of', len(J))
             ix = int(np.round(xi))
             iy = int(np.round(yi))
             xlo = max(0, ix-psf_r)
@@ -628,7 +628,7 @@ class RawMeasurer(object):
             ie = np.zeros_like(pix)
             ie[keep] = 1. / sig1
             #print('fitting source at', ix,iy)
-            print('number of active pixels:', np.sum(ie > 0), 'shape', ie.shape)
+            #print('number of active pixels:', np.sum(ie > 0), 'shape', ie.shape)
 
             psf = tractor.NCircularGaussianPSF([4.], [1.])
             tim = tractor.Image(data=pix, inverr=ie, psf=psf)

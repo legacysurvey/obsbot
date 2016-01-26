@@ -9,6 +9,7 @@ transparency, and advises whether & how to replan.
 from __future__ import print_function
 import sys
 import os
+import re
 
 try:
     from collections import OrderedDict
@@ -47,7 +48,7 @@ def db_to_fits(mm):
     for field in ['filename', 'extension', 'expnum', 'exptime', 'mjd_obs',
                   'airmass', 'racenter', 'deccenter', 'rabore', 'decbore',
                   'band', 'ebv', 'zeropoint', 'transparency', 'seeing',
-                  'sky', 'expfactor']:
+                  'sky', 'expfactor', 'camera']:
         g = getattr(mm[0], field)
         if isinstance(g, basestring):
             T.set(field, np.array([str(getattr(m, field)) for m in mm]))
@@ -251,6 +252,28 @@ def process_image(fn, ext, gvs, sfd, opt, obs):
     phdr = fitsio.read_header(fn)
     expnum = phdr.get('EXPNUM', 0)
 
+    obstype = phdr['OBSTYPE'].strip()
+    print('obstype:', obstype)
+    if obstype == 'zero':
+        print('Zero:', fn)
+        return None, None, expnum
+    elif obstype == 'focus':
+        print('Focus:', fn)
+        return None, None, expnum
+
+    if expnum == '':
+        print('No expnum in header')
+        # HACK -- Mosaic3 assume filename like mos3.64083.fits
+        basefn = os.path.basename(fn)
+        print('basefn', basefn)
+        m = re.match('mos3?\D*(\d*)\.fits.*', basefn)
+        if m is None:
+            return None, None, expnum
+        expnum = m.group(1)
+        print('expnum string guessed from filename:', expnum)
+        expnum = int(expnum, 10)
+        print('Parsed expnum', expnum)
+
     filt = phdr['FILTER']
     filt = filt.strip()
     filt = filt.split()[0]
@@ -259,6 +282,7 @@ def process_image(fn, ext, gvs, sfd, opt, obs):
         return None, None, expnum
 
     # Write QA plots to files named by the exposure number
+    print('Exposure number:', expnum)
     ps = PlotSequence('qa-%i' % expnum)
 
     #ps.printfn = False
@@ -566,7 +590,8 @@ def main():
             images = set(os.listdir(imagedir))
             newimgs = images - lastimages
             newimgs = list(newimgs)
-            newimgs = [fn for fn in newimgs if fn.endswith('.fits.fz')]
+            newimgs = [fn for fn in newimgs if
+                       fn.endswith('.fits.fz') or fn.endswith('.fits')]
             #print('Found new images:', newimgs)
             if len(newimgs) == 0:
                 continue
