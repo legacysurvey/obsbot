@@ -46,14 +46,17 @@ decam_nominal_cal = dict(
          0.06,),
     )
 
-### FIXME
-# zp, sky, kx
-mosaic_nominal_cal = decam_nominal_cal
-# dict(
-#     z = (26.484,
-#          18.46,
-#          0.06,),
-#     )
+mosaic_nominal_cal = dict(
+    g = (26.93,
+         22.04,
+         0.17),
+    r = (27.01,
+         20.91,
+         0.10),
+    z = (26.46,
+         18.46,
+         0.06,),
+)
 # Color terms
 ps1_to_mosaic = ps1_to_decam
 
