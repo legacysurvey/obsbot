@@ -12,26 +12,15 @@ import ephem
 from astrometry.util.plotutils import *
 from astrometry.util.fits import *
 
-from nightlystrategy import (
+from mosaicstrategy import (
     ExposureFactor, getParserAndGlobals, setupGlobals,
     GetAirmass, StartAndEndTimes, s_to_days, readTilesTable, GetNightlyStrategy,
     WriteJSON)
 from measure_raw import measure_raw_decam
 
-from RemoteClient import RemoteClient
+from jnox import *
 
-if False:
-    M = measure_raw_decam('DECam_00488199.fits.fz')
-    sys.exit(0)
-
-if False:
-    rc = RemoteClient()
-    pid = rc.execute('get_propid')
-    print('Got propid:', pid)
-
-ps = PlotSequence('raw')
-
-
+ps = PlotSequence('bot')
 
 parser,gvs = getParserAndGlobals()
 
@@ -73,6 +62,12 @@ if opt.plan is None:
 
     # Generate nightly strategy.
     tiles,survey_centers = readTilesTable(opt.tiles, gvs)
+
+    if 'G_DONE' not in survey_centers.keys():
+        survey_centers['G_DONE'] = survey_centers['Z_DONE']
+    if 'R_DONE' not in survey_centers.keys():
+        survey_centers['R_DONE'] = survey_centers['Z_DONE']
+
     plan = GetNightlyStrategy(obs, opt.date, opt.portion, survey_centers,
                               opt.passnumber, gvs)
     WriteJSON(plan, jsonfn)
@@ -81,6 +76,33 @@ else:
     jsonfn = opt.plan
     
 J = json.loads(open(jsonfn,'rb').read())
+
+# Use jnox to write one shell script per exposure named by OBJECT (tile) name,
+# plus one top-level script that runs them all.
+
+# FIXME
+scriptfn = jsonfn.replace('.json', '.sh')
+
+script = [jnox_preamble(scriptfn)]
+fns = []
+for i,j in enumerate(J):
+    obj = j['object']
+    fn = 'nocs-%s.sh' % obj
+    fns.append(fn)
+    f = open(fn, 'w')
+    f.write(jnox_cmds_for_json(j, i, len(J), finish_last=(i>0)))
+    f.close()
+    print('Wrote', fn)
+    script.append('. %s' % fn)
+
+script.append(jnox_readout() + '\n' +
+              jnox_end_exposure() + '\n')
+script = '\n'.join(script)
+
+f = open(scriptfn, 'w')
+f.write(script)
+f.close()
+print('Wrote', scriptfn)
 
 tiles = fits_table(opt.tiles)
 
@@ -95,7 +117,7 @@ for j in J:
         images = set(os.listdir(imagedir))
         newimgs = images - lastimages
         newimgs = list(newimgs)
-        newimgs = [fn for fn in newimgs if fn.endswith('.fits.fz')]
+        newimgs = [fn for fn in newimgs if fn.endswith('.fits.fz') or fn.endswith('.fits')]
         print('New images:', newimgs)
         if len(newimgs) == 0:
             time.sleep(5.)
