@@ -109,23 +109,59 @@ tiles = fits_table(opt.tiles)
 imagedir = 'rawdata'
 lastimages = set(os.listdir(imagedir))
 
-for j in J:
-    print('Planned tile:', j)
+# Now we wait for the first image to appear (while we're taking the
+# second exposure) and we use that to re-plan the third image.
 
-    # Wait for a new image to appear
+for jwait,jplan in zip(J, J[2:]):
+
+    objwait = jwait['object']
+    print('Waiting for tile %s to appear to re-plan tile %s' % (jwait['object'], jplan['object']))
+
+    # Wait for the "jwait" image to appear.
+    first = True
     while True:
+        if not first:
+            time.sleep(5.)
+        first = False
+
         images = set(os.listdir(imagedir))
         newimgs = images - lastimages
         newimgs = list(newimgs)
-        newimgs = [fn for fn in newimgs if fn.endswith('.fits.fz') or fn.endswith('.fits')]
+        newimgs = [fn for fn in newimgs
+                   if fn.endswith('.fits.fz') or fn.endswith('.fits')]
+        print('Waiting for tile %s' % objwait)
         print('New images:', newimgs)
         if len(newimgs) == 0:
-            time.sleep(5.)
             continue
-        lastimages = images
-        break
 
-    fn = os.path.join(imagedir, newimgs[0])
+        newimg = newimgs[0]
+        fn = os.path.join(imagedir, newimg)
+        print('Found new file:', fn)
+        try:
+            hdr = fitsio.read_header(fn)
+            print('Read header from', fn)
+        except:
+            print('Failed to open', fn, '-- maybe not fully written yet.')
+            import traceback
+            traceback.print_exc()
+            continue
+
+        #images = images - set(newimgs)
+        #images.add(img)
+        #lastimages = images
+        lastimages.add(newimg)
+        
+        obj = hdr.get('OBJECT', None)
+        print('Read OBJECT card:', obj)
+        if obj == objwait:
+            print('We found the image we wanted!')
+            break
+
+        if len(newimgs) > 1:
+            # don't wait, try the remaining new ones right away
+            first = True
+
+    fn = os.path.join(imagedir, newimg)
     for i in range(10):
         try:
             fitsio.read(fn, ext=opt.ext)
