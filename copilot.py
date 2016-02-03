@@ -622,8 +622,14 @@ def main():
             lastimages = images
             break
 
-        (M, plandict, expnum) = process_image(
-            fn, rawext, gvs, sfd, opt, obs)
+        try:
+            (M, plandict, expnum) = process_image(
+                fn, rawext, gvs, sfd, opt, obs)
+        except IOError:
+            print('Failed to read FITS image:', fn, 'extension', rawext)
+            import traceback
+            traceback.print_exc()
+            continue
 
         plot_recent(opt, gvs)
         

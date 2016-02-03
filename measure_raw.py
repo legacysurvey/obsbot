@@ -150,8 +150,8 @@ class RawMeasurer(object):
 
         F = fitsio.FITS(fn)
         primhdr = F[0].read_header()
-        img,hdr = self.read_raw(F, ext)
         self.primhdr = primhdr
+        img,hdr = self.read_raw(F, ext)
         self.hdr = hdr
 
         # pre sky-sub
