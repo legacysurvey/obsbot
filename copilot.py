@@ -57,7 +57,8 @@ def db_to_fits(mm):
             T.set(field, np.array([getattr(m, field) for m in mm]))
     return T
 
-def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None):
+def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None,
+                      markmjds=[]):
     T = db_to_fits(mm)
 
     ccmap = dict(g='g', r='r', z='m')
@@ -72,7 +73,8 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None):
         TT.append(G)
 
     plt.clf()
-    plt.subplots_adjust(hspace=0.1, top=0.98, right=0.95, left=0.1)
+    plt.subplots_adjust(hspace=0.1, top=0.98, right=0.95, left=0.1,
+                        bottom=0.07)
 
     def limitstyle(band):
         return dict(mec='k', mfc=ccmap[band], ms=8, mew=1)
@@ -94,7 +96,7 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None):
 
         # Duplicate md5sum
         for i in range(len(T)):
-            if T.md5sum[i] == 0:
+            if T.md5sum[i] == '':
                 continue
             a = allobs.filter(md5sum=T.md5sum[i]).exclude(
                 filename=T.filename[i], extension=T.extension[i])
@@ -129,15 +131,20 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None):
     bads = bd.items()
 
     SP = 5
+    mx = 3.
     plt.subplot(SP,1,1)
     for band,Tb in zip(bands, TT):
         plt.plot(Tb.mjd_obs, Tb.seeing, 'o', color=ccmap[band])
+
+        I = np.flatnonzero(Tb.seeing > mx)
+        if len(I):
+            plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
     yl,yh = plt.ylim()
     plt.axhline(1.3, color='k', alpha=0.5)
     plt.axhline(1.2, color='k', alpha=0.1)
     plt.axhline(1.0, color='k', alpha=0.1)
     plt.axhline(0.8, color='k', alpha=0.1)
-    plt.ylim(yl,yh)
+    plt.ylim(yl,min(yh,mx))
     plt.ylabel('Seeing (arcsec)')
 
     ax = plt.axis()
@@ -148,12 +155,20 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None):
     plt.axis(ax)
 
     plt.subplot(SP,1,2)
+    mx = 20
     for band,Tb in zip(bands, TT):
         nom = get_nominal_cal(Tb.camera[0], band)
         zp0,sky0,kx0 = nom
         plt.plot(Tb.mjd_obs, Tb.sky, 'o', color=ccmap[band])
         plt.axhline(sky0, color=ccmap[band], alpha=0.5)
+
+        I = np.flatnonzero(Tb.sky > mx)
+        if len(I):
+            plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
+    yl,yh = plt.ylim()
+    plt.ylim(yl,min(yh,mx))
     plt.ylabel('Sky (mag)')
+
     plt.subplot(SP,1,3)
     mx = 1.2
     mn = 0.5
@@ -225,10 +240,16 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None):
     plt.axhline(0.9, color='k', ls='--', alpha=0.5)
     plt.axhline(1.1, color='k', ls='--', alpha=0.5)
 
-    for i in range(len(T)):
-        if T.expnum[i] != 0:
-            plt.text(T.mjd_obs[i], mx, '%i ' % T.expnum[i],
-                     rotation=90, va='top', ha='center')
+    if len(T) > 50:
+        ii = [np.argmin(T.expnum + (T.expnum == 0)*1000000),
+              np.argmax(T.expnum)]
+    else:
+        ii = range(len(T))
+    for i in ii:
+        if T.expnum[i] == 0:
+            continue
+        plt.text(T.mjd_obs[i], mx, '%i ' % T.expnum[i],
+                 rotation=90, va='top', ha='center')
 
     plt.ylim(mn,mx)
     plt.ylabel('Depth factor')
@@ -287,6 +308,15 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None):
         plt.xlim(xl,xh)
 
     plt.xlim(xl,xh)
+
+    if len(markmjds):
+        for sp in range(1, SP+1):
+            plt.subplot(SP,1,sp)
+            ax = plt.axis()
+            for mjd in markmjds:
+                plt.axvline(mjd, color='b', alpha=0.5, lw=2)
+            plt.axis(ax)
+
     plt.savefig(plotfn)
     
 def ephemdate_to_mjd(edate):
@@ -316,14 +346,16 @@ def process_image(fn, ext, gvs, sfd, opt, obs):
 
     obstype = phdr.get('OBSTYPE','').strip()
     print('obstype:', obstype)
-    if obstype == 'zero':
-        print('Zero:', fn)
-        return None, None, expnum
-    elif obstype == 'focus':
-        print('Focus:', fn)
+    if obstype in ['zero', 'focus', 'dome flat']:
+        print('Skipping obstype =', obstype)
         return None, None, expnum
     elif obstype == '':
         print('Empty OBSTYPE in header:', fn)
+        return None, None, expnum
+
+    exptime = phdr.get('EXPTIME')
+    if exptime == 0:
+        print('Exposure time EXPTIME in header =', exptime)
         return None, None, expnum
 
     if expnum == '':
@@ -348,8 +380,12 @@ def process_image(fn, ext, gvs, sfd, opt, obs):
 
     # Write QA plots to files named by the exposure number
     print('Exposure number:', expnum)
-    ps = PlotSequence('qa-%i' % expnum)
-    ps.printfn = False
+
+    if opt.doplots:
+        ps = PlotSequence('qa-%i' % expnum)
+        ps.printfn = False
+    else:
+        ps = None
 
     # Measure the new image
     kwa = {}
@@ -357,15 +393,16 @@ def process_image(fn, ext, gvs, sfd, opt, obs):
         kwa.update(ext=ext)
     M = measure_raw(fn, ps=ps, **kwa)
 
-    # Gather all the QAplots into a single pdf and clean them up.
-    qafile = 'qa-%i.pdf' % expnum
-    pnglist = sorted(glob('qa-%i-??.png' % expnum))
-    cmd = 'convert {} {}'.format(' '.join(pnglist), qafile)
-    print('Writing out {}'.format(qafile))
-    #print(cmd)
-    os.system(cmd)
-    if not opt.keep_plots:
-        [os.remove(png) for png in pnglist]
+    if opt.doplots:
+        # Gather all the QAplots into a single pdf and clean them up.
+        qafile = 'qa-%i.pdf' % expnum
+        pnglist = sorted(glob('qa-%i-??.png' % expnum))
+        cmd = 'convert {} {}'.format(' '.join(pnglist), qafile)
+        print('Writing out {}'.format(qafile))
+        #print(cmd)
+        os.system(cmd)
+        if not opt.keep_plots:
+            [os.remove(png) for png in pnglist]
 
     # (example results for testig)
     #M = {'seeing': 1.4890481099577366, 'airmass': 1.34,
@@ -374,93 +411,99 @@ def process_image(fn, ext, gvs, sfd, opt, obs):
 
     #print('Measurements:', M)
 
-    gvs.transparency = M['transparency']
+    trans = M.get('transparency', 0)
     band = M['band']
-
+    actual_exptime = phdr['EXPTIME']
+    airmass = phdr['AIRMASS']
     ra  = hmsstring2ra (phdr['RA'])
     dec = dmsstring2dec(phdr['DEC'])
-    airmass = phdr['AIRMASS']
-    actual_exptime = phdr['EXPTIME']
-    
     # Look up E(B-V) in SFD map
     ebv = sfd.ebv(ra, dec)[0]
     print('E(B-V): %.3f' % ebv)
 
-    fakezp = -99
-    expfactor = ExposureFactor(band, airmass, ebv, M['seeing'], fakezp,
-                               M['skybright'], gvs)
-    print('Exposure factor:              %6.3f' % expfactor)
-    exptime = expfactor * gvs.base_exptimes[band]
-    print('Target exposure time:         %6.1f' % exptime)
-    exptime = np.clip(exptime, gvs.floor_exptimes[band], gvs.ceil_exptimes[band])
-    print('Clipped exposure time:        %6.1f' % exptime)
+    if trans > 0:
+
+        gvs.transparency = trans
+
+        fakezp = -99
+        expfactor = ExposureFactor(band, airmass, ebv, M['seeing'], fakezp,
+                                   M['skybright'], gvs)
+        print('Exposure factor:              %6.3f' % expfactor)
+        exptime = expfactor * gvs.base_exptimes[band]
+        print('Target exposure time:         %6.1f' % exptime)
+        exptime = np.clip(exptime, gvs.floor_exptimes[band],
+                          gvs.ceil_exptimes[band])
+        print('Clipped exposure time:        %6.1f' % exptime)
     
-    if band == 'z' and exptime > gvs.t_sat_max:
-        exptime = gvs.t_sat_max
-        print('Reduced exposure time to avoid z-band saturation: %6.1f', exptime)
+        if band == 'z' and exptime > gvs.t_sat_max:
+            exptime = gvs.t_sat_max
+            print('Reduced exposure time to avoid z-band saturation: %6.1f', exptime)
 
-    print
+        print
 
-    print('Actual exposure time taken:   %6.1f' % actual_exptime)
-
-    print('Depth (exposure time) factor: %6.3f' % (actual_exptime / exptime))
+        print('Actual exposure time taken:   %6.1f' % actual_exptime)
     
-    # If you were going to re-plan, you would run with these args:
-    plandict = dict(seeing=M['seeing'], transparency=M['transparency'])
-    # Assume the sky is as much brighter than canonical in each band... unlikely
-    dsky = M['skybright'] - gvs.sb_dict[M['band']]
-    for b in 'grz':
-        plandict['sb'+b] = gvs.sb_dict[b] + dsky
-    # Note that nightlystrategy.py takes UTC dates.
-    start = datetime.datetime.utcnow()
-    # Start the strategy 5 minutes from now.
-    start += datetime.timedelta(0, 5*60)
-    d = start.date()
-    plandict['startdate'] = '%04i-%02i-%02i' % (d.year, d.month, d.day)
-    t = start.time()
-    plandict['starttime'] = t.strftime('%H:%M:%S')
-    # Make an hour-long plan
-    end = start + datetime.timedelta(0, 3600)
-    d = end.date()
-    plandict['enddate'] = '%04i-%02i-%02i' % (d.year, d.month, d.day)
-    t = end.time()
-    plandict['endtime'] = t.strftime('%H:%M:%S')
-
-    # Set "--date" to be the UTC date at previous sunset.
-    # (nightlystrategy will ask for the next setting of the sun below
-    # -18-degrees from that date to define the sn_18).  We could
-    # probably also get away with subtracting, like, 12 hours from
-    # now()...
-    sun = ephem.Sun()
-    obs.date = datetime.datetime.utcnow()
-    # not the proper horizon, but this doesn't matter -- just need it to
-    # be before -18-degree twilight.
-    obs.horizon = 0.
-    sunset = obs.previous_setting(sun)
-    # pyephem's Date.tuple() splits a date into y,m,d,h,m,s
-    d = sunset.tuple()
-    #print('Date at sunset, UTC:', d)
-    year,month,day = d[:3]
-    plandict['date'] = '%04i-%02i-%02i' % (year, month, day)
-
-    # Decide the pass.
-    goodseeing = plandict['seeing'] < 1.3
-    photometric = plandict['transparency'] > 0.9
-
-    if goodseeing and photometric:
-        passnum = 1
-    elif goodseeing or photometric:
-        passnum = 2
+        print('Depth (exposure time) factor: %6.3f' % (actual_exptime / exptime))
+        
+        # If you were going to re-plan, you would run with these args:
+        plandict = dict(seeing=M['seeing'], transparency=trans)
+        # Assume the sky is as much brighter than canonical in each band... unlikely
+        dsky = M['skybright'] - gvs.sb_dict[M['band']]
+        for b in 'grz':
+            plandict['sb'+b] = gvs.sb_dict[b] + dsky
+        # Note that nightlystrategy.py takes UTC dates.
+        start = datetime.datetime.utcnow()
+        # Start the strategy 5 minutes from now.
+        start += datetime.timedelta(0, 5*60)
+        d = start.date()
+        plandict['startdate'] = '%04i-%02i-%02i' % (d.year, d.month, d.day)
+        t = start.time()
+        plandict['starttime'] = t.strftime('%H:%M:%S')
+        # Make an hour-long plan
+        end = start + datetime.timedelta(0, 3600)
+        d = end.date()
+        plandict['enddate'] = '%04i-%02i-%02i' % (d.year, d.month, d.day)
+        t = end.time()
+        plandict['endtime'] = t.strftime('%H:%M:%S')
+    
+        # Set "--date" to be the UTC date at previous sunset.
+        # (nightlystrategy will ask for the next setting of the sun below
+        # -18-degrees from that date to define the sn_18).  We could
+        # probably also get away with subtracting, like, 12 hours from
+        # now()...
+        sun = ephem.Sun()
+        obs.date = datetime.datetime.utcnow()
+        # not the proper horizon, but this doesn't matter -- just need it to
+        # be before -18-degree twilight.
+        obs.horizon = 0.
+        sunset = obs.previous_setting(sun)
+        # pyephem's Date.tuple() splits a date into y,m,d,h,m,s
+        d = sunset.tuple()
+        #print('Date at sunset, UTC:', d)
+        year,month,day = d[:3]
+        plandict['date'] = '%04i-%02i-%02i' % (year, month, day)
+    
+        # Decide the pass.
+        goodseeing = plandict['seeing'] < 1.3
+        photometric = plandict['transparency'] > 0.9
+    
+        if goodseeing and photometric:
+            passnum = 1
+        elif goodseeing or photometric:
+            passnum = 2
+        else:
+            passnum = 3
+        plandict['pass'] = passnum
+    
+        plandict['portion'] = portion
+        
+        print('Replan command:')
+        print()
+        print('python2.7 nightlystrategy.py --seeg %(seeing).3f --seer %(seeing).3f --seez %(seeing).3f --sbg %(sbg).3f --sbr %(sbr).3f --sbz %(sbz).3f --transparency %(transparency).3f --start-date %(startdate)s --start-time %(starttime)s --end-date %(enddate)s --end-time %(endtime)s --date %(date)s --portion %(portion)f --pass %(pass)i' % plandict) 
+        print()
     else:
-        passnum = 3
-    plandict['pass'] = passnum
-
-    plandict['portion'] = portion
-    
-    print('Replan command:')
-    print()
-    print('python2.7 nightlystrategy.py --seeg %(seeing).3f --seer %(seeing).3f --seez %(seeing).3f --sbg %(sbg).3f --sbr %(sbr).3f --sbz %(sbz).3f --transparency %(transparency).3f --start-date %(startdate)s --start-time %(starttime)s --end-date %(enddate)s --end-time %(endtime)s --date %(date)s --portion %(portion)f --pass %(pass)i' % plandict) 
-    print()
+        plandict = None
+        expfactor = 0.
 
     rtn = (M, plandict, expnum)
     if not db:
@@ -481,14 +524,18 @@ def process_image(fn, ext, gvs, sfd, opt, obs):
     m.decbore = dec
     m.band = band
     m.ebv  = ebv
-    m.zeropoint = M['zp']
-    m.transparency = M['transparency']
-    m.seeing = M['seeing']
+    zp = M.get('zp', 0.)
+    if zp is None:
+        zp = 0.
+    m.zeropoint = zp
+
+    m.transparency = trans
+    m.seeing = M.get('seeing', 0.)
     m.sky = M['skybright']
     m.expfactor = expfactor
-    m.dx = M['dx']
-    m.dy = M['dy']
-    m.nmatched = M['nmatched']
+    m.dx = M.get('dx', 0)
+    m.dy = M.get('dy', 0)
+    m.nmatched = M.get('nmatched',0)
     m.bad_pixcnt = ('PIXCNT1' in phdr)
     m.readtime = phdr.get('READTIME', 0.)
 
@@ -504,7 +551,7 @@ def process_image(fn, ext, gvs, sfd, opt, obs):
 def bounce_process_image(X):
     process_image(*X)
 
-def plot_recent(opt, gvs):
+def plot_recent(opt, gvs, markmjds=[]):
     import obsdb
 
     if opt.mjdend is None:
@@ -529,8 +576,11 @@ def plot_recent(opt, gvs):
 
     allobs = obsdb.MeasuredCCD.objects.filter(camera=mm[0].camera)
 
-    plot_measurements(mm, 'recent.png', gvs, allobs=allobs,
-                      mjdrange=(mjd_start, mjd_end))
+    plotfn = opt.plot_filename
+
+    plot_measurements(mm, plotfn, gvs, allobs=allobs,
+                      mjdrange=(mjd_start, mjd_end),
+                      markmjds=markmjds)
 
     
 def main():
@@ -548,6 +598,12 @@ def main():
     parser.add_option('--fits', help='Write database to given FITS table')
     parser.add_option('--plot', action='store_true',
                       help='Plot recent data and quit')
+    parser.add_option('--plot-filename', default='recent.png', help='Save plot to given file, default %default')
+
+    parser.add_option('--nightplot', action='store_true',
+                      help="Plot tonight's data and quit")
+
+    parser.add_option('--no-plots', dest='doplots', default=True, action='store_false', help='Do not create QA plots')
 
     parser.add_option('--keep-plots', action='store_true',
                       help='Do not remove PNG-format plots (normally merged into PDF)')
@@ -579,7 +635,65 @@ def main():
     obsdb.django_setup()
 
     plt.figure(figsize=(10,10))
-    
+
+    markmjds = []
+
+    if opt.nightplot:
+        opt.plot = True
+
+        # Are we at Tololo or Kitt Peak?  Look for latest image.
+        o = obsdb.MeasuredCCD.objects.all().order_by('-mjd_obs')
+        cam = o[0].camera
+
+        print('Camera:', cam)
+
+        ## From nightlystrategy / mosaicstrategy
+        R_earth = 6378.1e3 # in meters
+        if cam == 'mosaic3':
+            obs = ephem.Observer()
+            obs.lon = '-111.6003'
+            obs.lat = '31.9634'
+            obs.elev = 2120.0 # meters
+            print('Assuming KPNO')
+
+        elif cam == 'decam':
+            obs = ephem.Observer()
+            obs.lon = '-70.806525'
+            obs.lat = '-30.169661'
+            obs.elev = 2207.0 # meters
+            print('Assuming CTIO')
+
+        else:
+            print('Last camera listed in db: "%s", is unknown.' % cam)
+            sys.exit(0)
+
+        obs.temp = 10.0 # deg celsius; average temp for August
+        obs.pressure = 780.0 # mbar
+        obs.horizon = -np.sqrt(2.0*obs.elev/R_earth)
+
+        obs.date = ephem.Date(datetime.datetime.utcnow())
+        sun = ephem.Sun()
+        sunset = obs.previous_setting(sun)
+        obs.date = sunset
+        sunrise = obs.next_rising(sun)
+        if opt.mjdstart is None:
+            opt.mjdstart = ephemdate_to_mjd(sunset)
+            print('Set mjd start to sunset:', sunset, opt.mjdstart)
+        if opt.mjdend is None:
+            opt.mjdend = ephemdate_to_mjd(sunrise)
+            print('Set mjd end to sunrise', sunrise, opt.mjdend)
+
+        obs.date = sunset
+        obs.horizon = -ephem.degrees('18:00:00.0')
+        evetwi = obs.next_setting(sun)
+        markmjds.append(ephemdate_to_mjd(evetwi))
+        print('Evening twi:', evetwi, markmjds[-1])
+        morntwi = obs.next_rising(sun)
+        markmjds.append(ephemdate_to_mjd(morntwi))
+        print('Morning twi:', morntwi, markmjds[-1])
+
+
+
     if opt.fits:
         ccds = obsdb.MeasuredCCD.objects.all()
         print(ccds.count(), 'measured CCDs')
@@ -605,12 +719,6 @@ def main():
 
         sys.exit(0)
             
-    # ps = PlotSequence('recent')
-    # mm = obsdb.MeasuredCCD.objects.all()
-    # #plot_measurements(mm, ps, mjdrange=(57324, 57324.5))
-    # plot_measurements(mm, ps, mjdrange=(57324.1, 57324.15))
-    # sys.exit(0)
-    
     # Get nightlystrategy data structures; use fake command-line args.
     # these don't matter at all, since we only use the ExposureFactor() function
     parser,gvs = getParserAndGlobals()
@@ -618,7 +726,7 @@ def main():
     obs = setupGlobals(nsopt, gvs)
 
     if opt.plot:
-        plot_recent(opt, gvs)
+        plot_recent(opt, gvs, markmjds=markmjds)
         sys.exit(0)
         
     print('Loading SFD maps...')
@@ -651,7 +759,7 @@ def main():
             sfd = None
             mp.map(bounce_process_image,
                    [(fn, rawext, gvs, sfd, opt, obs) for fn in fns])
-        plot_recent(opt, gvs)
+        plot_recent(opt, gvs, markmjds=markmjds)
         sys.exit(0)
     
     

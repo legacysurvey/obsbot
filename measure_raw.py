@@ -229,9 +229,12 @@ class RawMeasurer(object):
             plt.colorbar()
             ps.savefig()
 
+        # Read WCS header and compute boresight
+        wcs = self.get_wcs(hdr)
+        ra_ccd,dec_ccd = wcs.pixelxy2radec((fullW+1)/2., (fullH+1)/2.)
+
         # Detect stars
-        fwhm = self.nominal_fwhm
-        psfsig = fwhm / 2.35
+        psfsig = self.nominal_fwhm / 2.35
         detsn = self.detection_map(img, sig1, psfsig, ps)
     
         slices = self.detect_sources(detsn, self.det_thresh, ps)
@@ -239,6 +242,19 @@ class RawMeasurer(object):
         if len(slices) < 20:
             slices = self.detect_sources(detsn, 10., ps)
             print(len(slices), 'sources detected')
+        ndetected = len(slices)
+
+        camera = primhdr.get('INSTRUME','').strip().lower()
+        # -> "decam" / "mosaic3"
+        meas = dict(band=band, airmass=airmass, 
+                    skybright=skybr, primhdr=primhdr,
+                    hdr=hdr, wcs=wcs, ra_ccd=ra_ccd, dec_ccd=dec_ccd,
+                    extension=ext, camera=camera, 
+                    ndetected=ndetected)
+
+        if ndetected == 0:
+            print('NO SOURCES DETECTED')
+            return meas
         
         xx,yy = [],[]
         fx,fy = [],[]
@@ -387,7 +403,7 @@ class RawMeasurer(object):
         for xi,yi in zip(fx,fy):
             ix = int(np.round(xi))
             iy = int(np.round(yi))
-            skyR = sky_outer_r
+            skyR = int(np.ceil(sky_outer_r))
             xlo = max(0, ix-skyR)
             xhi = min(W, ix+skyR+1)
             ylo = max(0, iy-skyR)
@@ -396,6 +412,7 @@ class RawMeasurer(object):
             r2 = (xx - xi)**2 + (yy - yi)**2
             inannulus = ((r2 >= sky_inner_r**2) * (r2 < sky_outer_r**2))
             skypix = img[ylo:yhi, xlo:xhi][inannulus]
+            #print('ylo,yhi, xlo,xhi', ylo,yhi, xlo,xhi, 'img subshape', img[ylo:yhi, xlo:xhi].shape, 'inann shape', inannulus.shape)
             s,nil = sensible_sigmaclip(skypix)
             sky.append(s)
         sky = np.array(sky)
@@ -407,9 +424,6 @@ class RawMeasurer(object):
         fx = fx[good]
         fy = fy[good]
 
-        wcs = self.get_wcs(hdr)
-        ra_ccd,dec_ccd = wcs.pixelxy2radec((fullW+1)/2., (fullH+1)/2.)
-        
         # Read in the PS1 catalog, and keep those within 0.25 deg of CCD center
         # and those with main sequence colors
         pscat = ps1cat(ccdwcs=wcs)
@@ -543,15 +557,16 @@ class RawMeasurer(object):
 
         nmatched = len(I)
 
-            
+        meas.update(dx=sx, dy=sy, nmatched=nmatched)
+
         if focus:
-            return dict(img=img, hdr=hdr, primhdr=primhdr,
+            meas.update(img=img, hdr=hdr, primhdr=primhdr,
                         fx=fx, fy=fy, px=px-trim_x0-sx, py=py-trim_y0-sy,
-                        dx=sx, dy=sy, sig1=sig1, stars=stars, band=band,
+                        sig1=sig1, stars=stars,
                         moments=(mx2,my2,mxy,theta,a,b,ell),
                         wmoments=(wmx2,wmy2,wmxy,wtheta,wa,wb,well),
                         apflux=apflux, apflux2=apflux2)
-            
+            return meas
             
         #print('Mean astrometric shift (arcsec): delta-ra=', -np.mean(dy)*0.263, 'delta-dec=', np.mean(dx)*0.263)
             
@@ -581,6 +596,11 @@ class RawMeasurer(object):
             plt.clf()
             plt.plot(ps1mag, apmag[J], 'b.', label='No sky sub')
             plt.plot(ps1mag, apmag2[J], 'r.', label='Sky sub')
+            # ax = plt.axis()
+            # mn = min(ax[0], ax[2])
+            # mx = max(ax[1], ax[3])
+            # plt.plot([mn,mx], [mn,mx], 'k-', alpha=0.1)
+            # plt.axis(ax)
             plt.xlabel('PS1 mag')
             plt.ylabel('DECam ap mag')
             plt.legend(loc='upper left')
@@ -591,7 +611,12 @@ class RawMeasurer(object):
         dmag,dsig = sensible_sigmaclip(dm, nsigma=2.5)
         print('Mag offset: %8.3f' % dmag)
         print('Scatter:    %8.3f' % dsig)
-    
+
+        if not np.isfinite(dmag) or not np.isfinite(dsig):
+            print('FAILED TO GET ZEROPOINT!')
+            meas.update(zp=None)
+            return meas
+
         dm = ps1mag - apmag2[J]
         dmag2,dsig2 = sensible_sigmaclip(dm, nsigma=2.5)
         #print('Sky-sub mag offset', dmag2)
@@ -611,6 +636,7 @@ class RawMeasurer(object):
     
         zp_obs = zp0 + dmag
         transparency = 10.**(-0.4 * (zp0 - zp_obs - kx * (airmass - 1.)))
+        meas.update(zp=zp_obs, transparency=transparency)
     
         print('Zeropoint %6.3f' % zp_obs)
         print('Fiducial  %6.3f' % zp0)
@@ -702,6 +728,7 @@ class RawMeasurer(object):
         fwhms = np.array(fwhms)
         fwhm = np.median(fwhms)
         print('Median FWHM: %.3f' % np.median(fwhms))
+        meas.update(seeing=fwhm)
     
         if False and ps is not None:
             lo,hi = np.percentile(fwhms, [5,95])
@@ -744,15 +771,7 @@ class RawMeasurer(object):
             plt.title('PSF fit')
             ps.savefig()
 
-        camera = primhdr.get('INSTRUME','').strip().lower()
-        # -> "decam" / "mosaic3"
-
-        return dict(band=band, airmass=airmass, seeing=fwhm, zp=zp_obs,
-                    skybright=skybr, transparency=transparency, primhdr=primhdr,
-                    hdr=hdr, wcs=wcs, ra_ccd=ra_ccd, dec_ccd=dec_ccd,
-                    extension=ext, camera=camera, dx=sx, dy=sy,
-                    nmatched=nmatched)
-    
+        return meas
 
 
 class DECamMeasurer(RawMeasurer):
