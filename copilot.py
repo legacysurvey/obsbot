@@ -48,8 +48,8 @@ def db_to_fits(mm):
     for field in ['filename', 'extension', 'expnum', 'exptime', 'mjd_obs',
                   'airmass', 'racenter', 'deccenter', 'rabore', 'decbore',
                   'band', 'ebv', 'zeropoint', 'transparency', 'seeing',
-                  'sky', 'expfactor', 'camera', 'dx', 'dy', 'md5sum',
-                  'bad_pixcnt', 'readtime']:
+                  'sky', 'expfactor', 'camera', 'dx', 'dy', 'nmatched',
+                  'md5sum', 'bad_pixcnt', 'readtime']:
         g = getattr(mm[0], field)
         if isinstance(g, basestring):
             T.set(field, np.array([str(getattr(m, field)) for m in mm]))
@@ -84,6 +84,11 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None):
     I = np.flatnonzero(T.bad_pixcnt)
     for i in I:
         bads.append((i, 'pixcnt'))
+
+    # low nmatched
+    I = np.flatnonzero((T.nmatched >= 0) * (T.nmatched < 10))
+    for i in I:
+        bads.append((i, 'nmatched'))
 
     if allobs is not None:
 
@@ -138,7 +143,7 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None):
     ax = plt.axis()
     for i,reason in bads:
         plt.axvline(T.mjd_obs[i], color='r', lw=3, alpha=0.3)
-        plt.text(T.mjd_obs[i], ax[3], reason, #(ax[2]+ax[3])/2., reason,
+        plt.text(T.mjd_obs[i], ax[3], reason,
                  rotation=90, va='top')
     plt.axis(ax)
 
@@ -155,17 +160,21 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None):
 
     plt.subplot(SP,1,3)
     mx = 1.2
+    mn = 0.5
     for band,Tb in zip(bands, TT):
         plt.plot(Tb.mjd_obs, Tb.transparency, 'o', color=ccmap[band])
         I = np.flatnonzero(Tb.transparency > mx)
         if len(I):
             plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
+        I = np.flatnonzero(Tb.transparency < mn)
+        if len(I):
+            plt.plot(Tb.mjd_obs[I], [mn]*len(I), 'v', **limitstyle(band))
 
     plt.axhline(1.0, color='k', alpha=0.5)
     plt.axhline(0.9, color='k', ls='--', alpha=0.5)
     plt.ylabel('Transparency')
     yl,yh = plt.ylim()
-    plt.ylim(min(0.89, yl), min(mx, max(yh, 1.01)))
+    plt.ylim(min(0.89, max(mn, yl)), min(mx, max(yh, 1.01)))
     
     # plt.subplot(SP,1,4)
     # for band,Tb in zip(bands, TT):
@@ -176,6 +185,7 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None):
     # plt.ylabel('Target exposure factor')
 
     plt.subplot(SP,1,4)
+    mx = 300
     for band,Tb in zip(bands, TT):
         basetime = gvs.base_exptimes[band]
         lo,hi = gvs.floor_exptimes[band], gvs.ceil_exptimes[band]
@@ -188,6 +198,11 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None):
         I = np.flatnonzero(exptime > clipped)
         if len(I):
             plt.plot(Tb.mjd_obs[I], exptime[I], 'v', **limitstyle(band))
+
+        I = np.flatnonzero(exptime > mx)
+        if len(I):
+            plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
+
         I = np.flatnonzero(exptime < clipped)
         if len(I):
             plt.plot(Tb.mjd_obs[I], exptime[I], '^', **limitstyle(band))
@@ -204,7 +219,7 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None):
         plt.axhline(hi+dt, color=ccmap[band], ls='--', alpha=0.5)
         if band == 'z':
             plt.axhline(gvs.t_sat_max, color=ccmap[band], ls='--', alpha=0.5)
-    plt.ylim(yl,yh)
+    plt.ylim(yl,min(mx, yh))
     plt.ylabel('Target exposure time (s)')
 
     plt.subplot(SP,1,5)

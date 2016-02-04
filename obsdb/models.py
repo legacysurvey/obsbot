@@ -28,9 +28,12 @@ class MeasuredCCD(models.Model):
     sky = models.FloatField(default=0)
     expfactor = models.FloatField(default=0)
 
-    # pixel offsets vs PanSTARRS1
+    # pixel offsets vs Pan-STARRS1
     dx = models.FloatField(default=0)
     dy = models.FloatField(default=0)
+
+    # number of stars matched to Pan-STARRS1
+    nmatched = models.IntegerField(default=-1)
 
     # md5sum of the first hdu's data.
     # (actually, for Mosaic3 we just SUM the image pixels!)

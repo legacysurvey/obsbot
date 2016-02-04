@@ -541,6 +541,8 @@ class RawMeasurer(object):
                                          radius2, stars)
         print('Cut to', len(stars), 'PS1 stars with good colors; matched', len(I))
 
+        nmatched = len(I)
+
             
         if focus:
             return dict(img=img, hdr=hdr, primhdr=primhdr,
@@ -748,7 +750,8 @@ class RawMeasurer(object):
         return dict(band=band, airmass=airmass, seeing=fwhm, zp=zp_obs,
                     skybright=skybr, transparency=transparency, primhdr=primhdr,
                     hdr=hdr, wcs=wcs, ra_ccd=ra_ccd, dec_ccd=dec_ccd,
-                    extension=ext, camera=camera, dx=sx, dy=sy)
+                    extension=ext, camera=camera, dx=sx, dy=sy,
+                    nmatched=nmatched)
     
 
 
