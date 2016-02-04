@@ -314,13 +314,16 @@ def process_image(fn, ext, gvs, sfd, opt, obs):
     phdr = fitsio.read_header(fn)
     expnum = phdr.get('EXPNUM', 0)
 
-    obstype = phdr['OBSTYPE'].strip()
+    obstype = phdr.get('OBSTYPE','').strip()
     print('obstype:', obstype)
     if obstype == 'zero':
         print('Zero:', fn)
         return None, None, expnum
     elif obstype == 'focus':
         print('Focus:', fn)
+        return None, None, expnum
+    elif obstype == '':
+        print('Empty OBSTYPE in header:', fn)
         return None, None, expnum
 
     if expnum == '':

@@ -921,10 +921,10 @@ def measure_raw_mosaic3(fn, ext='im4', ps=None):
 def measure_raw(fn, **kwargs):
     primhdr = fitsio.read_header(fn)
         
-    if primhdr.get('INSTRUME',None).strip() == 'Mosaic3':
+    if primhdr.get('INSTRUME','').strip() == 'Mosaic3':
         return measure_raw_mosaic3(fn, **kwargs)
 
-    if primhdr.get('INSTRUME',None).strip() == 'DECam':
+    if primhdr.get('INSTRUME','').strip() == 'DECam':
         return measure_raw_decan(fn, **kwargs)
 
     return None
@@ -933,10 +933,10 @@ def get_default_extension(fn):
     primhdr = fitsio.read_header(fn)
         
     ### HACK -- must match default of measure_raw_* above
-    if primhdr.get('INSTRUME',None).strip() == 'Mosaic3':
+    if primhdr.get('INSTRUME','').strip() == 'Mosaic3':
         return 'im4'
 
-    if primhdr.get('INSTRUME',None).strip() == 'DECam':
+    if primhdr.get('INSTRUME','').strip() == 'DECam':
         return 'N4'
 
 def sensible_sigmaclip(arr, nsigma = 4.):
