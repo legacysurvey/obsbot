@@ -147,23 +147,13 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None):
                  rotation=90, va='top')
     plt.axis(ax)
 
-    #yl,yh = plt.ylim()
-    #plt.ylim(0, yh)
-
     plt.subplot(SP,1,2)
     for band,Tb in zip(bands, TT):
         nom = get_nominal_cal(Tb.camera[0], band)
         zp0,sky0,kx0 = nom
         plt.plot(Tb.mjd_obs, Tb.sky, 'o', color=ccmap[band])
         plt.axhline(sky0, color=ccmap[band], alpha=0.5)
-
-    yl,yh = plt.ylim()
-    for i in range(len(T)):
-        if T.expnum[i] != 0:
-            plt.text(T.mjd_obs[i], T.sky[i]-(yh-yl)*0.1, '%i' % T.expnum[i],
-                     rotation=90, va='top', ha='center')
     plt.ylabel('Sky (mag)')
-
     plt.subplot(SP,1,3)
     mx = 1.2
     mn = 0.5
@@ -182,14 +172,6 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None):
     yl,yh = plt.ylim()
     plt.ylim(min(0.89, max(mn, yl)), min(mx, max(yh, 1.01)))
     
-    # plt.subplot(SP,1,4)
-    # for band,Tb in zip(bands, TT):
-    #     plt.plot(Tb.mjd_obs, Tb.expfactor, '.', color=ccmap[band])
-    # plt.axhline(1.0, color='k', alpha=0.5)
-    # plt.axhline(0.9, color='k', ls='--', alpha=0.5)
-    # plt.axhline(1.1, color='k', ls='--', alpha=0.5)
-    # plt.ylabel('Target exposure factor')
-
     plt.subplot(SP,1,4)
     mx = 300
     for band,Tb in zip(bands, TT):
@@ -242,6 +224,12 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None):
     plt.axhline(1.0, color='k', alpha=0.5)
     plt.axhline(0.9, color='k', ls='--', alpha=0.5)
     plt.axhline(1.1, color='k', ls='--', alpha=0.5)
+
+    for i in range(len(T)):
+        if T.expnum[i] != 0:
+            plt.text(T.mjd_obs[i], mx, '%i ' % T.expnum[i],
+                     rotation=90, va='top', ha='center')
+
     plt.ylim(mn,mx)
     plt.ylabel('Depth factor')
     
