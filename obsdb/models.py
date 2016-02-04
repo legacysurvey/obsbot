@@ -19,6 +19,7 @@ class MeasuredCCD(models.Model):
     # Approximate (header) RA,Dec center of camera
     rabore = models.FloatField(default=0)
     decbore = models.FloatField(default=0)
+
     band = models.CharField(max_length=256, default='')
     ebv = models.FloatField(default=0)
     zeropoint = models.FloatField(default=0)
@@ -26,3 +27,10 @@ class MeasuredCCD(models.Model):
     seeing = models.FloatField(default=0)
     sky = models.FloatField(default=0)
     expfactor = models.FloatField(default=0)
+
+    # pixel offsets vs PanSTARRS1
+    dx = models.FloatField(default=0)
+    dy = models.FloatField(default=0)
+
+    # md5sum of the first hdu's data.
+    md5sum = models.CharField(max_length=128, default='')
