@@ -57,7 +57,7 @@ def db_to_fits(mm):
             T.set(field, np.array([getattr(m, field) for m in mm]))
     return T
 
-def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None):
+def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None):
     T = db_to_fits(mm)
 
     ccmap = dict(g='g', r='r', z='m')
@@ -77,6 +77,52 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None):
     def limitstyle(band):
         return dict(mec='k', mfc=ccmap[band], ms=8, mew=1)
 
+    # Check for bad things that can happen
+    bads = []
+
+    # bad_pixcnt
+    I = np.flatnonzero(T.bad_pixcnt)
+    for i in I:
+        bads.append((i, 'pixcnt'))
+
+    if allobs is not None:
+
+        # Duplicate md5sum
+        for i in range(len(T)):
+            if T.md5sum[i] == 0:
+                continue
+            a = allobs.filter(md5sum=T.md5sum[i]).exclude(
+                filename=T.filename[i], extension=T.extension[i])
+
+            if a.count():
+                bads.append((i, 'md5sum'))
+                print('duplicate md5sums for', T.filename[i] + 'ext', T.extension[i], '(%s)' % T.md5sum[i])
+                for ai in a:
+                    print('  md5sum', ai.md5sum, 'file', ai.filename, 'ext', ai.extension)
+
+        # Duplicate readtime
+        for i in range(len(T)):
+            if T.readtime[i] == 0:
+                continue
+            a = allobs.filter(readtime=T.readtime[i]).exclude(
+                filename=T.filename[i], extension=T.extension[i])
+            if a.count():
+                bads.append((i, 'readtime'))
+                print('duplicate readtimes for', T.filename[i] + 'ext', T.extension[i], '(%i)' % T.readtime[i])
+                for ai in a:
+                    print('  readtime', ai.readtime, 'file', ai.filename, 'ext', ai.extension)
+
+
+
+    # Group together bad things for the same image.
+    bd = {}
+    for i,reason in bads:
+        if i in bd:
+            bd[i] = bd[i] + ', ' + reason
+        else:
+            bd[i] = reason
+    bads = bd.items()
+
     SP = 5
     plt.subplot(SP,1,1)
     for band,Tb in zip(bands, TT):
@@ -88,6 +134,14 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None):
     plt.axhline(0.8, color='k', alpha=0.1)
     plt.ylim(yl,yh)
     plt.ylabel('Seeing (arcsec)')
+
+    ax = plt.axis()
+    for i,reason in bads:
+        plt.axvline(T.mjd_obs[i], color='r', lw=3, alpha=0.3)
+        plt.text(T.mjd_obs[i], ax[3], reason, #(ax[2]+ax[3])/2., reason,
+                 rotation=90, va='top')
+    plt.axis(ax)
+
     #yl,yh = plt.ylim()
     #plt.ylim(0, yh)
 
@@ -160,10 +214,10 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None):
         # lower and upper limits
         I = np.flatnonzero(Tb.depth_factor < mn)
         if len(I):
-            plt.plot(Tb.mjd_obs[I], [mn]*len(I), 'v', limitstyle(band))
+            plt.plot(Tb.mjd_obs[I], [mn]*len(I), 'v', **limitstyle(band))
         I = np.flatnonzero(Tb.depth_factor > mx)
         if len(I):
-            plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', limitstyle(band))
+            plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
     plt.axhline(1.0, color='k', alpha=0.5)
     plt.axhline(0.9, color='k', ls='--', alpha=0.5)
     plt.axhline(1.1, color='k', ls='--', alpha=0.5)
@@ -459,7 +513,10 @@ def plot_recent(opt, gvs):
     if not len(mm):
         print('No measurements in MJD range', mjd_start, mjd_end)
         return
-    plot_measurements(mm, 'recent.png', gvs, #mjds=[(mjd_now,'Now')],
+
+    allobs = obsdb.MeasuredCCD.objects.filter(camera=mm[0].camera)
+
+    plot_measurements(mm, 'recent.png', gvs, allobs=allobs,
                       mjdrange=(mjd_start, mjd_end))
 
     
