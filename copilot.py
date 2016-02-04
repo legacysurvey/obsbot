@@ -491,6 +491,7 @@ def process_image(fn, ext, gvs, sfd, opt, obs):
     m.expfactor = expfactor
     m.dx = M['dx']
     m.dy = M['dy']
+    m.nmatched = M['nmatched']
     m.bad_pixcnt = ('PIXCNT1' in phdr)
     m.readtime = phdr.get('READTIME', 0.)
 
