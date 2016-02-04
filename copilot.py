@@ -37,7 +37,7 @@ from astrometry.util.starutil_numpy import hmsstring2ra, dmsstring2dec, mjdtodat
 
 from nightlystrategy import ExposureFactor, getParserAndGlobals, setupGlobals
 
-from measure_raw import measure_raw, get_nominal_cal
+from measure_raw import measure_raw, get_nominal_cal, get_default_extension
 
 from tractor.sfd import SFDMap
 
@@ -156,6 +156,12 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None):
         zp0,sky0,kx0 = nom
         plt.plot(Tb.mjd_obs, Tb.sky, 'o', color=ccmap[band])
         plt.axhline(sky0, color=ccmap[band], alpha=0.5)
+
+    yl,yh = plt.ylim()
+    for i in range(len(T)):
+        if T.expnum[i] != 0:
+            plt.text(T.mjd_obs[i], T.sky[i]-(yh-yl)*0.1, '%i' % T.expnum[i],
+                     rotation=90, va='top', ha='center')
     plt.ylabel('Sky (mag)')
 
     plt.subplot(SP,1,3)
@@ -636,8 +642,12 @@ def main():
 
         fns = []
         for fn in args:
+            skipext = rawext
+            if skipext is None:
+                skipext = get_default_extension(fn)
+
             if opt.skip:
-                mm = obsdb.MeasuredCCD.objects.filter(filename=fn, extension=rawext)
+                mm = obsdb.MeasuredCCD.objects.filter(filename=fn, extension=skipext)
                 if mm.count():
                     print('Found image', fn, 'in database.  Skipping.')
                     continue

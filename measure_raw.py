@@ -929,6 +929,16 @@ def measure_raw(fn, **kwargs):
 
     return None
 
+def get_default_extension(fn):
+    primhdr = fitsio.read_header(fn)
+        
+    ### HACK -- must match default of measure_raw_* above
+    if primhdr.get('INSTRUME',None).strip() == 'Mosaic3':
+        return 'im4'
+
+    if primhdr.get('INSTRUME',None).strip() == 'DECam':
+        return 'N4'
+
 def sensible_sigmaclip(arr, nsigma = 4.):
     goodpix,lo,hi = sigmaclip(arr, low=nsigma, high=nsigma)
     # sigmaclip returns unclipped pixels, lo,hi, where lo,hi are
