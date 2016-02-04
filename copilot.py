@@ -422,7 +422,9 @@ def process_image(fn, ext, gvs, sfd, opt, obs):
     m.seeing = M['seeing']
     m.sky = M['skybright']
     m.expfactor = expfactor
-    
+    m.dx = M['dx']
+    m.dy = M['dy']
+
     m.save()
 
     return rtn

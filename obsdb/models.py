@@ -34,3 +34,6 @@ class MeasuredCCD(models.Model):
 
     # md5sum of the first hdu's data.
     md5sum = models.CharField(max_length=128, default='')
+
+    # MOSAIC bad pixel count flag set?
+    bad_pixcnt = models.BooleanField(default=False)
