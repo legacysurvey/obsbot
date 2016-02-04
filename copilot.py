@@ -804,15 +804,12 @@ def main():
                 #import traceback
                 #traceback.print_exc()
                 continue
-            
-            images = images - set(newimgs)
-            images.add(newestimg)
-            lastimages = images
             break
 
         try:
             (M, plandict, expnum) = process_image(
                 fn, rawext, gvs, sfd, opt, obs)
+            lastimages.add(newestimg)
         except IOError:
             print('Failed to read FITS image:', fn, 'extension', rawext)
             import traceback
