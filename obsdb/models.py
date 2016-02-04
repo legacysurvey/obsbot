@@ -38,3 +38,6 @@ class MeasuredCCD(models.Model):
 
     # MOSAIC bad pixel count flag set?
     bad_pixcnt = models.BooleanField(default=False)
+
+    # MOSAIC -- read time = some other previous image
+    readtime = models.FloatField(default=0)

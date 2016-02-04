@@ -49,7 +49,7 @@ def db_to_fits(mm):
                   'airmass', 'racenter', 'deccenter', 'rabore', 'decbore',
                   'band', 'ebv', 'zeropoint', 'transparency', 'seeing',
                   'sky', 'expfactor', 'camera', 'dx', 'dy', 'md5sum',
-                  'bad_pixcnt']:
+                  'bad_pixcnt', 'readtime']:
         g = getattr(mm[0], field)
         if isinstance(g, basestring):
             T.set(field, np.array([str(getattr(m, field)) for m in mm]))
@@ -57,7 +57,7 @@ def db_to_fits(mm):
             T.set(field, np.array([getattr(m, field) for m in mm]))
     return T
 
-def plot_measurements(mm, ps, gvs, mjds=[], mjdrange=None):
+def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None):
     T = db_to_fits(mm)
 
     ccmap = dict(g='g', r='r', z='m')
@@ -73,11 +73,14 @@ def plot_measurements(mm, ps, gvs, mjds=[], mjdrange=None):
 
     plt.clf()
     plt.subplots_adjust(hspace=0.1, top=0.98, right=0.95, left=0.1)
-    
+
+    def limitstyle(band):
+        return dict(mec='k', mfc=ccmap[band], ms=8, mew=1)
+
     SP = 5
     plt.subplot(SP,1,1)
     for band,Tb in zip(bands, TT):
-        plt.plot(Tb.mjd_obs, Tb.seeing, '.', color=ccmap[band])
+        plt.plot(Tb.mjd_obs, Tb.seeing, 'o', color=ccmap[band])
     yl,yh = plt.ylim()
     plt.axhline(1.3, color='k', alpha=0.5)
     plt.axhline(1.2, color='k', alpha=0.1)
@@ -92,18 +95,18 @@ def plot_measurements(mm, ps, gvs, mjds=[], mjdrange=None):
     for band,Tb in zip(bands, TT):
         nom = get_nominal_cal(Tb.camera[0], band)
         zp0,sky0,kx0 = nom
-        plt.plot(Tb.mjd_obs, Tb.sky, '.', color=ccmap[band])
+        plt.plot(Tb.mjd_obs, Tb.sky, 'o', color=ccmap[band])
         plt.axhline(sky0, color=ccmap[band], alpha=0.5)
     plt.ylabel('Sky (mag)')
 
     plt.subplot(SP,1,3)
     mx = 1.2
     for band,Tb in zip(bands, TT):
-        plt.plot(Tb.mjd_obs, Tb.transparency, '.', color=ccmap[band])
+        plt.plot(Tb.mjd_obs, Tb.transparency, 'o', color=ccmap[band])
         I = np.flatnonzero(Tb.transparency > mx)
         if len(I):
-            plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', mec=ccmap[band],
-                     mfc='none')
+            plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
+
     plt.axhline(1.0, color='k', alpha=0.5)
     plt.axhline(0.9, color='k', ls='--', alpha=0.5)
     plt.ylabel('Transparency')
@@ -130,13 +133,11 @@ def plot_measurements(mm, ps, gvs, mjds=[], mjdrange=None):
         Tb.depth_factor = Tb.exptime / clipped
         I = np.flatnonzero(exptime > clipped)
         if len(I):
-            plt.plot(Tb.mjd_obs[I], exptime[I], 'v', mec=ccmap[band],
-                     mfc='none', alpha=0.5)
+            plt.plot(Tb.mjd_obs[I], exptime[I], 'v', **limitstyle(band))
         I = np.flatnonzero(exptime < clipped)
         if len(I):
-            plt.plot(Tb.mjd_obs[I], exptime[I], '^', mec=ccmap[band],
-                     mfc='none', alpha=0.5)
-        plt.plot(Tb.mjd_obs, clipped, '.', color=ccmap[band])
+            plt.plot(Tb.mjd_obs[I], exptime[I], '^', **limitstyle(band))
+        plt.plot(Tb.mjd_obs, clipped, 'o', color=ccmap[band])
     yl,yh = plt.ylim()
     for band,Tb in zip(bands, TT):
 
@@ -155,14 +156,14 @@ def plot_measurements(mm, ps, gvs, mjds=[], mjdrange=None):
     plt.subplot(SP,1,5)
     mn,mx = 0.6, 1.4
     for band,Tb in zip(bands, TT):
-        plt.plot(Tb.mjd_obs, Tb.depth_factor, '.', color=ccmap[band])
+        plt.plot(Tb.mjd_obs, Tb.depth_factor, 'o', color=ccmap[band])
         # lower and upper limits
         I = np.flatnonzero(Tb.depth_factor < mn)
         if len(I):
-            plt.plot(Tb.mjd_obs[I], [mn]*len(I), 'v', mec=ccmap[band], mfc='none')
+            plt.plot(Tb.mjd_obs[I], [mn]*len(I), 'v', limitstyle(band))
         I = np.flatnonzero(Tb.depth_factor > mx)
         if len(I):
-            plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', mec=ccmap[band], mfc='none')
+            plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', limitstyle(band))
     plt.axhline(1.0, color='k', alpha=0.5)
     plt.axhline(0.9, color='k', ls='--', alpha=0.5)
     plt.axhline(1.1, color='k', ls='--', alpha=0.5)
@@ -223,10 +224,7 @@ def plot_measurements(mm, ps, gvs, mjds=[], mjdrange=None):
         plt.xlim(xl,xh)
 
     plt.xlim(xl,xh)
-
-    ps.savefig()
-
-
+    plt.savefig(plotfn)
     
 def ephemdate_to_mjd(edate):
     # pyephem.Date is days since noon UT on the last day of 1899.
@@ -285,8 +283,7 @@ def process_image(fn, ext, gvs, sfd, opt, obs):
     # Write QA plots to files named by the exposure number
     print('Exposure number:', expnum)
     ps = PlotSequence('qa-%i' % expnum)
-
-    #ps.printfn = False
+    ps.printfn = False
 
     # Measure the new image
     kwa = {}
@@ -426,6 +423,7 @@ def process_image(fn, ext, gvs, sfd, opt, obs):
     m.dx = M['dx']
     m.dy = M['dy']
     m.bad_pixcnt = ('PIXCNT1' in phdr)
+    m.readtime = phdr.get('READTIME', 0.)
 
     img = fitsio.read(fn, ext=1)
     cheaphash = np.sum(img)
@@ -440,7 +438,6 @@ def bounce_process_image(X):
     process_image(*X)
 
 def plot_recent(opt, gvs):
-    ps = PlotSequence('recent')
     import obsdb
 
     if opt.mjdend is None:
@@ -462,7 +459,7 @@ def plot_recent(opt, gvs):
     if not len(mm):
         print('No measurements in MJD range', mjd_start, mjd_end)
         return
-    plot_measurements(mm, ps, gvs, #mjds=[(mjd_now,'Now')],
+    plot_measurements(mm, 'recent.png', gvs, #mjds=[(mjd_now,'Now')],
                       mjdrange=(mjd_start, mjd_end))
 
     
