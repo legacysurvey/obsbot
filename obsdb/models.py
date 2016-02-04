@@ -33,6 +33,7 @@ class MeasuredCCD(models.Model):
     dy = models.FloatField(default=0)
 
     # md5sum of the first hdu's data.
+    # (actually, for Mosaic3 we just SUM the image pixels!)
     md5sum = models.CharField(max_length=128, default='')
 
     # MOSAIC bad pixel count flag set?

@@ -48,7 +48,8 @@ def db_to_fits(mm):
     for field in ['filename', 'extension', 'expnum', 'exptime', 'mjd_obs',
                   'airmass', 'racenter', 'deccenter', 'rabore', 'decbore',
                   'band', 'ebv', 'zeropoint', 'transparency', 'seeing',
-                  'sky', 'expfactor', 'camera']:
+                  'sky', 'expfactor', 'camera', 'dx', 'dy', 'md5sum',
+                  'bad_pixcnt']:
         g = getattr(mm[0], field)
         if isinstance(g, basestring):
             T.set(field, np.array([str(getattr(m, field)) for m in mm]))
@@ -424,6 +425,12 @@ def process_image(fn, ext, gvs, sfd, opt, obs):
     m.expfactor = expfactor
     m.dx = M['dx']
     m.dy = M['dy']
+    m.bad_pixcnt = ('PIXCNT1' in phdr)
+
+    img = fitsio.read(fn, ext=1)
+    cheaphash = np.sum(img)
+    # cheaphash becomes an int64.
+    m.md5sum = cheaphash
 
     m.save()
 
