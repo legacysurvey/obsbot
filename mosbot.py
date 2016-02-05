@@ -95,6 +95,9 @@ scriptdir = os.path.dirname(opt.scriptfn)
 script = [jnox_preamble(opt.scriptfn)]
 last_filter = None
 
+focus_elapsed = 0
+ifocus = 1
+
 fns = []
 for i,j in enumerate(J):
     obj = j['object']
@@ -116,6 +119,22 @@ for i,j in enumerate(J):
     f.close()
     print('Wrote', path)
     script.append('. %s' % fn)
+
+    focus_elapsed += j['expTime'] + gvs.overheads
+    if focus_elapsed > 3600.:
+        focus_elapsed = 0.
+        focusfn = 'focus-%i.sh' % ifocus
+        ifocus += 1
+        script.append('. %s' % focusfn)
+        path = os.path.join(scriptdir, focusfn)
+
+        focus_start = -8000
+        foc = jnox_focus(5., focus_start)
+        f = open(path, 'w')
+        f.write(foc)
+        f.close()
+        print('Wrote', path)
+    
 
 script = '\n'.join(script)
 
