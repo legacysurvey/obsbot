@@ -41,6 +41,8 @@ from measure_raw import measure_raw, get_nominal_cal, get_default_extension
 
 from tractor.sfd import SFDMap
 
+def mjdnow():
+    return datetomjd(datetime.datetime.utcnow())
 
 def db_to_fits(mm):
     from astrometry.util.fits import fits_table
@@ -313,8 +315,8 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None,
         for sp in range(1, SP+1):
             plt.subplot(SP,1,sp)
             ax = plt.axis()
-            for mjd in markmjds:
-                plt.axvline(mjd, color='b', alpha=0.5, lw=2)
+            for mjd,c in markmjds:
+                plt.axvline(mjd, color=c, alpha=0.5, lw=2)
             plt.axis(ax)
 
     plt.savefig(plotfn)
@@ -556,7 +558,7 @@ def plot_recent(opt, gvs, markmjds=[]):
 
     if opt.mjdend is None:
         # Now
-        mjd_end = datetomjd(datetime.datetime.utcnow())
+        mjd_end = mjdnow()
     else:
         mjd_end = opt.mjdend
     
@@ -686,10 +688,10 @@ def main():
         obs.date = sunset
         obs.horizon = -ephem.degrees('18:00:00.0')
         evetwi = obs.next_setting(sun)
-        markmjds.append(ephemdate_to_mjd(evetwi))
+        markmjds.append((ephemdate_to_mjd(evetwi),'b'))
         print('Evening twi:', evetwi, markmjds[-1])
         morntwi = obs.next_rising(sun)
-        markmjds.append(ephemdate_to_mjd(morntwi))
+        markmjds.append((ephemdate_to_mjd(morntwi),'b'))
         print('Morning twi:', morntwi, markmjds[-1])
 
 
@@ -766,6 +768,7 @@ def main():
     lastimages = set(os.listdir(imagedir))
     
     print('Checking directory for new files:', imagedir)
+    lastNewImage = datetime.datetime.utcnow()
     while True:
         first = True
         # Wait for a new image to appear
@@ -782,6 +785,14 @@ def main():
                        fn.endswith('.fits.fz') or fn.endswith('.fits')]
             #print('Found new images:', newimgs)
             if len(newimgs) == 0:
+                now = datetime.datetime.utcnow()
+                if now - lastNewImage > 60:
+                    print('No new images seen for', now-lastNewImage,
+                          'seconds.')
+                    markmjds = []
+                    if now - lastNewImage > 300:
+                        markmjds.append((mjdnow(), 'r'))
+                    plot_recent(opt, gvs, markmjds=markmjds)
                 continue
     
             # Take the one with the latest timestamp.
@@ -810,6 +821,7 @@ def main():
             (M, plandict, expnum) = process_image(
                 fn, rawext, gvs, sfd, opt, obs)
             lastimages.add(newestimg)
+            lastNewImage = datetime.datetime.utcnow()
         except IOError:
             print('Failed to read FITS image:', fn, 'extension', rawext)
             import traceback

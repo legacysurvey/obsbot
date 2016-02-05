@@ -84,19 +84,29 @@ J = json.loads(open(jsonfn,'rb').read())
 scriptfn = jsonfn.replace('.json', '.sh')
 
 script = [jnox_preamble(scriptfn)]
+last_filter = None
+
 fns = []
 for i,j in enumerate(J):
     obj = j['object']
     fn = 'nocs-%s.sh' % obj
     fns.append(fn)
+
+    next_obs = None
+    if i < len(J)-1:
+        next_obs = J[i+1]
+
+    f = j['filter']
+    if f != last_filter:
+        output.write(jnox_filter(f))
+        last_filter = f
+
     f = open(fn, 'w')
-    f.write(jnox_cmds_for_json(j, i, len(J), finish_last=(i>0)))
+    f.write(jnox_cmds_for_json(j, i, len(J), next_obs=next_obs))
     f.close()
     print('Wrote', fn)
     script.append('. %s' % fn)
 
-script.append(jnox_readout() + '\n' +
-              jnox_end_exposure() + '\n')
 script = '\n'.join(script)
 
 f = open(scriptfn, 'w')
@@ -146,9 +156,6 @@ for jwait,jplan in zip(J, J[2:]):
             traceback.print_exc()
             continue
 
-        #images = images - set(newimgs)
-        #images.add(img)
-        #lastimages = images
         lastimages.add(newimg)
         
         obj = hdr.get('OBJECT', None)
