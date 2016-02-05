@@ -16,7 +16,7 @@ from mosaicstrategy import (
     ExposureFactor, getParserAndGlobals, setupGlobals,
     GetAirmass, StartAndEndTimes, s_to_days, readTilesTable, GetNightlyStrategy,
     WriteJSON)
-from measure_raw import measure_raw_decam
+from measure_raw import measure_raw, get_default_extension
 
 from jnox import *
 
@@ -25,7 +25,12 @@ ps = PlotSequence('bot')
 parser,gvs = getParserAndGlobals()
 
 parser.add_option('--plan', help='Use the given plan file (JSON) rather than computing a new plan.')
-parser.add_option('--ext', help='Extension to read for computing observing conditions: default %default', default='N4')
+
+parser.add_option('--script', dest='scriptfn', help='Write top-level shell script, default is the JSON file with s/.json/.sh/')
+
+parser.add_option('--ext', help='Extension to read for computing observing conditions', default=None)
+
+parser.add_option('--check-all', action='store_true', help='Check existing files for the image we are waiting for.')
 
 opt,args = parser.parse_args()
 
@@ -52,6 +57,8 @@ if opt.start_time == default_time and opt.portion is None:
 
 if opt.portion is None:
     opt.portion = 1
+if opt.passnumber is None:
+    opt.passnumber = '1'
     
 obs = setupGlobals(opt, gvs)
 
@@ -81,9 +88,11 @@ J = json.loads(open(jsonfn,'rb').read())
 # plus one top-level script that runs them all.
 
 # FIXME
-scriptfn = jsonfn.replace('.json', '.sh')
+if opt.scriptfn is None:
+    opt.scriptfn = jsonfn.replace('.json', '.sh')
+scriptdir = os.path.dirname(opt.scriptfn)
 
-script = [jnox_preamble(scriptfn)]
+script = [jnox_preamble(opt.scriptfn)]
 last_filter = None
 
 fns = []
@@ -101,23 +110,29 @@ for i,j in enumerate(J):
         script.append(jnox_filter(f))
         last_filter = f
         
-    f = open(fn, 'w')
+    path = os.path.join(scriptdir, fn)
+    f = open(path, 'w')
     f.write(jnox_cmds_for_json(j, i, len(J), next_obs=next_obs))
     f.close()
-    print('Wrote', fn)
+    print('Wrote', path)
     script.append('. %s' % fn)
 
 script = '\n'.join(script)
 
-f = open(scriptfn, 'w')
+f = open(opt.scriptfn, 'w')
 f.write(script)
 f.close()
-print('Wrote', scriptfn)
+print('Wrote', opt.scriptfn)
 
+print('Reading tiles table', opt.tiles)
 tiles = fits_table(opt.tiles)
 
 imagedir = 'rawdata'
-lastimages = set(os.listdir(imagedir))
+
+if opt.check_all:
+    lastimages = set()
+else:
+    lastimages = set(os.listdir(imagedir))
 
 # Now we wait for the first image to appear (while we're taking the
 # second exposure) and we use that to re-plan the third image.
@@ -187,7 +202,7 @@ for iwait,(jwait,jplan,planfn) in enumerate(zip(J, J[2:], fns[2:])):
     if opt.ext is not None:
         kwa.update(ext=opt.ext)
 
-    M = measure_raw_decam(fn, ps=ps, **kwa)
+    M = measure_raw(fn, ps=ps, **kwa)
 
     print('Measurements:', M)
 
@@ -206,16 +221,33 @@ for iwait,(jwait,jplan,planfn) in enumerate(zip(J, J[2:], fns[2:])):
     # Set current date
     obs.date = ephem.now()
 
-    present_tile = ephem.readdb(str(objname+','+'f'+','+('%.6f' % jplan['RA'])+','+
-                                    ('%.6f' % jplan['dec'])+','+'20'))
-    present_tile.compute(obs)
-    airmass = GetAirmass(float(present_tile.alt))
+    print('Observer lat,long', obs.lat, obs.lon)
+    print('Date', obs.date)
+
+    raup,decup = obs.radec_of(0,'90')
+    print('Up: RA,Dec', raup,decup)
+    print('Up: RA,Dec', np.rad2deg(float(raup)),np.rad2deg(float(decup)))
+
+    # ephemstr = str(objname+','+'f'+','+('%.6f' % jplan['RA'])+','+
+    #                ('%.6f' % jplan['dec'])+','+'20')
+    # print('pyephem string', ephemstr)
+    # Yuck -- need H:M:S
+
+    rastr  = ra2hms (jplan['RA' ])
+    decstr = dec2dms(jplan['dec'])
+    ephemstr = str('%s,f,%s,%s,20' % (objname, rastr, decstr))
+    print('pyephem string', ephemstr)
+
+    planned_tile = ephem.readdb(ephemstr)
+    planned_tile.compute(obs)
+    airmass = GetAirmass(float(planned_tile.alt))
     print('Airmass of planned tile:', airmass)
 
     # Find this tile in the tiles table.
     tile = tiles[tilenum-1]
     if tile.tileid != tilenum:
-        I = np.flatnonzero(tile.tileid == tilename)
+        I = np.flatnonzero(tiles.tileid == tilenum)
+        print('Matched tiles:', I)
         assert(len(I) == 1)
         tile = tiles[I[0]]
 
@@ -237,6 +269,7 @@ for iwait,(jwait,jplan,planfn) in enumerate(zip(J, J[2:], fns[2:])):
 
     band = nextband
     exptime = expfactor * gvs.base_exptimes[band]
+    exptime = int(np.ceil(exptime))
     print('Exptime (un-clipped)', exptime)
     exptime = np.clip(exptime, gvs.floor_exptimes[band], gvs.ceil_exptimes[band])
     print('Clipped exptime', exptime)
@@ -244,25 +277,29 @@ for iwait,(jwait,jplan,planfn) in enumerate(zip(J, J[2:], fns[2:])):
     if band == 'z' and exptime > gvs.t_sat_max:
         exptime = gvs.t_sat_max
         print('Reduced exposure time to avoid z-band saturation:', exptime)
+    exptime = int(exptime)
 
-    print
-
-    print('Changing exptime in', planfn, 'from', jplan['expTime'],
-          'to', exptime)
-    # UPDATE EXPTIME!
-    jplan['expTime'] = exptime
+    if exptime == jplan['expTime']:
+        print('Exposure time', exptime, 'unchanged from planned exptime; doing nothing.')
+    else:
+        print('Changing exptime in', planfn, 'from', jplan['expTime'],
+              'to', exptime)
+        # UPDATE EXPTIME!
+        jplan['expTime'] = exptime
     
-    next_obs = None
-    if iplan < len(J)-1:
-        next_obs = J[iplan+1]
+        next_obs = None
+        if iplan < len(J)-1:
+            next_obs = J[iplan+1]
 
-    tmpfn = planfn + '.tmp'
-    f = open(tmpfn, 'w')
-    f.write(jnox_cmds_for_json(jplan, iplan, len(J), next_obs=next_obs))
-    f.close()
-    cmd = 'cp %s %s-orig', planfn, planfn
-    print(cmd)
-    os.system(cmd)
-    os.rename(tmpfn, planfn)
-    print('Wrote', planfn)
+        path = os.path.join(scriptdir, planfn)
+    
+        tmpfn = path + '.tmp'
+        f = open(tmpfn, 'w')
+        f.write(jnox_cmds_for_json(jplan, iplan, len(J), next_obs=next_obs))
+        f.close()
+        cmd = 'cp %s %s-orig' % (path, path)
+        print(cmd)
+        os.system(cmd)
+        os.rename(tmpfn, planfn)
+        print('Wrote', planfn)
 
