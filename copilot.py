@@ -790,8 +790,9 @@ def main():
                 if dt > 60:
                     print('No new images seen for', dt, 'seconds.')
                     markmjds = []
-                    if dt > 300:
-                        markmjds.append((mjdnow(), 'r'))
+                    longtime = 300
+                    if dt > longtime:
+                        markmjds.append((datetomjd(lastNewImage+datetime.timedelta(0,longtime)),'r'))
                     plot_recent(opt, gvs, markmjds=markmjds)
                 continue
     
