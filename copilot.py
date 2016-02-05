@@ -221,6 +221,7 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None,
         if len(I):
             plt.plot(Tb.mjd_obs[I], exptime[I], '^', **limitstyle(band))
         plt.plot(Tb.mjd_obs, clipped, 'o', color=ccmap[band])
+        plt.plot(Tb.mjd_obs, Tb.exptime, 'o', mec='k', mfc='none')
     yl,yh = plt.ylim()
     for band,Tb in zip(bands, TT):
 
