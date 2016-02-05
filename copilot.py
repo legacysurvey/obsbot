@@ -166,7 +166,8 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None,
 
     y = yl + 0.01*(yh-yl)
     plt.plot(np.vstack((T.mjd_obs, T.mjd_end)),
-             np.vstack((y, y)), '-', lw=3, alpha=0.5, color=ccmap[band])
+             np.vstack((y, y)), '-', lw=3, alpha=0.5, color=ccmap[band],
+             solid_joinstyle='bevel')
 
     plt.ylim(yl,min(yh,mx))
     plt.ylabel('Seeing (arcsec)')
