@@ -96,13 +96,17 @@ for i,j in enumerate(J):
     if i < len(J)-1:
         next_obs = J[i+1]
 
+    newscript = ''
+
     f = j['filter']
     if f != last_filter:
-        output.write(jnox_filter(f))
+        newscript += jnox_filter(f)
         last_filter = f
 
+    newscript += jnox_cmds_for_json(j, i, len(J), next_obs=next_obs)
+        
     f = open(fn, 'w')
-    f.write(jnox_cmds_for_json(j, i, len(J), next_obs=next_obs))
+    f.write(newscript)
     f.close()
     print('Wrote', fn)
     script.append('. %s' % fn)
