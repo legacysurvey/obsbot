@@ -300,6 +300,6 @@ for iwait,(jwait,jplan,planfn) in enumerate(zip(J, J[2:], fns[2:])):
         cmd = 'cp %s %s-orig' % (path, path)
         print(cmd)
         os.system(cmd)
-        os.rename(tmpfn, planfn)
-        print('Wrote', planfn)
+        os.rename(tmpfn, path)
+        print('Wrote', path)
 
