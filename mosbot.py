@@ -58,7 +58,7 @@ obs = setupGlobals(opt, gvs)
 #
 if opt.plan is None:
     # the filename written by nightlystrategy.py
-    jsonfn = 'decals_%s_plan.json' % opt.date
+    jsonfn = 'mosaic_%s_plan.json' % opt.date
 
     # Generate nightly strategy.
     tiles,survey_centers = readTilesTable(opt.tiles, gvs)
@@ -122,8 +122,9 @@ lastimages = set(os.listdir(imagedir))
 # Now we wait for the first image to appear (while we're taking the
 # second exposure) and we use that to re-plan the third image.
 
-for jwait,jplan in zip(J, J[2:]):
-
+for iwait,(jwait,jplan,planfn) in enumerate(zip(J, J[2:], fns[2:])):
+    iplan = iwait + 2
+    
     objwait = jwait['object']
     print('Waiting for tile %s to appear to re-plan tile %s' % (jwait['object'], jplan['object']))
 
@@ -171,7 +172,10 @@ for jwait,jplan in zip(J, J[2:]):
     fn = os.path.join(imagedir, newimg)
     for i in range(10):
         try:
-            fitsio.read(fn, ext=opt.ext)
+            ext = opt.ext
+            if ext is None:
+                ext = get_default_extension(fn)
+            fitsio.read(fn, ext=ext)
         except:
             print('Failed to open', fn, '-- maybe not fully written yet.')
             import traceback
@@ -179,22 +183,20 @@ for jwait,jplan in zip(J, J[2:]):
             time.sleep(3)
             continue
 
-    M = measure_raw_decam(fn, ext=opt.ext, ps=ps)
-    
-    #M = measure_raw_decam('DECam_00488199.fits.fz')
-    #M = {'seeing': 1.4890481099577366, 'airmass': 1.34,
-    #'skybright': 18.383479116033314, 'transparency': 0.94488537276869045,
-    #'band': 'z', 'zp': 26.442847814941093}
+    kwa = {}
+    if opt.ext is not None:
+        kwa.update(ext=opt.ext)
+
+    M = measure_raw_decam(fn, ps=ps, **kwa)
 
     print('Measurements:', M)
 
     gvs.transparency = M['transparency']
 
-    objname = j['object']
-    # Parse objname like 'DECaLS_5623_z'
+    objname = jplan['object']
+    # Parse objname like 'MzLS_5623_z'
     parts = objname.split('_')
     assert(len(parts) == 3)
-    assert(parts[0] == 'DECaLS')
     nextband = parts[2]
     assert(nextband in 'grz')
     tilenum = int(parts[1])
@@ -204,8 +206,8 @@ for jwait,jplan in zip(J, J[2:]):
     # Set current date
     obs.date = ephem.now()
 
-    present_tile = ephem.readdb(str(objname+','+'f'+','+('%.6f' % j['RA'])+','+
-                                    ('%.6f' % j['dec'])+','+'20'))
+    present_tile = ephem.readdb(str(objname+','+'f'+','+('%.6f' % jplan['RA'])+','+
+                                    ('%.6f' % jplan['dec'])+','+'20'))
     present_tile.compute(obs)
     airmass = GetAirmass(float(present_tile.alt))
     print('Airmass of planned tile:', airmass)
@@ -245,8 +247,22 @@ for jwait,jplan in zip(J, J[2:]):
 
     print
 
-        
-# rc = RemoteClient()
-# pid = rc.execute('get_propid')
-# print('Got propid:', pid)
+    print('Changing exptime in', planfn, 'from', jplan['expTime'],
+          'to', exptime)
+    # UPDATE EXPTIME!
+    jplan['expTime'] = exptime
+    
+    next_obs = None
+    if iplan < len(J)-1:
+        next_obs = J[iplan+1]
+
+    tmpfn = planfn + '.tmp'
+    f = open(tmpfn, 'w')
+    f.write(jnox_cmds_for_json(jplan, iplan, len(J), next_obs=next_obs))
+    f.close()
+    cmd = 'cp %s %s-orig', planfn, planfn
+    print(cmd)
+    os.system(cmd)
+    os.rename(tmpfn, planfn)
+    print('Wrote', planfn)
 
