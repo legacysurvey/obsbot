@@ -786,11 +786,11 @@ def main():
             #print('Found new images:', newimgs)
             if len(newimgs) == 0:
                 now = datetime.datetime.utcnow()
-                if now - lastNewImage > 60:
-                    print('No new images seen for', now-lastNewImage,
-                          'seconds.')
+                dt = (now - lastNewImage).total_seconds()
+                if dt > 60:
+                    print('No new images seen for', dt, 'seconds.')
                     markmjds = []
-                    if now - lastNewImage > 300:
+                    if dt > 300:
                         markmjds.append((mjdnow(), 'r'))
                     plot_recent(opt, gvs, markmjds=markmjds)
                 continue
