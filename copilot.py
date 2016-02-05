@@ -63,6 +63,8 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None,
                       markmjds=[]):
     T = db_to_fits(mm)
 
+    T.mjd_end = T.mjd_obs + T.exptime / 86400.
+
     ccmap = dict(g='g', r='r', z='m')
 
     #bands = 'grz'
@@ -161,6 +163,10 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None,
 
     plt.text(latest.mjd_obs, yl+0.01*(yh-yl),
              '%.2f' % latest.seeing, ha='center')
+
+    y = yl + 0.01*(yh-yl)
+    plt.plot(np.vstack((T.mjd_obs, T.mjd_end)),
+             np.vstack((y, y)), '-', lw=3, alpha=0.5, color=ccmap[band])
 
     plt.ylim(yl,min(yh,mx))
     plt.ylabel('Seeing (arcsec)')
