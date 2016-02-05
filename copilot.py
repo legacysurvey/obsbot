@@ -131,7 +131,7 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None,
     bads = bd.items()
 
     SP = 5
-    mx = 3.
+    mx = 2.
     plt.subplot(SP,1,1)
     for band,Tb in zip(bands, TT):
         plt.plot(Tb.mjd_obs, Tb.seeing, 'o', color=ccmap[band])
