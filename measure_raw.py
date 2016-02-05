@@ -502,7 +502,8 @@ class RawMeasurer(object):
         #print('Stage-2 shift', shiftx2, shifty2)
         sx = shiftx + shiftx2
         sy = shifty + shifty2
-
+        print('Astrometric shift (%.0f, %.0f) pixels' % (sx,sy))
+        
         if self.debug and ps is not None:
             plt.clf()
             plothist(dx, dy, range=((-radius2,radius2),(-radius2,radius2)))
