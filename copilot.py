@@ -104,7 +104,13 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None,
                 filename=T.filename[i], extension=T.extension[i])
 
             if a.count():
-                bads.append((i, 'md5sum'))
+                # Only report this one as bad if one of the repeats was earlier
+                for ai in a:
+                    if ai.mjd_obs < T.mjd_obs[i]:
+                        bads.append((i, 'md5sum'))
+                        break
+                
+                #bads.append((i, 'md5sum'))
                 print('duplicate md5sums for', T.filename[i] + 'ext', T.extension[i], '(%s)' % T.md5sum[i])
                 for ai in a:
                     print('  md5sum', ai.md5sum, 'file', ai.filename, 'ext', ai.extension)
@@ -116,7 +122,13 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None,
             a = allobs.filter(readtime=T.readtime[i]).exclude(
                 filename=T.filename[i], extension=T.extension[i])
             if a.count():
-                bads.append((i, 'readtime'))
+
+                # Only report this one as bad if one of the repeats was earlier
+                for ai in a:
+                    if ai.mjd_obs < T.mjd_obs[i]:
+                        bads.append((i, 'readtime'))
+                        break
+                #bads.append((i, 'readtime'))
                 print('duplicate readtimes for', T.filename[i] + 'ext', T.extension[i], '(%i)' % T.readtime[i])
                 for ai in a:
                     print('  readtime', ai.readtime, 'file', ai.filename, 'ext', ai.extension)
