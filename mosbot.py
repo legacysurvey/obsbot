@@ -129,6 +129,7 @@ def main():
         os.chmod(path, chmod)
 
     # Default to Pass 2!
+    passnum = 2
     J = J2
 
     # Drop exposures that are before *now*.
@@ -173,12 +174,20 @@ def main():
             os.chmod(path, chmod)
             print('Wrote', path)
             script.append('. %s' % fn)
-                
+
+            tilename = j['object']
+            ra  = j['RA']
+            dec = j['dec']
+            ra  = ra2hms(ra)
+            dec = dec2dms(dec)
+            status = ('Exp %i: pass %i, %s, RA %s, Dec %s' %
+                      (i+1, passnum, tilename, ra, dec))
+            
             # Write expose-##.sh
             fn = expscriptpattern % (i+1)
             path = os.path.join(scriptdir, fn)
             f = open(path, 'w')
-            f.write(expscript_for_json(j))
+            f.write(expscript_for_json(j, status=status))
             f.close()
             os.chmod(path, chmod)
             print('Wrote', path)
@@ -378,6 +387,7 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
         # Parse objname like 'MzLS_5623_z'
         parts = objname.split('_')
         assert(len(parts) == 3)
+        survey = parts[0]
         nextband = parts[2]
         assert(nextband in 'grz')
         tilenum = int(parts[1])
@@ -433,13 +443,25 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
         print('Changing exptime from', jplan['expTime'], 'to', exptime)
         jplan['expTime'] = exptime
 
-        expscriptfn = expscriptpat % (seqnum + 2 + iahead)
+        nextseq = seqnum + 2 + iahead
+
+        #tilename = '%s_%i_%s' % (survey, tile.tileid, nextband)
+        tilename = jplan['object']
+        ra  = jplan['RA']
+        dec = jplan['dec']
+        ra  = ra2hms(ra)
+        dec = dec2dms(dec)
+        
+        status = ('Exp %i: pass %i, %s, RA %s, Dec %s' %
+                  (nextseq, nextpass, tilename, ra, dec))
+        
+        expscriptfn = expscriptpat % (nextseq)
         exptmpfn = expscriptfn + '.tmp'
         f = open(exptmpfn, 'w')
-        f.write(expscript_for_json(jplan))
+        f.write(expscript_for_json(jplan, status=status))
         f.close()
 
-        slewscriptfn = slewscriptpat % (seqnum + 2 + iahead)
+        slewscriptfn = slewscriptpat % (nextseq)
         slewtmpfn = slewscriptfn + '.tmp'
         f = open(slewtmpfn, 'w')
         f.write(slewscript_for_json(jplan))
@@ -463,7 +485,7 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
     return True
     
 
-def expscript_for_json(j):
+def expscript_for_json(j, status=None):
     ra  = j['RA']
     dec = j['dec']
     ss = [jnox_moveto(ra, dec)]
@@ -472,10 +494,11 @@ def expscript_for_json(j):
     et = (j['expTime'])
     # filter
     filter_name = j['filter']
-    ra  = ra2hms(ra)
-    dec = dec2dms(dec)
     objname = j['object']
-    status = "Tile %s, RA %s, Dec %s" % (objname, ra, dec)
+    if status is None:
+        ra  = ra2hms(ra)
+        dec = dec2dms(dec)
+        status = "Tile %s, RA %s, Dec %s" % (objname, ra, dec)
     ss.append(jnox_exposure(et, filter_name, objname, status))
     return '\n'.join(ss) + '\n'
 
