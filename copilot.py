@@ -51,7 +51,8 @@ def db_to_fits(mm):
                   'airmass', 'racenter', 'deccenter', 'rabore', 'decbore',
                   'band', 'ebv', 'zeropoint', 'transparency', 'seeing',
                   'sky', 'expfactor', 'camera', 'dx', 'dy', 'nmatched',
-                  'md5sum', 'bad_pixcnt', 'readtime']:
+                  'md5sum', 'bad_pixcnt', 'readtime',
+                  'object', 'tileid', 'passnumber', 'tileebv']:
         g = getattr(mm[0], field)
         if isinstance(g, basestring):
             T.set(field, np.array([str(getattr(m, field)) for m in mm]))
@@ -196,6 +197,12 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None,
     plt.text(latest.mjd_obs, yl+0.01*(yh-yl),
              '%.2f' % latest.sky, ha='center')
 
+    for t in T:
+        if t.passnumber > 0:
+            plt.text(t.mjd_obs, min(mx, t.sky) - 0.03*(yh-yl),
+                     #yl+0.1*(yh-yl),
+                     '%i' % t.passnumber, ha='center', va='top')
+    
     plt.ylim(yl,yh)
     plt.ylabel('Sky (mag)')
 
@@ -820,6 +827,9 @@ def main():
     nsopt,nsargs = parser.parse_args('--date 2015-01-01 --pass 1 --portion 1'.split())
     obs = setupGlobals(nsopt, gvs)
 
+    ### HACK -- MOSAIC
+    opt.tiles = 'obstatus/mosaic-tiles_obstatus.fits'
+    
     if opt.plot:
         plot_recent(opt, gvs, markmjds=markmjds)
         sys.exit(0)
