@@ -119,29 +119,43 @@ def main():
     f = j['filter']
     script.append(jnox_filter(f))
     
-    expscriptpattern = 'nocs-%i.sh'
-    
-    # Write top-level script and shell scripts for J1.
-    fns = []
-    J = J1
+    expscriptpattern = 'expose-%i.sh'
+    slewscriptpattern = 'slewread-%i.sh'
+
+    # Also write a "read.sh" for convenience after ctrl-C
+    f = open(os.path.join(scriptdir, 'read.sh'), 'w')
+    # ????
+    f.write(jnox_readout() + '\n' + jnox_end_exposure())
+    f.close()
+
+    # Default to Pass 2!
+    J = J2
+
+    # Write top-level script and shell scripts for default plan.
     for i,j in enumerate(J):
-        fn = expscriptpattern % (i+1)
-        fns.append(fn)
     
-        next_obs = None
-        if i < len(J)-1:
-            next_obs = J[i+1]
-            
+        if i > 0:
+            # e#slewread.sh script
+            fn = slewscriptpattern % (i+1)
+            path = os.path.join(scriptdir, fn)
+            f = open(path, 'w')
+            f.write(slewscript_for_json(j))
+            f.close()
+            print('Wrote', path)
+
+            script.append('. %s' % fn)
+
+        # e#exp.sh
+        fn = expscriptpattern % (i+1)
         path = os.path.join(scriptdir, fn)
         f = open(path, 'w')
-        f.write(jnox_cmds_for_json(j, i, len(J), next_obs=next_obs))
+        f.write(expscript_for_json(j))
         f.close()
         print('Wrote', path)
     
         script.append('echo "%i" > %s' % (i+1, seqnumfn))
-    
         script.append('. %s' % fn)
-    
+
         focus_elapsed += j['expTime'] + gvs.overheads
         if focus_elapsed > 3600.:
             focus_elapsed = 0.
@@ -151,7 +165,6 @@ def main():
             script.append('. %s' % focusfn)
             path = os.path.join(scriptdir, focusfn)
     
-    
             ##### FIXME -- need to get current FOCUS value!!
     
             focus_start = -8000
@@ -160,8 +173,11 @@ def main():
             f.write(foc)
             f.close()
             print('Wrote', path)
-    
-    script = '\n'.join(script)
+
+    # Read out the last one!
+    script.append('. read.sh')
+
+    script = '\n'.join(script) + '\n'
     
     f = open(opt.scriptfn, 'w')
     f.write(script)
@@ -228,6 +244,7 @@ def main():
         try:
             found_new_image(fn, rawext, opt, obs, gvs, seqnumpath, J1, J2, J3,
                             os.path.join(scriptdir, expscriptpattern),
+                            os.path.join(scriptdir, slewscriptpattern),
                             tiles)
             lastimages.add(newestimg)
         except IOError:
@@ -239,7 +256,7 @@ def main():
 
 
 def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
-                    scriptpat, tiles):
+                    expscriptpat, slewscriptpat, tiles):
     # Read primary FITS header
     phdr = fitsio.read_header(fn)
     expnum = phdr.get('EXPNUM', 0)
@@ -248,22 +265,22 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
     print('obstype:', obstype)
     if obstype in ['zero', 'focus', 'dome flat']:
         print('Skipping obstype =', obstype)
-        return
+        return False
     elif obstype == '':
         print('Empty OBSTYPE in header:', fn)
-        return
+        return False
 
     exptime = phdr.get('EXPTIME')
     if exptime == 0:
         print('Exposure time EXPTIME in header =', exptime)
-        return
+        return False
 
     filt = phdr['FILTER']
     filt = filt.strip()
     filt = filt.split()[0]
     if filt == 'solid':
         print('Solid (block) filter.')
-        return
+        return False
 
     # Read the current sequence number
     f = open(seqnumpath, 'r')
@@ -292,7 +309,7 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
             break
     if jplan is None:
         print('Could not find a JSON observation with approx_datetime after now =', str(now))
-        return
+        return False
 
     # Compute exposure time for this tile.
     gvs.transparency = M['transparency']
@@ -359,19 +376,57 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
     #if iplan < len(J)-1:
     #    next_obs = J[iplan+1]
 
-    scriptfn = scriptpat % (seqnum + 2)
-    tmpfn = scriptfn + '.tmp'
-    f = open(tmpfn, 'w')
-    f.write(jnox_cmds_for_json(jplan, seqnum+2, len(J1), next_obs=next_obs))
+    expscriptfn = expscriptpat % (seqnum + 2)
+    exptmpfn = expscriptfn + '.tmp'
+    f = open(exptmpfn, 'w')
+    f.write(expscript_for_json(jplan))
     f.close()
-    cmd = 'cp %s %s-orig' % (scriptfn, scriptfn)
+
+    slewscriptfn = slewscriptpat % (seqnum + 2)
+    slewtmpfn = slewscriptfn + '.tmp'
+    f = open(slewtmpfn, 'w')
+    f.write(slewscript_for_json(jplan))
+    f.close()
+
+    cmd = 'cp %s %s-orig' % (expscriptfn, expscriptfn)
     print(cmd)
     os.system(cmd)
-    os.rename(tmpfn, scriptfn)
-    print('Wrote', scriptfn)
+    cmd = 'cp %s %s-orig' % (slewscriptfn, slewscriptfn)
+    print(cmd)
+    os.system(cmd)
+
+    os.rename(exptmpfn, expscriptfn)
+    print('Wrote', expscriptfn)
+    os.rename(slewtmpfn, slewscriptfn)
+    print('Wrote', slewscriptfn)
     return True
     
 
+def expscript_for_json(j):
+    ra  = j['RA']
+    dec = j['dec']
+    ss = [jnox_moveto(ra, dec)]
+
+    # exposure time
+    et = (j['expTime'])
+    # filter
+    filter_name = j['filter']
+    ra  = ra2hms(ra)
+    dec = dec2dms(dec)
+    objname = j['object']
+    status = "Tile %s, RA %s, Dec %s" % (objname, ra, dec)
+    ss.append(jnox_exposure(et, filter_name, objname, status))
+    return '\n'.join(ss) + '\n'
+
+def slewscript_for_json(j):
+    ra  = j['RA']
+    dec = j['dec']
+    ss = [jnox_moveto(ra, dec)]
+    # second call concludes readout
+    ss.append(jnox_readout())
+    # endobs
+    ss.append(jnox_end_exposure())
+    return '\n'.join(ss) + '\n'
 
 
 
