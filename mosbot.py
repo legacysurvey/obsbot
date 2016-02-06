@@ -2,6 +2,9 @@
 TO-DO:
 
 -- t_sat_max should be recomputed based on skybright!!
+-- FIXMEs -- filter changing -- here we set filter ONCE PER NIGHT!
+
+-- setting the filter was disabled for 2016-02-05 broken filter changer!
 
 '''
 
@@ -13,6 +16,7 @@ import time
 import json
 import datetime
 import stat
+from collections import OrderedDict
 
 import matplotlib
 matplotlib.use('Agg')
@@ -77,43 +81,6 @@ def main():
     J1 = json.loads(open(json1fn,'rb').read())
     J2 = json.loads(open(json2fn,'rb').read())
     J3 = json.loads(open(json3fn,'rb').read())
-    
-    # Use jnox to write one shell script per exposure
-    # plus one top-level script that runs them all.
-    
-    scriptdir = os.path.dirname(opt.scriptfn)
-    
-    script = [jnox_preamble(opt.scriptfn)]
-    last_filter = None
-    
-    # FIXMEs -- filter changing -- here we set filter ONCE PER NIGHT!
-    
-    seqnumfn = 'seqnum.txt'
-    seqnumpath = os.path.join(scriptdir, seqnumfn)
-    
-    ## FIXME -- 2016-02-05 the filter changer is broken!
-    ##j = J1[0]
-    ##f = j['filter']
-    ##script.append(jnox_filter(f))
-
-    quitfile = 'quit'
-
-    nowscriptpattern  = 'now-%i.sh'
-    expscriptpattern  = 'expose-%i.sh'
-    slewscriptpattern = 'slewread-%i.sh'
-
-    # 775
-    chmod = (stat.S_IXUSR | stat.S_IWUSR | stat.S_IRUSR |
-             stat.S_IXGRP | stat.S_IWGRP | stat.S_IRGRP |
-             stat.S_IXOTH |                stat.S_IROTH)
-    
-    if opt.write_script:
-        # Also write a "read.sh" for quitting gracefully without slew
-        path = os.path.join(scriptdir, 'read.sh')
-        f = open(path, 'w')
-        f.write(jnox_readout() + '\n' + jnox_end_exposure())
-        f.close()
-        os.chmod(path, chmod)
 
     # Drop exposures that are before *now*, in all three plans.
     now = ephem.now()
@@ -129,45 +96,71 @@ def main():
     if len(J1) + len(J2) + len(J3) == 0:
         print('No tiles!')
         return
-            
-    # JJ = [J1,J2,J3]
-    # for passnum in [1,2,3]:
-    #     J = JJ[passnum - 1]
-    #     print('Pass %i: %i tiles' % (passnum, len(J)))
-    #     if len(J):
-    #         print('First approx_datetime: %s' % J[0]['approx_datetime'])
-    #     
-    #     Jkeep = []
-    #     for i,j in enumerate(J):
-    #         tstart = ephem.Date(str(j['approx_datetime']))
-    #         if tstart < now:
-    #             print('Pass %i: tile %s starts at %s; skipping' %
-    #                   (passnum, j['object'], str(tstart)))
-    #             continue
-    #         Jkeep.append(j)
-    #     JJ[passnum - 1] = Jkeep
-    #     print('Pass %i: cut to %i tiles' % (passnum, len(Jkeep)))
-    #     if len(Jkeep):
-    #         print('First approx_datetime: %s' % Jkeep[0]['approx_datetime'])
-    # (J1,J2,J3) = JJ
-    # del JJ
+    
+    # Use jnox to write one shell script per exposure
+    # plus one top-level script that runs them all.
+    
+    scriptdir = os.path.dirname(opt.scriptfn)
+    
+    seqnumfn = 'seqnum.txt'
+    seqnumpath = os.path.join(scriptdir, seqnumfn)
+    
+    quitfile = 'quit'
+
+    nowscriptpattern  = 'now-%i.sh'
+    expscriptpattern  = 'expose-%i.sh'
+    slewscriptpattern = 'slewread-%i.sh'
+
+    # 775
+    chmod = (stat.S_IXUSR | stat.S_IWUSR | stat.S_IRUSR |
+             stat.S_IXGRP | stat.S_IWGRP | stat.S_IRGRP |
+             stat.S_IXOTH |                stat.S_IROTH)
     
     # Default to Pass 2!
     passnum = 2
     J = J2
 
+    planned_tiles = OrderedDict()
+
+    def log(s):
+        datecmd = 'date -u +"%Y-%m-%d %H:%M:%S"'
+        return 'echo "$(%s): %s" >> log' % (datecmd, s)
+    
     if opt.write_script:
+        # Write "read.sh" for quitting gracefully without slew
+        path = os.path.join(scriptdir, 'read.sh')
+        f = open(path, 'w')
+        f.write(jnox_readout() + '\n' + jnox_end_exposure())
+        f.close()
+        os.chmod(path, chmod)
+
+        script = []
+        script.append(jnox_preamble(opt.scriptfn))
+
+        script.append(log('###############'))
+        script.append(log('Starting script'))
+        script.append(log('###############'))
+
+        ## FIXME -- 2016-02-05 the filter changer is broken!
+        ##j = J[0]
+        ##f = j['filter']
+        ##script.append(jnox_filter(f))
+        
         # Write top-level script and shell scripts for default plan.
         for i,j in enumerate(J):
 
-            if i > 0:
+            # We make the sequence numbers start at 1, just to make things
+            # difficult for ourselves.
+            seq = i + 1
+            
+            if seq > 1:
 
                 script.append('# Check for file "%s"; read out and quit if it exists' % quitfile)
                 script.append('if [ -f %s ]; then\n  . read.sh; rm %s; exit 0;\nfi' %
                               (quitfile,quitfile))
                 
                 # Write slewread-##.sh script
-                fn = slewscriptpattern % (i+1)
+                fn = slewscriptpattern % seq
                 path = os.path.join(scriptdir, fn)
                 f = open(path, 'w')
                 f.write(slewscript_for_json(j))
@@ -176,30 +169,36 @@ def main():
                 print('Wrote', path)
                 script.append('. %s' % fn)
 
-            script.append('\n### Exposure %i ###\n' % (i+1))
-            script.append('echo "%i" > %s' % (i+1, seqnumfn))
-                
+            script.append('\n### Exposure %i ###\n' % seq)
+            script.append('echo "%i" > %s' % (seq, seqnumfn))
+            script.append(log('Starting exposure %i' % seq))
+            expfn = expscriptpattern % seq
+            script.append(log('Tile: $(grep "Tile:" %s)' % expfn))
+            
+            tilename = j['object']
+            planned_tiles[seq] = tilename
+            
             # Write now-##.sh
-            fn = nowscriptpattern % (i+1)
+            fn = nowscriptpattern % seq
             path = os.path.join(scriptdir, fn)
             f = open(path, 'w')
-            f.write('echo "Do stuff before exposure %i?"' % (i+1))
+            f.write('echo "Do stuff before exposure %i?"' % seq)
             f.close()
             os.chmod(path, chmod)
             print('Wrote', path)
             script.append('. %s' % fn)
 
-            tilename = j['object']
             ra  = ra2hms (j['RA' ])
             dec = dec2dms(j['dec'])
             status = ('Exp %i: pass %i, %s, RA %s, Dec %s' %
-                      (i+1, passnum, tilename, ra, dec))
+                      (seq, passnum, tilename, ra, dec))
             
             # Write expose-##.sh
-            fn = expscriptpattern % (i+1)
+            fn = expscriptpattern % seq
             path = os.path.join(scriptdir, fn)
             f = open(path, 'w')
-            f.write(expscript_for_json(j, status=status))
+            f.write(('# Exp %i Tile: %s, default\n' % (seq, tilename)) +
+                    expscript_for_json(j, status=status))
             f.close()
             os.chmod(path, chmod)
             print('Wrote', path)
@@ -399,11 +398,11 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
         rastr  = ra2hms (jplan['RA' ])
         decstr = dec2dms(jplan['dec'])
         ephemstr = str('%s,f,%s,%s,20' % (objname, rastr, decstr))
-        planned_tile = ephem.readdb(ephemstr)
-        planned_tile.compute(obs)
-        airmass = GetAirmass(float(planned_tile.alt))
+        etile = ephem.readdb(ephemstr)
+        etile.compute(obs)
+        airmass = GetAirmass(float(etile.alt))
         print('Airmass of planned tile:', airmass)
-    
+
         # Find this tile in the tiles table.
         tile = tiles[tilenum-1]
         if tile.tileid != tilenum:
@@ -457,7 +456,9 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
         expscriptfn = expscriptpat % (nextseq)
         exptmpfn = expscriptfn + '.tmp'
         f = open(exptmpfn, 'w')
-        f.write(expscript_for_json(jplan, status=status))
+        f.write(('# Exp %i Tile: %s, set at Seq %i, %s\n' %
+                 (nextseq, tilename, seqnum, str(ephem.now()))) +
+                expscript_for_json(jplan, status=status))
         f.close()
 
         slewscriptfn = slewscriptpat % (nextseq)
