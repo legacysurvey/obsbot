@@ -243,10 +243,14 @@ def main():
             break
     
         try:
-            found_new_image(fn, rawext, opt, obs, gvs, seqnumpath, J1, J2, J3,
-                            os.path.join(scriptdir, expscriptpattern),
-                            os.path.join(scriptdir, slewscriptpattern),
-                            tiles)
+            ok = found_new_image(fn, rawext, opt, obs, gvs, seqnumpath,
+                                 J1, J2, J3,
+                                 os.path.join(scriptdir, expscriptpattern),
+                                 os.path.join(scriptdir, slewscriptpattern),
+                                 tiles)
+            if not ok:
+                print('%s: found_new_image returned False' %
+                      (str(ephem.now())))
             lastimages.add(newestimg)
         except IOError:
             print('Failed to read FITS image:', fn, 'extension', rawext)
@@ -258,6 +262,9 @@ def main():
 
 def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
                     expscriptpat, slewscriptpat, tiles):
+
+    print('%s: found new image %s' % (str(ephem.now()), fn))
+
     # Read primary FITS header
     phdr = fitsio.read_header(fn)
     expnum = phdr.get('EXPNUM', 0)
@@ -300,14 +307,15 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
     # Choose the pass
     trans  = M['transparency']
     seeing = M['seeing']
-
+    skybright = M['skybright']
+    
     # eg, nominal = 20, sky = 19, brighter is 1 mag brighter than nom.
     nomsky = gvs.sb_dict[M['band']]
-    brighter = nomsky - M['skybright']
+    brighter = nomsky - skybright
 
     print('Transparency: %6.02f' % trans)
     print('Seeing      : %6.02f' % seeing)
-    print('Sky         : %6.02f' % M['skybright'])
+    print('Sky         : %6.02f' % skybright)
     print('Nominal sky : %6.02f' % nomsky)
     print('Sky over nom: %6.02f   (positive means brighter than nom)' %
           brighter)
@@ -338,11 +346,12 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
         return False
 
     # Read the current sequence number
+    print('%s: reading sequence number' % (str(ephem.now())))
     f = open(seqnumpath, 'r')
     s = f.read()
     f.close()
     seqnum = int(s)
-    print('Current sequence number', seqnum)
+    print('%s: sequence number: %i' % (str(ephem.now()), seqnum))
     
     # How many exposures ahead should we write?
     Nahead = 3
@@ -379,20 +388,17 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
         ebv = tile.ebv_med
 
         if M['band'] == nextband:
-            skybright = M['skybright']
+            nextsky = skybright
         else:
             # Guess that the sky is as much brighter than canonical
             # in the next band as it is in this one!
-            skybright = ((M['skybright'] - gvs.sb_dict[M['band']]) +
-                         gvs.sb_dict[nextband])
+            nextsky = ((skybright - nomsky) + gvs.sb_dict[nextband])
         
         fakezp = -99
         expfactor = ExposureFactor(nextband, airmass, ebv, seeing,
-                                   fakezp, skybright, gvs)
-        print('Exposure factor:', expfactor)
-
-        band = nextband
-        exptime = expfactor * gvs.base_exptimes[band]
+                                   fakezp, nextsky, gvs)
+        # print('Exposure factor:', expfactor)
+        exptime = expfactor * gvs.base_exptimes[nextband]
 
         ### HACK -- safety factor!
         print('Exposure time:', exptime)
@@ -400,10 +406,10 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
         exptime = int(np.ceil(exptime))
         print('Exposure time with safety factor:', exptime)
 
-        exptime = np.clip(exptime, gvs.floor_exptimes[band],
-                          gvs.ceil_exptimes[band])
+        exptime = np.clip(exptime, gvs.floor_exptimes[nextband],
+                          gvs.ceil_exptimes[nextband])
         print('Clipped exptime', exptime)
-        if band == 'z' and exptime > gvs.t_sat_max:
+        if nextband == 'z' and exptime > gvs.t_sat_max:
             exptime = gvs.t_sat_max
             print('Reduced exposure time to avoid z-band saturation:',
                   exptime)
@@ -419,7 +425,10 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
         dec = dec2dms(jplan['dec'])
         status = ('Exp %i: pass %i, %s, RA %s, Dec %s' %
                   (nextseq, nextpass, tilename, ra, dec))
-        
+
+        print('%s: updating exposure %i to tile %s' %
+              (str(ephem.now(), nextseq, tilename)))
+
         expscriptfn = expscriptpat % (nextseq)
         exptmpfn = expscriptfn + '.tmp'
         f = open(exptmpfn, 'w')
@@ -445,6 +454,9 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
         print('Wrote', slewscriptfn)
 
         obs.date += (exptime + gvs.overheads) / 86400.
+
+        print('%s: updated exposure %i to tile %s' %
+              (str(ephem.now(), nextseq, tilename)))
         
 
     return True
