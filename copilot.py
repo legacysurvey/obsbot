@@ -364,15 +364,18 @@ def ephemdate_to_mjd(edate):
     mjd = float(edate) + 15019.5
     return mjd
 
-def set_tile_fields(ccd, hdr):
+def set_tile_fields(ccd, hdr, tiles):
     obj = hdr['OBJECT']
+    print('Object name', obj)
+
     ccd.object = obj
 
     # Parse objname like 'MzLS_5623_z'
-    parts = objname.split('_')
+    parts = obj.split('_')
     ok = (len(parts) == 3)
-    band = parts[2]
-    ok = ok and (band in 'grz')
+    if ok:
+        band = parts[2]
+        ok = ok and (band in 'grz')
     tileid = 0
     if ok:
         try:
@@ -389,6 +392,7 @@ def set_tile_fields(ccd, hdr):
         tile = tiles[I[0]]
         ccd.passnumber = tile.get('pass')
         ccd.tileebv = tile.ebv_med
+    print('Tile id', ccd.tileid, 'pass', ccd.passnumber)
 
 # SFD map isn't picklable, use global instead
 gSFD = None
@@ -690,9 +694,9 @@ def main():
     parser.add_option('--mjdstart', type=float, default=None,
                       help='MJD (UTC) at which to start plot')
 
-    mjdnow = datetomjd(datetime.datetime.utcnow())
+    now = datetomjd(datetime.datetime.utcnow())
     parser.add_option('--mjdend', type=float, default=None,
-                      help='MJD (UTC) at which to end plot (default: now, which is %.3f)' % mjdnow)
+                      help='MJD (UTC) at which to end plot (default: now, which is %.3f)' % now)
 
     parser.add_option('--skip', action='store_true',
                       help='Skip images that already exist in the database')
@@ -788,7 +792,7 @@ def main():
 
         now = mjdnow()
         
-        ccds = obsdb.MeasuredCCD.objects.all().filter(mjd_obs > now - 0.25)
+        ccds = obsdb.MeasuredCCD.objects.all().filter(mjd_obs__gt=now - 0.25)
 
         #ccds = obsdb.MeasuredCCD.objects.all()
 
