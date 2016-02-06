@@ -315,7 +315,8 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
     print('Seeing      : %6.02f' % seeing)
     print('Sky         : %6.02f' % M['skybright'])
     print('Nominal sky : %6.02f' % nomsky)
-    print('Sky over nom: %6.02f' % brighter)
+    print('Sky over nom: %6.02f   (positive means brighter than nom)' %
+          brighter)
     
     nextpass = 3
     if trans > 0.93 and seeing < 1.25 and brighter < 0.25:
@@ -330,9 +331,11 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
     J = [J1,J2,J3][nextpass-1]
     now = ephem.now()
     jplan = None
+    print('UTC now is', str(now))
     for jplan in J:
         tstart = ephem.Date(str(jplan['approx_datetime']))
         if tstart > now:
+            print('Tile', jplan['object'], 'starts at', str(tstart))
             break
     if jplan is None:
         print('Could not find a JSON observation with approx_datetime after now =', str(now))
@@ -347,7 +350,7 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
     nextband = parts[2]
     assert(nextband in 'grz')
     tilenum = int(parts[1])
-    print('Planned tile:', tilenum, nextband)
+    print('Selected tile:', tilenum, nextband)
     # Set current date
     obs.date = now
     print('Observer lat,long', obs.lat, obs.lon)
