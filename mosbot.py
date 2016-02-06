@@ -131,6 +131,16 @@ def main():
     # Default to Pass 2!
     J = J2
 
+    # Drop exposures that are before *now*.
+    now = ephem.now()
+    for i,j in enumerate(J):
+        tstart = ephem.Date(str(j['approx_datetime']))
+        if tstart < now:
+            print('Tile', j['object'], 'starts at', str(tstart), '; skipping')
+            continue
+        J = J[i:]
+        break
+    
     if opt.write_script:
         # Write top-level script and shell scripts for default plan.
         for i,j in enumerate(J):
