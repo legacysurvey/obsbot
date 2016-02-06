@@ -31,6 +31,8 @@ def main():
     parser.add_option('--rawdata', help='Directory to monitor for new images: default %default', default='rawdata')
     
     parser.add_option('--script', dest='scriptfn', help='Write top-level shell script, default is %default', default='tonight.sh')
+
+    parser.add_option('--no-write-script', dest='write_script', default=True, action='store_false')
     
     parser.add_option('--ext', help='Extension to read for computing observing conditions', default=None)
     
@@ -126,67 +128,69 @@ def main():
     expscriptpattern = 'expose-%i.sh'
     slewscriptpattern = 'slewread-%i.sh'
 
-    # Also write a "read.sh" for convenience after ctrl-C
-    f = open(os.path.join(scriptdir, 'read.sh'), 'w')
-    # ????
-    f.write(jnox_readout() + '\n' + jnox_end_exposure())
-    f.close()
+    if opt.write_script:
+        # Also write a "read.sh" for convenience after ctrl-C
+        f = open(os.path.join(scriptdir, 'read.sh'), 'w')
+        # ????
+        f.write(jnox_readout() + '\n' + jnox_end_exposure())
+        f.close()
 
     # Default to Pass 2!
     J = J2
 
-    # Write top-level script and shell scripts for default plan.
-    for i,j in enumerate(J):
+    if opt.write_script:
+        # Write top-level script and shell scripts for default plan.
+        for i,j in enumerate(J):
+        
+            if i > 0:
+                # e#slewread.sh script
+                fn = slewscriptpattern % (i+1)
+                path = os.path.join(scriptdir, fn)
+                f = open(path, 'w')
+                f.write(slewscript_for_json(j))
+                f.close()
+                print('Wrote', path)
     
-        if i > 0:
-            # e#slewread.sh script
-            fn = slewscriptpattern % (i+1)
+                script.append('. %s' % fn)
+    
+            # e#exp.sh
+            fn = expscriptpattern % (i+1)
             path = os.path.join(scriptdir, fn)
             f = open(path, 'w')
-            f.write(slewscript_for_json(j))
+            f.write(expscript_for_json(j))
             f.close()
             print('Wrote', path)
-
+        
+            script.append('echo "%i" > %s' % (i+1, seqnumfn))
             script.append('. %s' % fn)
-
-        # e#exp.sh
-        fn = expscriptpattern % (i+1)
-        path = os.path.join(scriptdir, fn)
-        f = open(path, 'w')
-        f.write(expscript_for_json(j))
+    
+            focus_elapsed += j['expTime'] + gvs.overheads
+            if focus_elapsed > 3600.:
+                focus_elapsed = 0.
+                focusfn = 'focus-%i.sh' % ifocus
+                ifocus += 1
+        
+                script.append('. %s' % focusfn)
+                path = os.path.join(scriptdir, focusfn)
+        
+                ##### FIXME -- need to get current FOCUS value!!
+        
+                focus_start = -8000
+                foc = jnox_focus(5., focus_start)
+                f = open(path, 'w')
+                f.write(foc)
+                f.close()
+                print('Wrote', path)
+    
+        # Read out the last one!
+        script.append('. read.sh')
+    
+        script = '\n'.join(script) + '\n'
+        
+        f = open(opt.scriptfn, 'w')
+        f.write(script)
         f.close()
-        print('Wrote', path)
-    
-        script.append('echo "%i" > %s' % (i+1, seqnumfn))
-        script.append('. %s' % fn)
-
-        focus_elapsed += j['expTime'] + gvs.overheads
-        if focus_elapsed > 3600.:
-            focus_elapsed = 0.
-            focusfn = 'focus-%i.sh' % ifocus
-            ifocus += 1
-    
-            script.append('. %s' % focusfn)
-            path = os.path.join(scriptdir, focusfn)
-    
-            ##### FIXME -- need to get current FOCUS value!!
-    
-            focus_start = -8000
-            foc = jnox_focus(5., focus_start)
-            f = open(path, 'w')
-            f.write(foc)
-            f.close()
-            print('Wrote', path)
-
-    # Read out the last one!
-    script.append('. read.sh')
-
-    script = '\n'.join(script) + '\n'
-    
-    f = open(opt.scriptfn, 'w')
-    f.write(script)
-    f.close()
-    print('Wrote', opt.scriptfn)
+        print('Wrote', opt.scriptfn)
     
     print('Reading tiles table', opt.tiles)
     tiles = fits_table(opt.tiles)
