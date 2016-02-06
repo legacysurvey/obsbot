@@ -27,6 +27,8 @@ def main():
     parser,gvs = getParserAndGlobals()
     
     #parser.add_option('--plan', help='Use the given plan file (JSON) rather than computing a new plan.')
+
+    parser.add_option('--rawdata', help='Directory to monitor for new images: default %default', default='rawdata')
     
     parser.add_option('--script', dest='scriptfn', help='Write top-level shell script, default is %default', default='tonight.sh')
     
@@ -117,7 +119,9 @@ def main():
     
     j = J1[0]
     f = j['filter']
-    script.append(jnox_filter(f))
+
+    ## FIXME -- 2016-02-05 the filter changer is broken!
+    ##script.append(jnox_filter(f))
     
     expscriptpattern = 'expose-%i.sh'
     slewscriptpattern = 'slewread-%i.sh'
@@ -187,7 +191,7 @@ def main():
     print('Reading tiles table', opt.tiles)
     tiles = fits_table(opt.tiles)
     
-    imagedir = 'rawdata'
+    imagedir = opt.rawdata
     
     rawext = opt.ext
     #if opt.extnum is not None:
