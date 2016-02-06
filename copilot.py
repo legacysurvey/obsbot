@@ -63,11 +63,13 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None,
                       markmjds=[]):
     T = db_to_fits(mm)
 
+    T.mjd_end = T.mjd_obs + T.exptime / 86400.
+
     ccmap = dict(g='g', r='r', z='m')
 
     #bands = 'grz'
     bands = np.unique(T.band)
-    print('Unique bands:', bands)
+    #print('Unique bands:', bands)
     
     TT = []
     for band in bands:
@@ -141,6 +143,9 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None,
             bd[i] = reason
     bads = bd.items()
 
+    ilatest = np.argmax(T.mjd_obs)
+    latest = T[ilatest]
+
     SP = 5
     mx = 2.
     plt.subplot(SP,1,1)
@@ -155,6 +160,14 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None,
     plt.axhline(1.2, color='k', alpha=0.1)
     plt.axhline(1.0, color='k', alpha=0.1)
     plt.axhline(0.8, color='k', alpha=0.1)
+
+    plt.text(latest.mjd_obs, yl+0.01*(yh-yl),
+             '%.2f' % latest.seeing, ha='center')
+
+    y = yl + 0.01*(yh-yl)
+    plt.plot(np.vstack((T.mjd_obs, T.mjd_end)),
+             np.vstack((y, y)), '-', lw=3, alpha=0.5, color=ccmap[band])
+
     plt.ylim(yl,min(yh,mx))
     plt.ylabel('Seeing (arcsec)')
 
@@ -177,7 +190,12 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None,
         if len(I):
             plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
     yl,yh = plt.ylim()
-    plt.ylim(yl,min(yh,mx))
+    yh = min(yh,mx)
+
+    plt.text(latest.mjd_obs, yl+0.01*(yh-yl),
+             '%.2f' % latest.sky, ha='center')
+
+    plt.ylim(yl,yh)
     plt.ylabel('Sky (mag)')
 
     plt.subplot(SP,1,3)
@@ -196,8 +214,12 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None,
     plt.axhline(0.9, color='k', ls='--', alpha=0.5)
     plt.ylabel('Transparency')
     yl,yh = plt.ylim()
-    plt.ylim(min(0.89, max(mn, yl)), min(mx, max(yh, 1.01)))
-    
+    yl,yh = min(0.89, max(mn, yl)), min(mx, max(yh, 1.01))
+
+    plt.text(latest.mjd_obs, yl+0.01*(yh-yl),
+             '%.2f' % latest.transparency, ha='center')
+
+    plt.ylim(yl, yh)
     plt.subplot(SP,1,4)
     mx = 300
     for band,Tb in zip(bands, TT):
