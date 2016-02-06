@@ -363,7 +363,33 @@ def ephemdate_to_mjd(edate):
     #   mjdnow - enow ==> 15019.499915068824
     mjd = float(edate) + 15019.5
     return mjd
-    
+
+def set_tile_fields(ccd, hdr):
+    obj = hdr['OBJECT']
+    ccd.object = obj
+
+    # Parse objname like 'MzLS_5623_z'
+    parts = objname.split('_')
+    ok = (len(parts) == 3)
+    band = parts[2]
+    ok = ok and (band in 'grz')
+    tileid = 0
+    if ok:
+        try:
+            tileid = int(parts[1])
+        except:
+            ok = False
+            pass
+
+    ccd.tileid = tileid
+    if ok:
+        # Find this tile in the tiles table.
+        I = np.flatnonzero(tiles.tileid == tileid)
+        assert(len(I) == 1)
+        tile = tiles[I[0]]
+        ccd.passnumber = tile.get('pass')
+        ccd.tileebv = tile.ebv_med
+
 # SFD map isn't picklable, use global instead
 gSFD = None
 
@@ -579,6 +605,10 @@ def process_image(fn, ext, gvs, sfd, opt, obs):
     # cheaphash becomes an int64.
     m.md5sum = cheaphash
 
+    from astrometry.util.fits import fits_table
+    tiles = fits_table(opt.tiles)
+    set_tile_fields(m, phdr, tiles)
+    
     m.save()
 
     return rtn
@@ -618,7 +648,7 @@ def plot_recent(opt, gvs, markmjds=[]):
                       markmjds=markmjds)
 
     from astrometry.util.fits import fits_table
-    tiles = fits_table('obstatus/mosaic-tiles_obstatus.fits')
+    tiles = fits_table(opt.tiles)
     
     plt.clf()
     I = (tiles.in_desi == 1) * (tiles.z_done == 0)
@@ -752,14 +782,26 @@ def main():
         sys.exit(0)
 
     if opt.fix_db:
-        ccds = obsdb.MeasuredCCD.objects.all()
+
+        from astrometry.util.fits import fits_table
+        tiles = fits_table('obstatus/mosaic-tiles_obstatus.fits')
+
+        now = mjdnow()
+        
+        ccds = obsdb.MeasuredCCD.objects.all().filter(mjd_obs > now - 0.25)
+
+        #ccds = obsdb.MeasuredCCD.objects.all()
+
         print(ccds.count(), 'measured CCDs')
         for ccd in ccds:
             try:
                 hdr = fitsio.read_header(ccd.filename, ext=0)
-                band = hdr['FILTER']
-                band = band.split()[0]
-                ccd.band = band
+                # band = hdr['FILTER']
+                # band = band.split()[0]
+                # ccd.band = band
+
+                set_tile_fields(ccd, hdr, tiles)
+
                 ccd.save()
                 print('Fixed', ccd.filename)
             except:
