@@ -20,6 +20,11 @@ class MeasuredCCD(models.Model):
     rabore = models.FloatField(default=0)
     decbore = models.FloatField(default=0)
 
+    object = models.CharField(max_length=64, default='')
+    tileid = models.IntegerField(default=0)
+    passnumber = models.IntegerField(default=0)
+    tileebv = models.FloatField(default=0)
+
     band = models.CharField(max_length=256, default='')
     ebv = models.FloatField(default=0)
     zeropoint = models.FloatField(default=0)
