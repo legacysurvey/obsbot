@@ -296,8 +296,35 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
     ps = None
     M = measure_raw(fn, ps=ps, **kwa)
 
+
+    # Sanity checks
+    ok = (M['nmatched'] >= 20) and (M.get('zp',None) is not None)
+    if not ok:
+        # FIXME -- we could fall back to pass 3 here.
+        return False
+    
     # Choose the pass for seq+2
+    trans = M['transparency']
+    seeing = M['seeing']
+
+    # eg, nominal = 20, sky = 19, brighter is 1 mag brighter than nom.
+    nomsky = gvs.sb_dict[M['band']]
+    brighter = nomsky - M['skybright']
+
+    print('Transparency: %6.02f' % trans)
+    print('Seeing      : %6.02f' % seeing)
+    print('Sky         : %6.02f' % M['skybright'])
+    print('Nominal sky : %6.02f' % nomsky)
+    print('Sky over nom: %6.02f' % brighter)
+    
     nextpass = 3
+    if trans > 0.93 and seeing < 1.25 and brighter < 0.25:
+        nextpass = 1
+
+    elif (trans > 0.93) or (seeing < 1.25):
+        nextpass = 2
+
+    print('Selected pass:', nextpass)
 
     # Choose the next tile from the right JSON tile list Jp
     J = [J1,J2,J3][nextpass-1]
@@ -358,8 +385,14 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
 
     band = nextband
     exptime = expfactor * gvs.base_exptimes[band]
+
+
+    ### HACK -- safety factor!
+    print('Exposure time:', exptime)
+    exptime *= 1.1
     exptime = int(np.ceil(exptime))
-    print('Exptime (un-clipped)', exptime)
+    print('Exposure time with safety factor:', exptime)
+
     exptime = np.clip(exptime, gvs.floor_exptimes[band], gvs.ceil_exptimes[band])
     print('Clipped exptime', exptime)
     if band == 'z' and exptime > gvs.t_sat_max:
@@ -368,13 +401,9 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
     exptime = int(exptime)
 
     print('Changing exptime from', jplan['expTime'], 'to', exptime)
+
     # UPDATE EXPTIME!
     jplan['expTime'] = exptime
-
-    #### FIXME
-    next_obs = None
-    #if iplan < len(J)-1:
-    #    next_obs = J[iplan+1]
 
     expscriptfn = expscriptpat % (seqnum + 2)
     exptmpfn = expscriptfn + '.tmp'
