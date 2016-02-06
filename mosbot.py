@@ -491,13 +491,6 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
         f.write(slewscript_for_json(jplan))
         f.close()
 
-        cmd = 'cp %s %s-orig' % (expscriptfn, expscriptfn)
-        print(cmd)
-        os.system(cmd)
-        cmd = 'cp %s %s-orig' % (slewscriptfn, slewscriptfn)
-        print(cmd)
-        os.system(cmd)
-
         os.rename(exptmpfn, expscriptfn)
         print('Wrote', expscriptfn)
         os.rename(slewtmpfn, slewscriptfn)
