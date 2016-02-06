@@ -125,18 +125,18 @@ def main():
         if len(J):
             print('First approx_datetime: %s' % J[0]['approx_datetime'])
         
+        Jkeep = []
         for i,j in enumerate(J):
             tstart = ephem.Date(str(j['approx_datetime']))
             if tstart < now:
                 print('Pass %i: tile %s starts at %s; skipping' %
                       (passnum, j['object'], str(tstart)))
                 continue
-            J = J[i:]
-            break
-        JJ[passnum - 1] = J
-        print('Pass %i: cut to %i tiles' % (passnum, len(J)))
-        if len(J):
-            print('First approx_datetime: %s' % J[0]['approx_datetime'])
+            Jkeep.append(j)
+        JJ[passnum - 1] = Jkeep
+        print('Pass %i: cut to %i tiles' % (passnum, len(Jkeep)))
+        if len(Jkeep):
+            print('First approx_datetime: %s' % Jkeep[0]['approx_datetime'])
     (J1,J2,J3) = JJ
         
     # Default to Pass 2!
