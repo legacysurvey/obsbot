@@ -108,27 +108,41 @@ def main():
              stat.S_IXOTH |                stat.S_IROTH)
     
     if opt.write_script:
-        # Also write a "read.sh" for convenience after ctrl-C
+        # Also write a "read.sh" for quitting gracefully without slew
         path = os.path.join(scriptdir, 'read.sh')
         f = open(path, 'w')
         f.write(jnox_readout() + '\n' + jnox_end_exposure())
         f.close()
         os.chmod(path, chmod)
 
+    # Drop exposures that are before *now*.
+    now = ephem.now()
+    print('Now:', str(now))
+    JJ = [J1,J2,J3]
+    for passnum in [1,2,3]:
+        J = JJ[passnum - 1]
+        print('Pass %i: %i tiles' % (passnum, len(J)))
+        if len(J):
+            print('First approx_datetime: %s' % J[0]['approx_datetime'])
+        
+        for i,j in enumerate(J):
+            tstart = ephem.Date(str(j['approx_datetime']))
+            if tstart < now:
+                print('Pass %i: tile %s starts at %s; skipping' %
+                      (passnum, j['object'], str(tstart)))
+                continue
+            J = J[i:]
+            break
+        JJ[passnum - 1] = J
+        print('Pass %i: cut to %i tiles' % (passnum, len(J)))
+        if len(J):
+            print('First approx_datetime: %s' % J[0]['approx_datetime'])
+    (J1,J2,J3) = JJ
+        
     # Default to Pass 2!
     passnum = 2
     J = J2
 
-    # Drop exposures that are before *now*.
-    now = ephem.now()
-    for i,j in enumerate(J):
-        tstart = ephem.Date(str(j['approx_datetime']))
-        if tstart < now:
-            print('Tile', j['object'], 'starts at', str(tstart), '; skipping')
-            continue
-        J = J[i:]
-        break
-    
     if opt.write_script:
         # Write top-level script and shell scripts for default plan.
         for i,j in enumerate(J):
