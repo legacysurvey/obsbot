@@ -617,6 +617,20 @@ def plot_recent(opt, gvs, markmjds=[]):
                       mjdrange=(mjd_start, mjd_end),
                       markmjds=markmjds)
 
+    from astrometry.util.fits import fits_table
+    tiles = fits_table('obstatus/mosaic-tiles_obstatus.fits')
+    
+    plt.clf()
+    I = (tiles.in_desi == 1) * (tiles.z_done == 0)
+    plt.plot(tiles.ra[I], tiles.dec[I], 'k.', alpha=0.01)
+    I = (tiles.in_desi == 1) * (tiles.z_done > 0)
+    plt.plot(tiles.ra[I], tiles.dec[I], 'k.', alpha=0.5)
+    plt.plot([m.rabore for m in mm], [m.decbore for m in mm], 'm.')
+    plt.xlabel('RA (deg)')
+    plt.ylabel('Dec (deg)')
+    plt.axis([360,0,-20,90])
+    plt.savefig('radec.png')
+    
     
 def main():
     global gSFD
