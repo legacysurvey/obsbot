@@ -232,13 +232,15 @@ def main():
             if not first:
                 time.sleep(5.)
             first = False
-    
+
+            print('Waiting for new images to appear in', imagedir, '...')
+            
             images = set(os.listdir(imagedir))
             newimgs = images - lastimages
             newimgs = list(newimgs)
             newimgs = [fn for fn in newimgs if
                        fn.endswith('.fits.fz') or fn.endswith('.fits')]
-            print('Found new images:', newimgs)
+            #print('Found new images:', newimgs)
             if len(newimgs) == 0:
                 continue
     
@@ -340,10 +342,10 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
           brighter)
     
     nextpass = 3
-    if trans > 0.93 and seeing < 1.25 and brighter < 0.25:
+    if trans > 0.90 and seeing < 1.25 and brighter < 0.25:
         nextpass = 1
 
-    elif (trans > 0.93) or (seeing < 1.25):
+    elif (trans > 0.90) or (seeing < 1.25):
         nextpass = 2
 
     print('Selected pass:', nextpass)
@@ -353,7 +355,7 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
     now = ephem.now()
     jplan = None
     print('UTC now is', str(now))
-    for jplan in J:
+    for iplan,jplan in enumerate(J):
         tstart = ephem.Date(str(jplan['approx_datetime']))
         if tstart > now:
             print('Tile', jplan['object'], 'starts at', str(tstart))
@@ -362,96 +364,102 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
         print('Could not find a JSON observation with approx_datetime after now =', str(now))
         return False
 
-    # Compute exposure time for this tile.
+    # How many exposures ahead should we write?
+    Nahead = 3
+
     gvs.transparency = M['transparency']
-    objname = jplan['object']
-    # Parse objname like 'MzLS_5623_z'
-    parts = objname.split('_')
-    assert(len(parts) == 3)
-    nextband = parts[2]
-    assert(nextband in 'grz')
-    tilenum = int(parts[1])
-    print('Selected tile:', tilenum, nextband)
     # Set current date
     obs.date = now
-    print('Observer lat,long', obs.lat, obs.lon)
-    print('Date', obs.date)
-    rastr  = ra2hms (jplan['RA' ])
-    decstr = dec2dms(jplan['dec'])
-    ephemstr = str('%s,f,%s,%s,20' % (objname, rastr, decstr))
-    planned_tile = ephem.readdb(ephemstr)
-    planned_tile.compute(obs)
-    airmass = GetAirmass(float(planned_tile.alt))
-    print('Airmass of planned tile:', airmass)
+
+    for iahead,jplan in enumerate(J[iplan: iplan+Nahead]):
+        # Compute exposure time for this tile.
+        objname = jplan['object']
+
+        # Parse objname like 'MzLS_5623_z'
+        parts = objname.split('_')
+        assert(len(parts) == 3)
+        nextband = parts[2]
+        assert(nextband in 'grz')
+        tilenum = int(parts[1])
+        print('Selected tile:', tilenum, nextband)
+        rastr  = ra2hms (jplan['RA' ])
+        decstr = dec2dms(jplan['dec'])
+        ephemstr = str('%s,f,%s,%s,20' % (objname, rastr, decstr))
+        planned_tile = ephem.readdb(ephemstr)
+        planned_tile.compute(obs)
+        airmass = GetAirmass(float(planned_tile.alt))
+        print('Airmass of planned tile:', airmass)
     
-    # Find this tile in the tiles table.
-    tile = tiles[tilenum-1]
-    if tile.tileid != tilenum:
-        I = np.flatnonzero(tiles.tileid == tilenum)
-        print('Matched tiles:', I)
-        assert(len(I) == 1)
-        tile = tiles[I[0]]
-    ebv = tile.ebv_med
-    print('E(b-v) of planned tile:', ebv)
+        # Find this tile in the tiles table.
+        tile = tiles[tilenum-1]
+        if tile.tileid != tilenum:
+            I = np.flatnonzero(tiles.tileid == tilenum)
+            assert(len(I) == 1)
+            tile = tiles[I[0]]
+        ebv = tile.ebv_med
+        #print('E(b-v) of planned tile:', ebv)
 
-    if M['band'] == nextband:
-        skybright = M['skybright']
-    else:
-        # Guess that the sky is as much brighter than canonical
-        # in the next band as it is in this one!
-        skybright = ((M['skybright'] - gvs.sb_dict[M['band']]) +
-                     gvs.sb_dict[nextband])
-    
-    fakezp = -99
-    expfactor = ExposureFactor(nextband, airmass, ebv, M['seeing'], fakezp,
-                               skybright, gvs)
-    print('Exposure factor:', expfactor)
+        if M['band'] == nextband:
+            skybright = M['skybright']
+        else:
+            # Guess that the sky is as much brighter than canonical
+            # in the next band as it is in this one!
+            skybright = ((M['skybright'] - gvs.sb_dict[M['band']]) +
+                         gvs.sb_dict[nextband])
+        
+        fakezp = -99
+        expfactor = ExposureFactor(nextband, airmass, ebv, M['seeing'],
+                                   fakezp, skybright, gvs)
+        print('Exposure factor:', expfactor)
 
-    band = nextband
-    exptime = expfactor * gvs.base_exptimes[band]
+        band = nextband
+        exptime = expfactor * gvs.base_exptimes[band]
 
+        ### HACK -- safety factor!
+        print('Exposure time:', exptime)
+        exptime *= 1.1
+        exptime = int(np.ceil(exptime))
+        print('Exposure time with safety factor:', exptime)
 
-    ### HACK -- safety factor!
-    print('Exposure time:', exptime)
-    exptime *= 1.1
-    exptime = int(np.ceil(exptime))
-    print('Exposure time with safety factor:', exptime)
+        exptime = np.clip(exptime, gvs.floor_exptimes[band],
+                          gvs.ceil_exptimes[band])
+        print('Clipped exptime', exptime)
+        if band == 'z' and exptime > gvs.t_sat_max:
+            exptime = gvs.t_sat_max
+            print('Reduced exposure time to avoid z-band saturation:',
+                  exptime)
+        exptime = int(exptime)
 
-    exptime = np.clip(exptime, gvs.floor_exptimes[band], gvs.ceil_exptimes[band])
-    print('Clipped exptime', exptime)
-    if band == 'z' and exptime > gvs.t_sat_max:
-        exptime = gvs.t_sat_max
-        print('Reduced exposure time to avoid z-band saturation:', exptime)
-    exptime = int(exptime)
+        print('Changing exptime from', jplan['expTime'], 'to', exptime)
+        jplan['expTime'] = exptime
 
-    print('Changing exptime from', jplan['expTime'], 'to', exptime)
+        expscriptfn = expscriptpat % (seqnum + 2 + iahead)
+        exptmpfn = expscriptfn + '.tmp'
+        f = open(exptmpfn, 'w')
+        f.write(expscript_for_json(jplan))
+        f.close()
 
-    # UPDATE EXPTIME!
-    jplan['expTime'] = exptime
+        slewscriptfn = slewscriptpat % (seqnum + 2 + iahead)
+        slewtmpfn = slewscriptfn + '.tmp'
+        f = open(slewtmpfn, 'w')
+        f.write(slewscript_for_json(jplan))
+        f.close()
 
-    expscriptfn = expscriptpat % (seqnum + 2)
-    exptmpfn = expscriptfn + '.tmp'
-    f = open(exptmpfn, 'w')
-    f.write(expscript_for_json(jplan))
-    f.close()
+        cmd = 'cp %s %s-orig' % (expscriptfn, expscriptfn)
+        print(cmd)
+        os.system(cmd)
+        cmd = 'cp %s %s-orig' % (slewscriptfn, slewscriptfn)
+        print(cmd)
+        os.system(cmd)
 
-    slewscriptfn = slewscriptpat % (seqnum + 2)
-    slewtmpfn = slewscriptfn + '.tmp'
-    f = open(slewtmpfn, 'w')
-    f.write(slewscript_for_json(jplan))
-    f.close()
+        os.rename(exptmpfn, expscriptfn)
+        print('Wrote', expscriptfn)
+        os.rename(slewtmpfn, slewscriptfn)
+        print('Wrote', slewscriptfn)
 
-    cmd = 'cp %s %s-orig' % (expscriptfn, expscriptfn)
-    print(cmd)
-    os.system(cmd)
-    cmd = 'cp %s %s-orig' % (slewscriptfn, slewscriptfn)
-    print(cmd)
-    os.system(cmd)
+        obs.date += (exptime + gvs.overheads) / 86400.
+        
 
-    os.rename(exptmpfn, expscriptfn)
-    print('Wrote', expscriptfn)
-    os.rename(slewtmpfn, slewscriptfn)
-    print('Wrote', slewscriptfn)
     return True
     
 
