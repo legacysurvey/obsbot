@@ -63,25 +63,6 @@ def main():
         
     obs = setupGlobals(opt, gvs)
     
-    # if opt.plan is None:
-    #     # the filename written by nightlystrategy.py
-    #     jsonfn = 'mosaic_%s_plan.json' % opt.date
-    # 
-    #     # Generate nightly strategy.
-    #     tiles,survey_centers = readTilesTable(opt.tiles, gvs)
-    # 
-    #     if 'G_DONE' not in survey_centers.keys():
-    #         survey_centers['G_DONE'] = survey_centers['Z_DONE']
-    #     if 'R_DONE' not in survey_centers.keys():
-    #         survey_centers['R_DONE'] = survey_centers['Z_DONE']
-    # 
-    #     plan = GetNightlyStrategy(obs, opt.date, opt.portion, survey_centers,
-    #                               opt.passnumber, gvs)
-    #     WriteJSON(plan, jsonfn)
-    # 
-    # else:
-    #     jsonfn = opt.plan
-    
     json1fn,json2fn,json3fn = args
     
     J1 = json.loads(open(json1fn,'rb').read())
@@ -192,24 +173,6 @@ def main():
             os.chmod(path, chmod)
             print('Wrote', path)
             script.append('. %s' % fn)
-    
-            # focus_elapsed += j['expTime'] + gvs.overheads
-            # if focus_elapsed > 3600.:
-            #     focus_elapsed = 0.
-            #     focusfn = 'focus-%i.sh' % ifocus
-            #     ifocus += 1
-            # 
-            #     script.append('. %s' % focusfn)
-            #     path = os.path.join(scriptdir, focusfn)
-            # 
-            #     ##### FIXME -- need to get current FOCUS value!!
-            # 
-            #     focus_start = -8000
-            #     foc = jnox_focus(5., focus_start)
-            #     f = open(path, 'w')
-            #     f.write(foc)
-            #     f.close()
-            #     print('Wrote', path)
     
         # Read out the last one!
         script.append('. read.sh')
