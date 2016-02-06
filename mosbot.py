@@ -115,7 +115,7 @@ def main():
         f.close()
         os.chmod(path, chmod)
 
-    # Drop exposures that are before *now*.
+    # Drop exposures that are before *now*, in all three plans.
     now = ephem.now()
     print('Now:', str(now))
     JJ = [J1,J2,J3]
@@ -146,8 +146,13 @@ def main():
     if opt.write_script:
         # Write top-level script and shell scripts for default plan.
         for i,j in enumerate(J):
-        
+
             if i > 0:
+
+                script.append('# Check for file "%s"; read out and quit if it exists' % quitfile)
+                script.append('if [ -f %s ]; then\n  . read.sh; rm %s; exit 0;\nfi' %
+                              (quitfile,quitfile))
+                
                 # Write slewread-##.sh script
                 fn = slewscriptpattern % (i+1)
                 path = os.path.join(scriptdir, fn)
@@ -159,11 +164,6 @@ def main():
                 script.append('. %s' % fn)
 
             script.append('\n### Exposure %i ###\n' % (i+1))
-            script.append('# Check for file "%s" and quit if it exists' %
-                          quitfile)
-            script.append('if [ -f %s ]; then rm %s; exit 0; fi' %
-                          (quitfile,quitfile))
-                
             script.append('echo "%i" > %s' % (i+1, seqnumfn))
                 
             # Write now-##.sh
@@ -177,10 +177,8 @@ def main():
             script.append('. %s' % fn)
 
             tilename = j['object']
-            ra  = j['RA']
-            dec = j['dec']
-            ra  = ra2hms(ra)
-            dec = dec2dms(dec)
+            ra  = ra2hms (j['RA' ])
+            dec = dec2dms(j['dec'])
             status = ('Exp %i: pass %i, %s, RA %s, Dec %s' %
                       (i+1, passnum, tilename, ra, dec))
             
