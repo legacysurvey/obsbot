@@ -1,3 +1,12 @@
+'''
+TO-DO:
+
+-- t_sat_max should be recomputed based on skybright!!
+
+'''
+
+
+
 from __future__ import print_function
 import sys
 import time
@@ -76,9 +85,6 @@ def main():
     
     script = [jnox_preamble(opt.scriptfn)]
     last_filter = None
-    
-    #focus_elapsed = 0
-    #ifocus = 1
     
     # FIXMEs -- filter changing -- here we set filter ONCE PER NIGHT!
     
@@ -277,13 +283,6 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
         print('Solid (block) filter.')
         return False
 
-    # Read the current sequence number
-    f = open(seqnumpath, 'r')
-    s = f.read()
-    f.close()
-    seqnum = int(s)
-    print('Current sequence number', seqnum)
-    
     # Measure the new image
     kwa = {}
     if ext is not None:
@@ -291,15 +290,15 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
     ps = None
     M = measure_raw(fn, ps=ps, **kwa)
 
-
     # Sanity checks
     ok = (M['nmatched'] >= 20) and (M.get('zp',None) is not None)
     if not ok:
+        print('Failed sanity checks in our measurement of', fn, '-- not updating anything')
         # FIXME -- we could fall back to pass 3 here.
         return False
     
-    # Choose the pass for seq+2
-    trans = M['transparency']
+    # Choose the pass
+    trans  = M['transparency']
     seeing = M['seeing']
 
     # eg, nominal = 20, sky = 19, brighter is 1 mag brighter than nom.
@@ -325,22 +324,31 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
     # Choose the next tile from the right JSON tile list Jp
     J = [J1,J2,J3][nextpass-1]
     now = ephem.now()
-    jplan = None
+    iplan = None
     print('UTC now is', str(now))
-    for iplan,jplan in enumerate(J):
-        tstart = ephem.Date(str(jplan['approx_datetime']))
+    for i,j in enumerate(J):
+        tstart = ephem.Date(str(j['approx_datetime']))
         if tstart > now:
-            print('Tile', jplan['object'], 'starts at', str(tstart))
+            print('Found tile', j['object'], 'which starts at', str(tstart))
+            iplan = i
             break
-    if jplan is None:
-        print('Could not find a JSON observation with approx_datetime after now =', str(now))
+    if iplan is None:
+        print('Could not find a JSON observation in pass', nextpass, 'with approx_datetime after now =', str(now),
+              '-- latest one', tstart)
         return False
 
+    # Read the current sequence number
+    f = open(seqnumpath, 'r')
+    s = f.read()
+    f.close()
+    seqnum = int(s)
+    print('Current sequence number', seqnum)
+    
     # How many exposures ahead should we write?
     Nahead = 3
 
-    gvs.transparency = M['transparency']
-    # Set current date
+    # Set observing conditions for computing exposure time
+    gvs.transparency = trans
     obs.date = now
 
     for iahead,jplan in enumerate(J[iplan: iplan+Nahead]):
@@ -352,7 +360,6 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
         assert(len(parts) == 3)
         survey = parts[0]
         nextband = parts[2]
-        assert(nextband in 'grz')
         tilenum = int(parts[1])
         print('Selected tile:', tilenum, nextband)
         rastr  = ra2hms (jplan['RA' ])
@@ -370,7 +377,6 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
             assert(len(I) == 1)
             tile = tiles[I[0]]
         ebv = tile.ebv_med
-        #print('E(b-v) of planned tile:', ebv)
 
         if M['band'] == nextband:
             skybright = M['skybright']
@@ -381,7 +387,7 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
                          gvs.sb_dict[nextband])
         
         fakezp = -99
-        expfactor = ExposureFactor(nextband, airmass, ebv, M['seeing'],
+        expfactor = ExposureFactor(nextband, airmass, ebv, seeing,
                                    fakezp, skybright, gvs)
         print('Exposure factor:', expfactor)
 
@@ -406,15 +412,11 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
         print('Changing exptime from', jplan['expTime'], 'to', exptime)
         jplan['expTime'] = exptime
 
-        nextseq = seqnum + 2 + iahead
+        nextseq = seqnum + 1 + iahead
 
-        #tilename = '%s_%i_%s' % (survey, tile.tileid, nextband)
         tilename = jplan['object']
-        ra  = jplan['RA']
-        dec = jplan['dec']
-        ra  = ra2hms(ra)
-        dec = dec2dms(dec)
-        
+        ra  =  ra2hms(jplan['RA'])
+        dec = dec2dms(jplan['dec'])
         status = ('Exp %i: pass %i, %s, RA %s, Dec %s' %
                   (nextseq, nextpass, tilename, ra, dec))
         
