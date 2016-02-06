@@ -124,7 +124,9 @@ def main():
 
     def log(s):
         datecmd = 'date -u +"%Y-%m-%d %H:%M:%S"'
-        return 'echo "$(%s): %s" >> log' % (datecmd, s)
+        #return 'echo "mosbot $(%s): %s"' % (datecmd, s)
+        return 'echo "$(%s): %s" >> mosbot.log' % (datecmd, s)
+
     
     if opt.write_script:
         # Write "read.sh" for quitting gracefully without slew
@@ -271,7 +273,7 @@ def main():
                                  J1, J2, J3,
                                  os.path.join(scriptdir, expscriptpattern),
                                  os.path.join(scriptdir, slewscriptpattern),
-                                 tiles)
+                                 tiles, planned_tiles)
             if not ok:
                 print('%s: found_new_image returned False' %
                       (str(ephem.now())))
@@ -285,7 +287,7 @@ def main():
 
 
 def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
-                    expscriptpat, slewscriptpat, tiles):
+                    expscriptpat, slewscriptpat, tiles, planned_tiles):
 
     print('%s: found new image %s' % (str(ephem.now()), fn))
 
@@ -365,8 +367,9 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
             iplan = i
             break
     if iplan is None:
-        print('Could not find a JSON observation in pass', nextpass, 'with approx_datetime after now =', str(now),
-              '-- latest one', tstart)
+        print('Could not find a JSON observation in pass', nextpass,
+              'with approx_datetime after now =', str(now),
+              '-- latest one', str(tstart))
         return False
 
     # Read the current sequence number
@@ -384,9 +387,32 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
     gvs.transparency = trans
     obs.date = now
 
-    for iahead,jplan in enumerate(J[iplan: iplan+Nahead]):
-        # Compute exposure time for this tile.
+    #for iahead,jplan in enumerate(J[iplan: iplan+Nahead]):
+
+    iahead = 0
+    for ii,jplan in enumerate(J[iplan:]):
+        if iahead >= Nahead:
+            break
         objname = jplan['object']
+        nextseq = seqnum + 1 + iahead
+
+        print('Considering planning tile %s for exp %i' % (objname, nextseq))
+        
+        # Check all planned tiles before this one for a duplicate tile.
+        dup = False
+        for s in range(nextseq-1, 0, -1):
+            t = planned_tiles[s]
+            if t == objname:
+                dup = True
+                print('Wanted to plan tile %s (pass %i element %i) for exp %i'
+                      % (objname, nextpass, iplan+ii, nextseq),
+                      'but it was already planned for exp %i' % s)
+                break
+        if dup:
+            continue
+
+        planned_tiles[nextseq] = objname
+        iahead += 1
 
         # Parse objname like 'MzLS_5623_z'
         parts = objname.split('_')
@@ -442,8 +468,6 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
         print('Changing exptime from', jplan['expTime'], 'to', exptime)
         jplan['expTime'] = exptime
 
-        nextseq = seqnum + 1 + iahead
-
         tilename = jplan['object']
         ra  =  ra2hms(jplan['RA'])
         dec = dec2dms(jplan['dec'])
@@ -451,7 +475,7 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
                   (nextseq, nextpass, tilename, ra, dec))
 
         print('%s: updating exposure %i to tile %s' %
-              (str(ephem.now(), nextseq, tilename)))
+              (str(ephem.now()), nextseq, tilename))
 
         expscriptfn = expscriptpat % (nextseq)
         exptmpfn = expscriptfn + '.tmp'
@@ -482,7 +506,7 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
         obs.date += (exptime + gvs.overheads) / 86400.
 
         print('%s: updated exposure %i to tile %s' %
-              (str(ephem.now(), nextseq, tilename)))
+              (str(ephem.now()), nextseq, tilename))
         
 
     return True
