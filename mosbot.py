@@ -118,27 +118,40 @@ def main():
     # Drop exposures that are before *now*, in all three plans.
     now = ephem.now()
     print('Now:', str(now))
-    JJ = [J1,J2,J3]
-    for passnum in [1,2,3]:
-        J = JJ[passnum - 1]
-        print('Pass %i: %i tiles' % (passnum, len(J)))
+    J1 = [j for j in J1 if ephem.Date(str(j['approx_datetime'])) > now]
+    J2 = [j for j in J2 if ephem.Date(str(j['approx_datetime'])) > now]
+    J3 = [j for j in J3 if ephem.Date(str(j['approx_datetime'])) > now]
+    for i,J in enumerate([J1,J2,J3]):
+        print('Pass %i: keeping %i tiles after now' % (i+1, len(J)))
         if len(J):
-            print('First approx_datetime: %s' % J[0]['approx_datetime'])
-        
-        Jkeep = []
-        for i,j in enumerate(J):
-            tstart = ephem.Date(str(j['approx_datetime']))
-            if tstart < now:
-                print('Pass %i: tile %s starts at %s; skipping' %
-                      (passnum, j['object'], str(tstart)))
-                continue
-            Jkeep.append(j)
-        JJ[passnum - 1] = Jkeep
-        print('Pass %i: cut to %i tiles' % (passnum, len(Jkeep)))
-        if len(Jkeep):
-            print('First approx_datetime: %s' % Jkeep[0]['approx_datetime'])
-    (J1,J2,J3) = JJ
-        
+            print('First tile: %s' % J[0]['approx_datetime'])
+
+    if len(J1) + len(J2) + len(J3) == 0:
+        print('No tiles!')
+        return
+            
+    # JJ = [J1,J2,J3]
+    # for passnum in [1,2,3]:
+    #     J = JJ[passnum - 1]
+    #     print('Pass %i: %i tiles' % (passnum, len(J)))
+    #     if len(J):
+    #         print('First approx_datetime: %s' % J[0]['approx_datetime'])
+    #     
+    #     Jkeep = []
+    #     for i,j in enumerate(J):
+    #         tstart = ephem.Date(str(j['approx_datetime']))
+    #         if tstart < now:
+    #             print('Pass %i: tile %s starts at %s; skipping' %
+    #                   (passnum, j['object'], str(tstart)))
+    #             continue
+    #         Jkeep.append(j)
+    #     JJ[passnum - 1] = Jkeep
+    #     print('Pass %i: cut to %i tiles' % (passnum, len(Jkeep)))
+    #     if len(Jkeep):
+    #         print('First approx_datetime: %s' % Jkeep[0]['approx_datetime'])
+    # (J1,J2,J3) = JJ
+    # del JJ
+    
     # Default to Pass 2!
     passnum = 2
     J = J2
