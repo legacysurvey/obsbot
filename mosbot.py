@@ -3,6 +3,7 @@ import sys
 import time
 import json
 import datetime
+import stat
 
 import matplotlib
 matplotlib.use('Agg')
@@ -21,29 +22,18 @@ from measure_raw import measure_raw, get_default_extension
 from jnox import *
 
 def main():
-    
-    #ps = PlotSequence('bot')
-    
     parser,gvs = getParserAndGlobals()
     
-    #parser.add_option('--plan', help='Use the given plan file (JSON) rather than computing a new plan.')
-
     parser.add_option('--rawdata', help='Directory to monitor for new images: default %default', default='rawdata')
-    
     parser.add_option('--script', dest='scriptfn', help='Write top-level shell script, default is %default', default='tonight.sh')
-
     parser.add_option('--no-write-script', dest='write_script', default=True, action='store_false')
-    
     parser.add_option('--ext', help='Extension to read for computing observing conditions', default=None)
-    
-    #parser.add_option('--check-all', action='store_true', help='Check existing files for the image we are waiting for.')
     
     opt,args = parser.parse_args()
     
     if len(args) != 3:
         print('Usage: %s <pass1.json> <pass2.json> <pass3.json>' % sys.argv[0])
         sys.exit(-1)
-    
         
     if opt.date is None:
         # Figure out the date.  Note that we have to figure out the date
@@ -73,7 +63,6 @@ def main():
         
     obs = setupGlobals(opt, gvs)
     
-    #
     # if opt.plan is None:
     #     # the filename written by nightlystrategy.py
     #     jsonfn = 'mosaic_%s_plan.json' % opt.date
@@ -99,41 +88,45 @@ def main():
     J2 = json.loads(open(json2fn,'rb').read())
     J3 = json.loads(open(json3fn,'rb').read())
     
-    # Use jnox to write one shell script per exposure named by OBJECT (tile) name,
+    # Use jnox to write one shell script per exposure
     # plus one top-level script that runs them all.
-    
-    # FIXME
-    #if opt.scriptfn is None:
-    #    opt.scriptfn = jsonfn.replace('.json', '.sh')
     
     scriptdir = os.path.dirname(opt.scriptfn)
     
     script = [jnox_preamble(opt.scriptfn)]
     last_filter = None
     
-    focus_elapsed = 0
-    ifocus = 1
+    #focus_elapsed = 0
+    #ifocus = 1
     
     # FIXMEs -- filter changing -- here we set filter ONCE PER NIGHT!
     
     seqnumfn = 'seqnum.txt'
     seqnumpath = os.path.join(scriptdir, seqnumfn)
     
-    j = J1[0]
-    f = j['filter']
-
     ## FIXME -- 2016-02-05 the filter changer is broken!
+    ##j = J1[0]
+    ##f = j['filter']
     ##script.append(jnox_filter(f))
-    
-    expscriptpattern = 'expose-%i.sh'
+
+    quitfile = 'quit'
+
+    nowscriptpattern  = 'now-%i.sh'
+    expscriptpattern  = 'expose-%i.sh'
     slewscriptpattern = 'slewread-%i.sh'
 
+    # 775
+    chmod = (stat.S_IXUSR | stat.S_IWUSR | stat.S_IRUSR |
+             stat.S_IXGRP | stat.S_IWGRP | stat.S_IRGRP |
+             stat.S_IXOTH |                stat.S_IROTH)
+    
     if opt.write_script:
         # Also write a "read.sh" for convenience after ctrl-C
-        f = open(os.path.join(scriptdir, 'read.sh'), 'w')
-        # ????
+        path = os.path.join(scriptdir, 'read.sh')
+        f = open(path, 'w')
         f.write(jnox_readout() + '\n' + jnox_end_exposure())
         f.close()
+        os.chmod(path, chmod)
 
     # Default to Pass 2!
     J = J2
@@ -143,44 +136,61 @@ def main():
         for i,j in enumerate(J):
         
             if i > 0:
-                # e#slewread.sh script
+                # Write slewread-##.sh script
                 fn = slewscriptpattern % (i+1)
                 path = os.path.join(scriptdir, fn)
                 f = open(path, 'w')
                 f.write(slewscript_for_json(j))
                 f.close()
+                os.chmod(path, chmod)
                 print('Wrote', path)
-    
                 script.append('. %s' % fn)
-    
-            # e#exp.sh
+
+            script.append('\n### Exposure %i ###\n' % (i+1))
+            script.append('# Check for file "%s" and quit if it exists' %
+                          quitfile)
+            script.append('if [ -f %s ]; then rm %s; exit 0; fi' %
+                          (quitfile,quitfile))
+                
+            script.append('echo "%i" > %s' % (i+1, seqnumfn))
+                
+            # Write now-##.sh
+            fn = nowscriptpattern % (i+1)
+            path = os.path.join(scriptdir, fn)
+            f = open(path, 'w')
+            f.write('echo "Do stuff before exposure %i?"' % (i+1))
+            f.close()
+            os.chmod(path, chmod)
+            print('Wrote', path)
+            script.append('. %s' % fn)
+                
+            # Write expose-##.sh
             fn = expscriptpattern % (i+1)
             path = os.path.join(scriptdir, fn)
             f = open(path, 'w')
             f.write(expscript_for_json(j))
             f.close()
+            os.chmod(path, chmod)
             print('Wrote', path)
-        
-            script.append('echo "%i" > %s' % (i+1, seqnumfn))
             script.append('. %s' % fn)
     
-            focus_elapsed += j['expTime'] + gvs.overheads
-            if focus_elapsed > 3600.:
-                focus_elapsed = 0.
-                focusfn = 'focus-%i.sh' % ifocus
-                ifocus += 1
-        
-                script.append('. %s' % focusfn)
-                path = os.path.join(scriptdir, focusfn)
-        
-                ##### FIXME -- need to get current FOCUS value!!
-        
-                focus_start = -8000
-                foc = jnox_focus(5., focus_start)
-                f = open(path, 'w')
-                f.write(foc)
-                f.close()
-                print('Wrote', path)
+            # focus_elapsed += j['expTime'] + gvs.overheads
+            # if focus_elapsed > 3600.:
+            #     focus_elapsed = 0.
+            #     focusfn = 'focus-%i.sh' % ifocus
+            #     ifocus += 1
+            # 
+            #     script.append('. %s' % focusfn)
+            #     path = os.path.join(scriptdir, focusfn)
+            # 
+            #     ##### FIXME -- need to get current FOCUS value!!
+            # 
+            #     focus_start = -8000
+            #     foc = jnox_focus(5., focus_start)
+            #     f = open(path, 'w')
+            #     f.write(foc)
+            #     f.close()
+            #     print('Wrote', path)
     
         # Read out the last one!
         script.append('. read.sh')
@@ -190,22 +200,15 @@ def main():
         f = open(opt.scriptfn, 'w')
         f.write(script)
         f.close()
+        os.chmod(opt.scriptfn, chmod)
         print('Wrote', opt.scriptfn)
     
     print('Reading tiles table', opt.tiles)
     tiles = fits_table(opt.tiles)
     
     imagedir = opt.rawdata
-    
     rawext = opt.ext
-    #if opt.extnum is not None:
-    #    rawext = opt.extnum
-    
-    # if opt.check_all:
-    #     lastimages = set()
-    # else:
-    #     lastimages = set(os.listdir(imagedir))
-    
+
     lastimages = set(os.listdir(imagedir))
     
     # Now we wait for the first image to appear (while we're taking the
