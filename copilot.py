@@ -679,7 +679,7 @@ def main():
     
     parser.add_option('--ext', help='Extension to read for computing observing conditions: default "N4" for DECam, "im4" for Mosaic3', default=None)
     parser.add_option('--extnum', type=int, help='Integer extension to read')
-    parser.add_option('--rawdata', help='Directory to monitor for new images: default %default', default='rawdata')
+    parser.add_option('--rawdata', help='Directory to monitor for new images: default $MOS3_DATA if set, else "rawdata"', default=None)
     parser.add_option('--portion', help='Portion of the night: default %default', type=float, default='1.0')
 
     parser.add_option('--no-db', dest='db', default=True, action='store_false',
@@ -716,6 +716,9 @@ def main():
     opt,args = parser.parse_args()
 
     imagedir = opt.rawdata
+    if imagedir is None:
+        imagedir = os.environ.get('MOS3_DATA', 'rawdata')
+
     rawext = opt.ext
     if opt.extnum is not None:
         rawext = opt.extnum
