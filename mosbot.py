@@ -16,6 +16,7 @@ import time
 import json
 import datetime
 import stat
+import os
 from collections import OrderedDict
 
 import matplotlib
@@ -35,47 +36,22 @@ from measure_raw import measure_raw, get_default_extension
 from jnox import *
 
 def main():
-    parser,gvs = getParserAndGlobals()
+    parser = optparse.OptionParser(usage='%prog <pass1.json> <pass2.json> <pass3.json>')
     
-    parser.add_option('--rawdata', help='Directory to monitor for new images: default %default', default='rawdata')
-    parser.add_option('--script', dest='scriptfn', help='Write top-level shell script, default is %default', default='tonight.sh')
+    parser.add_option('--rawdata', help='Directory to monitor for new images: default $MOS3_DATA if set, else "rawdata"', default=None)
+    parser.add_option('--script', dest='scriptfn', help='Write top-level shell script, default is %default', default='/mosaic3/exec/mosbot/tonight.sh')
     parser.add_option('--no-write-script', dest='write_script', default=True, action='store_false')
-    parser.add_option('--ext', help='Extension to read for computing observing conditions', default=None)
+    parser.add_option('--ext', help='Extension to read for computing observing conditions, default %default', default='im4')
+    parser.add_option('--tiles',
+                      default='obstatus/mosaic-tiles_obstatus.fits',
+                      help='Observation status file, default %default')
     
     opt,args = parser.parse_args()
     
     if len(args) != 3:
-        print('Usage: %s <pass1.json> <pass2.json> <pass3.json>' % sys.argv[0])
+        parser.print_help()
         sys.exit(-1)
         
-    if opt.date is None:
-        # Figure out the date.  Note that we have to figure out the date
-        # at the START of the night.
-        now = datetime.datetime.now()
-        # Let's make a new day start at 9am, so subtract 9 hours from now
-        nightstart = now - datetime.timedelta(0, 9 * 3600)
-        d = nightstart.date()
-        opt.date = '%04i-%02i-%02i' % (d.year, d.month, d.day)
-        print('Setting date to', opt.date)
-    
-    # If start time was not specified, set it to NOW.
-    default_time = '00:00:00'
-    if opt.start_time == default_time and opt.portion is None:
-        # Note that nightlystrategy.py takes UTC dates.
-        now = datetime.datetime.utcnow()
-        d = now.date()
-        opt.start_date = '%04i-%02i-%02i' % (d.year, d.month, d.day)
-        t = now.time()
-        opt.start_time = t.strftime('%H:%M:%S')
-        print('Setting start to %s %s UTC' % (opt.start_date, opt.start_time))
-    
-    if opt.portion is None:
-        opt.portion = 1
-    if opt.passnumber is None:
-        opt.passnumber = '1'
-        
-    obs = setupGlobals(opt, gvs)
-    
     json1fn,json2fn,json3fn = args
     
     J1 = json.loads(open(json1fn,'rb').read())
@@ -96,6 +72,11 @@ def main():
     if len(J1) + len(J2) + len(J3) == 0:
         print('No tiles!')
         return
+
+    # nightlestrategy setup
+    parser,gvs = getParserAndGlobals()
+    nsopt,nsargs = parser.parse_args('--date 2015-01-01 --pass 1 --portion 1'.split())
+    obs = setupGlobals(nsopt, gvs)
     
     # Use jnox to write one shell script per exposure
     # plus one top-level script that runs them all.
@@ -221,6 +202,9 @@ def main():
     tiles = fits_table(opt.tiles)
     
     imagedir = opt.rawdata
+    if imagedir is None:
+        imagedir = os.environ.get('MOS3_DATA', 'rawdata')
+    print('Watching directory "%s" for new files' % imagedir)
     rawext = opt.ext
 
     lastimages = set(os.listdir(imagedir))
@@ -277,7 +261,10 @@ def main():
             if not ok:
                 print('%s: found_new_image returned False' %
                       (str(ephem.now())))
-            lastimages.add(newestimg)
+                # Remove just this one image
+                lastimages.add(newestimg)
+            else:
+                lastimages = lastimages.union(newimgs)
         except IOError:
             print('Failed to read FITS image:', fn, 'extension', rawext)
             import traceback
