@@ -36,6 +36,7 @@ from measure_raw import measure_raw, get_default_extension
 from jnox import *
 
 def main():
+    import optparse
     parser = optparse.OptionParser(usage='%prog <pass1.json> <pass2.json> <pass3.json>')
     
     parser.add_option('--rawdata', help='Directory to monitor for new images: default $MOS3_DATA if set, else "rawdata"', default=None)
@@ -82,6 +83,9 @@ def main():
     # plus one top-level script that runs them all.
     
     scriptdir = os.path.dirname(opt.scriptfn)
+    # Create scriptdir (one path component only), if necessary
+    if len(scriptdir) and not os.path.exists(scriptdir):
+        os.mkdir(scriptdir)
     
     seqnumfn = 'seqnum.txt'
     seqnumpath = os.path.join(scriptdir, seqnumfn)
@@ -204,6 +208,7 @@ def main():
     imagedir = opt.rawdata
     if imagedir is None:
         imagedir = os.environ.get('MOS3_DATA', 'rawdata')
+
     print('Watching directory "%s" for new files' % imagedir)
     rawext = opt.ext
 
