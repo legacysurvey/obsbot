@@ -63,6 +63,57 @@ def db_to_fits(mm):
             T.set(field, np.array([getattr(m, field) for m in mm]))
     return T
 
+def get_twilight(camera, date):
+    '''
+    Returns tuple,
+    
+    (sunset, -12 eve, -18 eve, -18 morn, -12 morn, sunrise)
+
+    for the given camera ("mosaic3" or "decam"), following the night
+    whose sunset starts BEFORE the given date.
+
+    date: an ephem.Date object (in UTC)
+    '''
+    ## From nightlystrategy / mosaicstrategy
+    R_earth = 6378.1e3 # in meters
+    if camera == 'mosaic3':
+        obs = ephem.Observer()
+        obs.lon = '-111.6003'
+        obs.lat = '31.9634'
+        obs.elev = 2120.0 # meters
+        print('Assuming KPNO')
+
+    elif cam == 'decam':
+        obs = ephem.Observer()
+        obs.lon = '-70.806525'
+        obs.lat = '-30.169661'
+        obs.elev = 2207.0 # meters
+        print('Assuming CTIO')
+
+    else:
+        raise RuntimeError('Unknown camera "%s"' % camera)
+
+    obs.temp = 10.0 # deg celsius; average temp for August
+    obs.pressure = 780.0 # mbar
+    obs.horizon = -np.sqrt(2.0*obs.elev/R_earth)
+
+    obs.date = date
+    sun = ephem.Sun()
+    sunset = obs.previous_setting(sun)
+    obs.date = sunset
+    sunrise = obs.next_rising(sun)
+
+    obs.date = sunset
+    obs.horizon = -ephem.degrees('18:00:00.0')
+    eve18 = obs.next_setting(sun)
+    morn18 = obs.next_rising(sun)
+
+    obs.horizon = -ephem.degrees('12:00:00.0')
+    eve12 = obs.next_setting(sun)
+    morn12 = obs.next_rising(sun)
+
+    return (sunset, eve12, eve18, morn18, morn12, sunrise)
+
 def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None,
                       markmjds=[], show_plot=True):
     T = db_to_fits(mm)
@@ -637,7 +688,7 @@ def process_image(fn, ext, gvs, sfd, opt, obs, tiles):
 def bounce_process_image(X):
     process_image(*X)
 
-def plot_recent(opt, gvs, **kwargs):
+def plot_recent(opt, gvs, markmjds=[], **kwargs):
     import obsdb
 
     if opt.mjdend is None:
@@ -660,12 +711,26 @@ def plot_recent(opt, gvs, **kwargs):
         print('No measurements in MJD range', mjd_start, mjd_end)
         return
 
-    allobs = obsdb.MeasuredCCD.objects.filter(camera=mm[0].camera)
+    camera = mm[0].camera
+    allobs = obsdb.MeasuredCCD.objects.filter(camera=camera)
 
     plotfn = opt.plot_filename
 
+    (sunset, eve12, eve18, morn18, morn12, sunrise) = get_twilight(
+        camera, ephem.Date(mjdtodate(mjd_end)))
+
+    markmjds.append((ephemdate_to_mjd(eve18),'b'))
+    print('Evening twi18:', eve18, markmjds[-1])
+    markmjds.append((ephemdate_to_mjd(morn18),'b'))
+    print('Morning twi18:', morn18, markmjds[-1])
+    markmjds.append((ephemdate_to_mjd(eve12),'g'))
+    print('Evening twi12:', eve12, markmjds[-1])
+    markmjds.append((ephemdate_to_mjd(morn12),'g'))
+    print('Morning twi12:', morn12, markmjds[-1])
+    
     plot_measurements(mm, plotfn, gvs, allobs=allobs,
-                      mjdrange=(mjd_start, mjd_end), **kwargs)
+                      mjdrange=(mjd_start, mjd_end), markmjds=markmjds,
+                      **kwargs)
 
     # from astrometry.util.fits import fits_table
     # tiles = fits_table(opt.tiles)
@@ -760,38 +825,15 @@ def main():
         # Are we at Tololo or Kitt Peak?  Look for latest image.
         o = obsdb.MeasuredCCD.objects.all().order_by('-mjd_obs')
         cam = o[0].camera
-
         print('Camera:', cam)
 
-        ## From nightlystrategy / mosaicstrategy
-        R_earth = 6378.1e3 # in meters
-        if cam == 'mosaic3':
-            obs = ephem.Observer()
-            obs.lon = '-111.6003'
-            obs.lat = '31.9634'
-            obs.elev = 2120.0 # meters
-            print('Assuming KPNO')
-
-        elif cam == 'decam':
-            obs = ephem.Observer()
-            obs.lon = '-70.806525'
-            obs.lat = '-30.169661'
-            obs.elev = 2207.0 # meters
-            print('Assuming CTIO')
-
+        if opt.mjdstart is not None:
+            sdate = ephem.Date(mjdtodate(opt.mjdend))
         else:
-            print('Last camera listed in db: "%s", is unknown.' % cam)
-            sys.exit(0)
-
-        obs.temp = 10.0 # deg celsius; average temp for August
-        obs.pressure = 780.0 # mbar
-        obs.horizon = -np.sqrt(2.0*obs.elev/R_earth)
-
-        obs.date = ephem.Date(datetime.datetime.utcnow())
-        sun = ephem.Sun()
-        sunset = obs.previous_setting(sun)
-        obs.date = sunset
-        sunrise = obs.next_rising(sun)
+            sdate = ephem.Date(datetime.datetime.utcnow())
+        
+        (sunset, eve12, eve18, morn18, morn12, sunrise) = get_twilight(
+            cam, sdate)
         if opt.mjdstart is None:
             opt.mjdstart = ephemdate_to_mjd(sunset)
             print('Set mjd start to sunset:', sunset, opt.mjdstart)
@@ -799,16 +841,16 @@ def main():
             opt.mjdend = ephemdate_to_mjd(sunrise)
             print('Set mjd end to sunrise', sunrise, opt.mjdend)
 
-        obs.date = sunset
-        obs.horizon = -ephem.degrees('18:00:00.0')
-        evetwi = obs.next_setting(sun)
-        markmjds.append((ephemdate_to_mjd(evetwi),'b'))
-        print('Evening twi:', evetwi, markmjds[-1])
-        morntwi = obs.next_rising(sun)
-        markmjds.append((ephemdate_to_mjd(morntwi),'b'))
-        print('Morning twi:', morntwi, markmjds[-1])
-
-
+        markmjds.append((ephemdate_to_mjd(eve18),'b'))
+        print('Evening twi18:', eve18, markmjds[-1])
+        markmjds.append((ephemdate_to_mjd(morn18),'b'))
+        print('Morning twi18:', morn18, markmjds[-1])
+        markmjds.append((ephemdate_to_mjd(eve12),'g'))
+        print('Evening twi12:', eve12, markmjds[-1])
+        markmjds.append((ephemdate_to_mjd(morn12),'g'))
+        print('Morning twi12:', morn12, markmjds[-1])
+            
+        
     if opt.plot_filename is None:
         opt.plot_filename = plotfn_default
 
