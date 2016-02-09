@@ -26,7 +26,10 @@ import optparse
 import numpy as np
 
 import matplotlib
-matplotlib.use('Agg')
+#matplotlib.use('Agg')
+#matplotlib.use('TkAgg')
+#matplotlib.use('GTKAgg')
+#matplotlib.rcParams['toolbar'] = 'None'
 import pylab as plt
 
 import fitsio
@@ -359,7 +362,16 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None,
                 plt.axvline(mjd, color=c, alpha=0.5, lw=2)
             plt.axis(ax)
 
+    # print('Drawing figure')
+    # plt.draw()
+    plt.draw()
+    plt.show(block=False)
+    plt.pause(0.001)
     plt.savefig(plotfn)
+    print('Saved', plotfn)
+    plt.draw()
+    plt.show(block=False)
+    plt.pause(0.001)
     
 def ephemdate_to_mjd(edate):
     # pyephem.Date is days since noon UT on the last day of 1899.
@@ -404,7 +416,7 @@ def set_tile_fields(ccd, hdr, tiles):
 # SFD map isn't picklable, use global instead
 gSFD = None
 
-def process_image(fn, ext, gvs, sfd, opt, obs):
+def process_image(fn, ext, gvs, sfd, opt, obs, tiles):
     portion = opt.portion
     db = opt.db
     print('Reading', fn)
@@ -616,10 +628,8 @@ def process_image(fn, ext, gvs, sfd, opt, obs):
     # cheaphash becomes an int64.
     m.md5sum = cheaphash
 
-    from astrometry.util.fits import fits_table
-    tiles = fits_table(opt.tiles)
     set_tile_fields(m, phdr, tiles)
-    
+
     m.save()
 
     return rtn
@@ -658,19 +668,18 @@ def plot_recent(opt, gvs, markmjds=[]):
                       mjdrange=(mjd_start, mjd_end),
                       markmjds=markmjds)
 
-    from astrometry.util.fits import fits_table
-    tiles = fits_table(opt.tiles)
-    
-    plt.clf()
-    I = (tiles.in_desi == 1) * (tiles.z_done == 0)
-    plt.plot(tiles.ra[I], tiles.dec[I], 'k.', alpha=0.01)
-    I = (tiles.in_desi == 1) * (tiles.z_done > 0)
-    plt.plot(tiles.ra[I], tiles.dec[I], 'k.', alpha=0.5)
-    plt.plot([m.rabore for m in mm], [m.decbore for m in mm], 'm.')
-    plt.xlabel('RA (deg)')
-    plt.ylabel('Dec (deg)')
-    plt.axis([360,0,-20,90])
-    plt.savefig('radec.png')
+    # from astrometry.util.fits import fits_table
+    # tiles = fits_table(opt.tiles)
+    # plt.clf()
+    # I = (tiles.in_desi == 1) * (tiles.z_done == 0)
+    # plt.plot(tiles.ra[I], tiles.dec[I], 'k.', alpha=0.01)
+    # I = (tiles.in_desi == 1) * (tiles.z_done > 0)
+    # plt.plot(tiles.ra[I], tiles.dec[I], 'k.', alpha=0.5)
+    # plt.plot([m.rabore for m in mm], [m.decbore for m in mm], 'm.')
+    # plt.xlabel('RA (deg)')
+    # plt.ylabel('Dec (deg)')
+    # plt.axis([360,0,-20,90])
+    # plt.savefig('radec.png')
     
     
 def main():
@@ -712,7 +721,10 @@ def main():
                       help='Run multi-threaded when processing list of files on command-line')
 
     parser.add_option('--fix-db', action='store_true')
-    
+
+    parser.add_option('--tiles', default='obstatus/mosaic-tiles_obstatus.fits',
+                      help='Tiles table, default %default')
+
     opt,args = parser.parse_args()
 
     imagedir = opt.rawdata
@@ -722,6 +734,9 @@ def main():
     rawext = opt.ext
     if opt.extnum is not None:
         rawext = opt.extnum
+
+    from astrometry.util.fits import fits_table
+    tiles = fits_table(opt.tiles)
 
     from django.conf import settings
     import obsdb
@@ -830,9 +845,6 @@ def main():
     nsopt,nsargs = parser.parse_args('--date 2015-01-01 --pass 1 --portion 1'.split())
     obs = setupGlobals(nsopt, gvs)
 
-    ### HACK -- MOSAIC
-    opt.tiles = 'obstatus/mosaic-tiles_obstatus.fits'
-    
     if opt.plot:
         plot_recent(opt, gvs, markmjds=markmjds)
         sys.exit(0)
@@ -862,11 +874,11 @@ def main():
             
         if mp is None:
             for fn in fns:
-                process_image(fn, rawext, gvs, sfd, opt, obs)
+                process_image(fn, rawext, gvs, sfd, opt, obs, tiles)
         else:
             sfd = None
             mp.map(bounce_process_image,
-                   [(fn, rawext, gvs, sfd, opt, obs) for fn in fns])
+                   [(fn, rawext, gvs, sfd, opt, obs, tiles) for fn in fns])
         plot_recent(opt, gvs, markmjds=markmjds)
         sys.exit(0)
     
@@ -875,6 +887,7 @@ def main():
     
     print('Checking directory for new files:', imagedir)
     lastNewImage = datetime.datetime.utcnow()
+    lastPlot = lastNewImage
     while True:
         first = True
         # Wait for a new image to appear
@@ -893,13 +906,16 @@ def main():
             if len(newimgs) == 0:
                 now = datetime.datetime.utcnow()
                 dt = (now - lastNewImage).total_seconds()
-                if dt > 60:
+                dtp = (now - lastPlot).total_seconds()
+                #if dt > 60 and dtp > 60:
+                if dt > 5 and dtp > 5:
                     print('No new images seen for', dt, 'seconds.')
                     markmjds = []
                     longtime = 300
                     if dt > longtime:
                         markmjds.append((datetomjd(lastNewImage+datetime.timedelta(0,longtime)),'r'))
                     plot_recent(opt, gvs, markmjds=markmjds)
+                    lastPlot = now
                 continue
     
             # Take the one with the latest timestamp.
@@ -926,7 +942,7 @@ def main():
 
         try:
             (M, plandict, expnum) = process_image(
-                fn, rawext, gvs, sfd, opt, obs)
+                fn, rawext, gvs, sfd, opt, obs, tiles)
             lastimages.add(newestimg)
             lastNewImage = datetime.datetime.utcnow()
         except IOError:
@@ -936,6 +952,7 @@ def main():
             continue
 
         plot_recent(opt, gvs)
+        lastPlot = now
         
 if __name__ == '__main__':
     main()
