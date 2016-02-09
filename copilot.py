@@ -64,7 +64,7 @@ def db_to_fits(mm):
     return T
 
 def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None,
-                      markmjds=[]):
+                      markmjds=[], show_plot=True):
     T = db_to_fits(mm)
 
     T.mjd_end = T.mjd_obs + T.exptime / 86400.
@@ -362,16 +362,16 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None,
                 plt.axvline(mjd, color=c, alpha=0.5, lw=2)
             plt.axis(ax)
 
-    # print('Drawing figure')
-    # plt.draw()
-    plt.draw()
-    plt.show(block=False)
-    plt.pause(0.001)
+    if show_plot:
+        plt.draw()
+        plt.show(block=False)
+        plt.pause(0.001)
     plt.savefig(plotfn)
     print('Saved', plotfn)
-    plt.draw()
-    plt.show(block=False)
-    plt.pause(0.001)
+    if show_plot:
+        plt.draw()
+        plt.show(block=False)
+        plt.pause(0.001)
     
 def ephemdate_to_mjd(edate):
     # pyephem.Date is days since noon UT on the last day of 1899.
@@ -637,7 +637,7 @@ def process_image(fn, ext, gvs, sfd, opt, obs, tiles):
 def bounce_process_image(X):
     process_image(*X)
 
-def plot_recent(opt, gvs, markmjds=[]):
+def plot_recent(opt, gvs, **kwargs):
     import obsdb
 
     if opt.mjdend is None:
@@ -665,8 +665,7 @@ def plot_recent(opt, gvs, markmjds=[]):
     plotfn = opt.plot_filename
 
     plot_measurements(mm, plotfn, gvs, allobs=allobs,
-                      mjdrange=(mjd_start, mjd_end),
-                      markmjds=markmjds)
+                      mjdrange=(mjd_start, mjd_end), **kwargs)
 
     # from astrometry.util.fits import fits_table
     # tiles = fits_table(opt.tiles)
@@ -685,6 +684,8 @@ def plot_recent(opt, gvs, markmjds=[]):
 def main():
     global gSFD
     parser = optparse.OptionParser(usage='%prog')
+
+    plotfn_default = 'recent.png'
     
     parser.add_option('--ext', help='Extension to read for computing observing conditions: default "N4" for DECam, "im4" for Mosaic3', default=None)
     parser.add_option('--extnum', type=int, help='Integer extension to read')
@@ -697,9 +698,10 @@ def main():
     parser.add_option('--fits', help='Write database to given FITS table')
     parser.add_option('--plot', action='store_true',
                       help='Plot recent data and quit')
-    parser.add_option('--plot-filename', default='recent.png', help='Save plot to given file, default %default')
+    parser.add_option('--plot-filename', default=None,
+                      help='Save plot to given file, default %s' % plotfn_default)
 
-    parser.add_option('--nightplot', action='store_true',
+    parser.add_option('--nightplot', '--night', action='store_true',
                       help="Plot tonight's data and quit")
 
     parser.add_option('--no-plots', dest='doplots', default=True, action='store_false', help='Do not create QA plots')
@@ -725,6 +727,9 @@ def main():
     parser.add_option('--tiles', default='obstatus/mosaic-tiles_obstatus.fits',
                       help='Tiles table, default %default')
 
+    parser.add_option('--no-show', dest='show', default=True, action='store_false',
+                      help='Do not show plot window, just save it.')
+
     opt,args = parser.parse_args()
 
     imagedir = opt.rawdata
@@ -748,6 +753,9 @@ def main():
 
     if opt.nightplot:
         opt.plot = True
+
+        if opt.plot_filename is None:
+            opt.plot_filename = 'night.png'
 
         # Are we at Tololo or Kitt Peak?  Look for latest image.
         o = obsdb.MeasuredCCD.objects.all().order_by('-mjd_obs')
@@ -801,6 +809,8 @@ def main():
         print('Morning twi:', morntwi, markmjds[-1])
 
 
+    if opt.plot_filename is None:
+        opt.plot_filename = plotfn_default
 
     if opt.fits:
         ccds = obsdb.MeasuredCCD.objects.all()
@@ -846,7 +856,7 @@ def main():
     obs = setupGlobals(nsopt, gvs)
 
     if opt.plot:
-        plot_recent(opt, gvs, markmjds=markmjds)
+        plot_recent(opt, gvs, markmjds=markmjds, show_plot=False)
         sys.exit(0)
         
     print('Loading SFD maps...')
@@ -879,7 +889,7 @@ def main():
             sfd = None
             mp.map(bounce_process_image,
                    [(fn, rawext, gvs, sfd, opt, obs, tiles) for fn in fns])
-        plot_recent(opt, gvs, markmjds=markmjds)
+        plot_recent(opt, gvs, markmjds=markmjds, show_plot=False)
         sys.exit(0)
     
     
@@ -914,7 +924,7 @@ def main():
                     longtime = 300
                     if dt > longtime:
                         markmjds.append((datetomjd(lastNewImage+datetime.timedelta(0,longtime)),'r'))
-                    plot_recent(opt, gvs, markmjds=markmjds)
+                    plot_recent(opt, gvs, markmjds=markmjds, show_plot=opt.show)
                     lastPlot = now
                 continue
     
@@ -951,7 +961,7 @@ def main():
             traceback.print_exc()
             continue
 
-        plot_recent(opt, gvs)
+        plot_recent(opt, gvs, show_plot=opt.show)
         lastPlot = now
         
 if __name__ == '__main__':
