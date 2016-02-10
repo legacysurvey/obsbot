@@ -203,7 +203,7 @@ def main():
             path = os.path.join(scriptdir, fn)
             f = open(path, 'w')
             f.write(('# Exp %i: Tile: %s, Pass: %i; default\n' %
-                     (seq, tilename, passnum)) +
+                     (seq, tilename, opt.passnum)) +
                      expscript_for_json(j, status=status))
             f.close()
             os.chmod(path, chmod)
