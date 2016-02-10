@@ -52,6 +52,10 @@ def main():
                       help='Set default pass number (1/2/3), default 2')
     parser.add_option('--exptime', type=int, default=None,
                       help='Set default exposure time, default whatever is in the JSON files, usually 80 sec')
+
+    parser.add_option('--no-cut-past', dest='cut_before_now',
+                      default=True, action='store_false',
+                      help='Do not cut tiles that were supposed to be observed in the past')
     
     opt,args = parser.parse_args()
     
@@ -64,21 +68,22 @@ def main():
         sys.exit(-1)
         
     json1fn,json2fn,json3fn = args
-    
+
     J1 = json.loads(open(json1fn,'rb').read())
     J2 = json.loads(open(json2fn,'rb').read())
     J3 = json.loads(open(json3fn,'rb').read())
-
-    # Drop exposures that are before *now*, in all three plans.
-    now = ephem.now()
-    print('Now:', str(now))
-    J1 = [j for j in J1 if ephem.Date(str(j['approx_datetime'])) > now]
-    J2 = [j for j in J2 if ephem.Date(str(j['approx_datetime'])) > now]
-    J3 = [j for j in J3 if ephem.Date(str(j['approx_datetime'])) > now]
-    for i,J in enumerate([J1,J2,J3]):
-        print('Pass %i: keeping %i tiles after now' % (i+1, len(J)))
-        if len(J):
-            print('First tile: %s' % J[0]['approx_datetime'])
+    print('Read', len(J1), 'pass 1 and', len(J2), 'pass 2 and', len(J3), 'pass 3 exposures')
+    if opt.cut_before_now:
+        # Drop exposures that are before *now*, in all three plans.
+        now = ephem.now()
+        print('Now:', str(now))
+        J1 = [j for j in J1 if ephem.Date(str(j['approx_datetime'])) > now]
+        J2 = [j for j in J2 if ephem.Date(str(j['approx_datetime'])) > now]
+        J3 = [j for j in J3 if ephem.Date(str(j['approx_datetime'])) > now]
+        for i,J in enumerate([J1,J2,J3]):
+            print('Pass %i: keeping %i tiles after now' % (i+1, len(J)))
+            if len(J):
+                print('First tile: %s' % J[0]['approx_datetime'])
 
     if len(J1) + len(J2) + len(J3) == 0:
         print('No tiles!')
@@ -202,9 +207,11 @@ def main():
             fn = expscriptpattern % seq
             path = os.path.join(scriptdir, fn)
             f = open(path, 'w')
-            f.write(('# Exp %i: Tile: %s, Pass: %i; default\n' %
-                     (seq, tilename, opt.passnum)) +
-                     expscript_for_json(j, status=status))
+            s = ('# Exp %i: Tile: %s, Pass: %i; default\n' %
+                 (seq, tilename, opt.passnum))
+            
+            s += expscript_for_json(j, status=status)
+            f.write(s)
             f.close()
             os.chmod(path, chmod)
             print('Wrote', path)
@@ -513,9 +520,29 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
     
 
 def expscript_for_json(j, status=None):
+
+    ss = ('# Exposure scheduled for: %s UT\n' % j['approx_datetime'])
+
+    # Expected start time of this script, in "date -u +%s" units -- seconds since unixepoch = 1970-01-01 00:00:00
+    unixepoch = 25567.5
+    tj = ephem.Date(str(j['approx_datetime']))
+
+    ss = ['dt=$(($(date -u +%%s) - %i))' % (int((tj - unixepoch) * 86400))]
+    #ss.append('echo DT: $dt\n')
+    ss.append('if [ $dt -gt 3600 ]; then\n' +
+              '  echo; echo "WARNING: This exposure is happening more than an hour late!";\n' +
+              '  echo "Scheduled time: %s UT";\n' % j['approx_datetime'] +
+              '  echo; tput bel; sleep 0.25; tput bel; sleep 0.25; tput bel;\n' +
+              'fi\n' +
+              'if [ $dt -lt -3600 ]; then\n' +
+              '  echo; echo "WARNING: This exposure is happening more than an hour early!";\n' +
+              '  echo "Scheduled time: %s UT";\n' % j['approx_datetime'] +
+              '  echo; tput bel; sleep 0.25; tput bel; sleep 0.25; tput bel;\n' +
+              'fi\n')
+    
     ra  = j['RA']
     dec = j['dec']
-    ss = [jnox_moveto(ra, dec)]
+    ss.append(jnox_moveto(ra, dec))
 
     # exposure time
     et = (j['expTime'])
