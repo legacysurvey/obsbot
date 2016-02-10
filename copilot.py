@@ -434,32 +434,32 @@ def ephemdate_to_mjd(edate):
     mjd = float(edate) + 15019.5
     return mjd
 
-def set_tile_fields(ccd, hdr, tiles):
-    obj = hdr['OBJECT']
-    print('Object name', obj)
-
-    ccd.object = obj
-
+def get_tile_from_name(name, tiles):
     # Parse objname like 'MzLS_5623_z'
     parts = obj.split('_')
     ok = (len(parts) == 3)
     if ok:
         band = parts[2]
         ok = ok and (band in 'grz')
-    tileid = 0
-    if ok:
-        try:
-            tileid = int(parts[1])
-        except:
-            ok = False
-            pass
+    if not ok:
+        return None
+    try:
+        tileid = int(parts[1])
+    except:
+        return None
+    # Find this tile in the tiles table.
+    I = np.flatnonzero(tiles.tileid == tileid)
+    assert(len(I) == 1)
+    tile = tiles[I[0]]
+    return tile
 
-    ccd.tileid = tileid
-    if ok:
-        # Find this tile in the tiles table.
-        I = np.flatnonzero(tiles.tileid == tileid)
-        assert(len(I) == 1)
-        tile = tiles[I[0]]
+def set_tile_fields(ccd, hdr, tiles):
+    obj = hdr['OBJECT']
+    print('Object name', obj)
+    ccd.object = obj
+    tile = get_tile_from_name(obj, tiles)
+    if tile is not None:
+        ccd.tileid = tile.tileid
         ccd.passnumber = tile.get('pass')
         ccd.tileebv = tile.ebv_med
     print('Tile id', ccd.tileid, 'pass', ccd.passnumber)

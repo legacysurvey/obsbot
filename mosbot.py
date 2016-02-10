@@ -34,6 +34,7 @@ from mosaicstrategy import (
 from measure_raw import measure_raw, get_default_extension
 
 from jnox import *
+#from copilot import get_tile_from_name
 
 def main():
     import optparse
@@ -46,10 +47,19 @@ def main():
     parser.add_option('--tiles',
                       default='obstatus/mosaic-tiles_obstatus.fits',
                       help='Observation status file, default %default')
+
+    parser.add_option('--pass', dest='passnum', type=int, default=2,
+                      help='Set default pass number (1/2/3), default 2')
+    parser.add_option('--exptime', type=int, default=None,
+                      help='Set default exposure time, default whatever is in the JSON files, usually 80 sec')
     
     opt,args = parser.parse_args()
     
     if len(args) != 3:
+        parser.print_help()
+        sys.exit(-1)
+
+    if not (opt.passnum in [1,2,3]):
         parser.print_help()
         sys.exit(-1)
         
@@ -74,10 +84,13 @@ def main():
         print('No tiles!')
         return
 
-    # nightlestrategy setup
+    # nightlystrategy setup
     parser,gvs = getParserAndGlobals()
     nsopt,nsargs = parser.parse_args('--date 2015-01-01 --pass 1 --portion 1'.split())
     obs = setupGlobals(nsopt, gvs)
+
+    print('Reading tiles table', opt.tiles)
+    tiles = fits_table(opt.tiles)
     
     # Use jnox to write one shell script per exposure
     # plus one top-level script that runs them all.
@@ -102,8 +115,7 @@ def main():
              stat.S_IXOTH |                stat.S_IROTH)
     
     # Default to Pass 2!
-    passnum = 2
-    J = J2
+    J = [J1,J2,J3][opt.passnum - 1]
 
     planned_tiles = OrderedDict()
 
@@ -175,17 +187,24 @@ def main():
             print('Wrote', path)
             script.append('. %s' % fn)
 
+            #tile = get_tile_from_name(tilename, tiles)
+            #passnum = tile.get('pass') if tile is not None else 0
+
             ra  = ra2hms (j['RA' ])
             dec = dec2dms(j['dec'])
-            status = ('Exp %i: pass %i, %s, RA %s, Dec %s' %
-                      (seq, passnum, tilename, ra, dec))
+            status = ('Exp %i: Tile %s, Pass %i, RA %s, Dec %s' %
+                      (seq, tilename, opt.passnum, ra, dec))
+
+            if opt.exptime is not None:
+                j['expTime'] = opt.exptime
             
             # Write expose-##.sh
             fn = expscriptpattern % seq
             path = os.path.join(scriptdir, fn)
             f = open(path, 'w')
-            f.write(('# Exp %i Tile: %s, default\n' % (seq, tilename)) +
-                    expscript_for_json(j, status=status))
+            f.write(('# Exp %i: Tile: %s, Pass: %i; default\n' %
+                     (seq, tilename, passnum)) +
+                     expscript_for_json(j, status=status))
             f.close()
             os.chmod(path, chmod)
             print('Wrote', path)
@@ -201,9 +220,6 @@ def main():
         f.close()
         os.chmod(opt.scriptfn, chmod)
         print('Wrote', opt.scriptfn)
-    
-    print('Reading tiles table', opt.tiles)
-    tiles = fits_table(opt.tiles)
     
     imagedir = opt.rawdata
     if imagedir is None:
@@ -463,8 +479,8 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
         tilename = jplan['object']
         ra  =  ra2hms(jplan['RA'])
         dec = dec2dms(jplan['dec'])
-        status = ('Exp %i: pass %i, %s, RA %s, Dec %s' %
-                  (nextseq, nextpass, tilename, ra, dec))
+        status = ('Exp %i: Tile %s, Pass %i, RA %s, Dec %s' %
+                  (nextseq, tilename, nextpass, ra, dec))
 
         print('%s: updating exposure %i to tile %s' %
               (str(ephem.now()), nextseq, tilename))
@@ -492,7 +508,6 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
 
         print('%s: updated exposure %i to tile %s' %
               (str(ephem.now()), nextseq, tilename))
-        
 
     return True
     
