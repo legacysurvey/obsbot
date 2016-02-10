@@ -81,14 +81,14 @@ def get_twilight(camera, date):
         obs.lon = '-111.6003'
         obs.lat = '31.9634'
         obs.elev = 2120.0 # meters
-        print('Assuming KPNO')
+        #print('Assuming KPNO')
 
     elif cam == 'decam':
         obs = ephem.Observer()
         obs.lon = '-70.806525'
         obs.lat = '-30.169661'
         obs.elev = 2207.0 # meters
-        print('Assuming CTIO')
+        #print('Assuming CTIO')
 
     else:
         raise RuntimeError('Unknown camera "%s"' % camera)
@@ -720,13 +720,13 @@ def plot_recent(opt, gvs, markmjds=[], **kwargs):
         camera, ephem.Date(mjdtodate(mjd_end)))
 
     markmjds.append((ephemdate_to_mjd(eve18),'b'))
-    print('Evening twi18:', eve18, markmjds[-1])
+    #print('Evening twi18:', eve18, markmjds[-1])
     markmjds.append((ephemdate_to_mjd(morn18),'b'))
-    print('Morning twi18:', morn18, markmjds[-1])
+    #print('Morning twi18:', morn18, markmjds[-1])
     markmjds.append((ephemdate_to_mjd(eve12),'g'))
-    print('Evening twi12:', eve12, markmjds[-1])
+    #print('Evening twi12:', eve12, markmjds[-1])
     markmjds.append((ephemdate_to_mjd(morn12),'g'))
-    print('Morning twi12:', morn12, markmjds[-1])
+    #print('Morning twi12:', morn12, markmjds[-1])
     
     plot_measurements(mm, plotfn, gvs, allobs=allobs,
                       mjdrange=(mjd_start, mjd_end), markmjds=markmjds,
@@ -959,8 +959,8 @@ def main():
                 now = datetime.datetime.utcnow()
                 dt = (now - lastNewImage).total_seconds()
                 dtp = (now - lastPlot).total_seconds()
-                #if dt > 60 and dtp > 60:
-                if dt > 5 and dtp > 5:
+                if dt > 60 and dtp > 60:
+                #if dt > 5 and dtp > 5:
                     print('No new images seen for', dt, 'seconds.')
                     markmjds = []
                     longtime = 300
