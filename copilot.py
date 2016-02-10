@@ -944,7 +944,7 @@ def main():
     backlog = os.listdir(imagedir)
     backlog = [fn for fn in backlog if
                fn.endswith('.fits.fz') or fn.endswith('.fits')]
-    backlog = skip_existing_files(backlog, rawext)
+    backlog = skip_existing_files([os.path.join(imagedir, fn) for fn in backlog], rawext)
     
 
     lastimages = set(os.listdir(imagedir))
