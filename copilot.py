@@ -744,7 +744,21 @@ def plot_recent(opt, gvs, markmjds=[], **kwargs):
     # plt.ylabel('Dec (deg)')
     # plt.axis([360,0,-20,90])
     # plt.savefig('radec.png')
-    
+
+def skip_existing_files(imgfns, rawext):
+    import obsdb
+    fns = []
+    for fn in imgfns:
+        skipext = rawext
+        if skipext is None:
+            skipext = get_default_extension(fn)
+        mm = obsdb.MeasuredCCD.objects.filter(filename=fn, extension=skipext)
+        if mm.count():
+            print('Found image', fn, 'in database.  Skipping.')
+            continue
+        fns.append(fn)
+    return fns
+
     
 def main():
     global gSFD
@@ -911,18 +925,10 @@ def main():
             from astrometry.util.multiproc import multiproc
             mp = multiproc(opt.threads)
 
-        fns = []
-        for fn in args:
-            skipext = rawext
-            if skipext is None:
-                skipext = get_default_extension(fn)
-
-            if opt.skip:
-                mm = obsdb.MeasuredCCD.objects.filter(filename=fn, extension=skipext)
-                if mm.count():
-                    print('Found image', fn, 'in database.  Skipping.')
-                    continue
-            fns.append(fn)
+        if opt.skip:
+            fns = skip_existing_files(args, rawext)
+        else:
+            fns = args
             
         if mp is None:
             for fn in fns:
@@ -935,6 +941,12 @@ def main():
         sys.exit(0)
     
     
+    backlog = os.listdir(imagedir)
+    backlog = [fn for fn in backlog if
+               fn.endswith('.fits.fz') or fn.endswith('.fits')]
+    backlog = skip_existing_files(backlog, rawext)
+    
+
     lastimages = set(os.listdir(imagedir))
     
     print('Checking directory for new files:', imagedir)
@@ -948,7 +960,7 @@ def main():
             if not first:
                 time.sleep(5.)
             first = False
-    
+            
             images = set(os.listdir(imagedir))
             newimgs = images - lastimages
             newimgs = list(newimgs)
@@ -968,7 +980,12 @@ def main():
                         markmjds.append((datetomjd(lastNewImage+datetime.timedelta(0,longtime)),'r'))
                     plot_recent(opt, gvs, markmjds=markmjds, show_plot=opt.show)
                     lastPlot = now
-                continue
+
+                if len(backlog):
+                    newimgs = [backlog.pop()]
+                    print('Processing an image from the backlog:', newimgs[0])
+                else:
+                    continue
     
             # Take the one with the latest timestamp.
             latest = None
