@@ -436,7 +436,7 @@ def ephemdate_to_mjd(edate):
 
 def get_tile_from_name(name, tiles):
     # Parse objname like 'MzLS_5623_z'
-    parts = obj.split('_')
+    parts = name.split('_')
     ok = (len(parts) == 3)
     if ok:
         band = parts[2]
