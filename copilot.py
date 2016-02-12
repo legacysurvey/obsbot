@@ -167,10 +167,6 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None,
                         bads.append((i, 'md5sum'))
                         break
                 
-                # print('duplicate md5sums for', T.filename[i] + 'ext', T.extension[i], '(%s)' % T.md5sum[i])
-                # for ai in a:
-                #     print('  md5sum', ai.md5sum, 'file', ai.filename, 'ext', ai.extension)
-
         # Duplicate readtime
         for i in range(len(T)):
             if T.readtime[i] == 0:
@@ -180,14 +176,12 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None,
             if a.count():
 
                 # Only report this one as bad if one of the repeats was earlier
+                # ... but not too much earlier (within a day)
                 for ai in a:
-                    if ai.mjd_obs < T.mjd_obs[i]:
+                    if ai.mjd_obs < T.mjd_obs[i] and (ai.mjd_obs + 1) > T.mjd_obs[i]:
+                        
                         bads.append((i, 'readtime'))
                         break
-
-                # print('duplicate readtimes for', T.filename[i] + 'ext', T.extension[i], '(%i)' % T.readtime[i])
-                # for ai in a:
-                #     print('  readtime', ai.readtime, 'file', ai.filename, 'ext', ai.extension)
 
     # Group together bad things for the same image.
     bd = {}
