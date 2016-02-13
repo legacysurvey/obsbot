@@ -26,16 +26,10 @@ import optparse
 import numpy as np
 
 import matplotlib
-#matplotlib.use('Agg')
-#matplotlib.use('TkAgg')
-#matplotlib.use('GTKAgg')
-#matplotlib.rcParams['toolbar'] = 'None'
-import pylab as plt
 
 import fitsio
 import ephem
 
-from astrometry.util.plotutils import PlotSequence
 from astrometry.util.starutil_numpy import hmsstring2ra, dmsstring2dec, mjdtodate, datetomjd
 
 from nightlystrategy import ExposureFactor, getParserAndGlobals, setupGlobals
@@ -116,6 +110,7 @@ def get_twilight(camera, date):
 
 def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None,
                       markmjds=[], show_plot=True):
+    import pylab as plt
     T = db_to_fits(mm)
 
     T.mjd_end = T.mjd_obs + T.exptime / 86400.
@@ -511,6 +506,7 @@ def process_image(fn, ext, gvs, sfd, opt, obs, tiles):
     print('Exposure number:', expnum)
 
     if opt.doplots:
+        from astrometry.util.plotutils import PlotSequence
         ps = PlotSequence('qa-%i' % expnum)
         ps.printfn = False
     else:
@@ -805,6 +801,9 @@ def main():
 
     opt,args = parser.parse_args()
 
+    if not opt.show:
+        matplotlib.use('Agg')
+
     imagedir = opt.rawdata
     if imagedir is None:
         imagedir = os.environ.get('MOS3_DATA', 'rawdata')
@@ -820,6 +819,7 @@ def main():
     import obsdb
     obsdb.django_setup()
 
+    import pylab as plt
     plt.figure(figsize=(10,10))
 
     markmjds = []

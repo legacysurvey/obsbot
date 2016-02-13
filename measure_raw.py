@@ -7,7 +7,6 @@ if __name__ == '__main__':
     import matplotlib
     matplotlib.use('Agg')
 import numpy as np
-import pylab as plt
 
 import fitsio
 
@@ -16,7 +15,6 @@ from scipy.ndimage.filters import gaussian_filter
 from scipy.ndimage.measurements import label, find_objects, center_of_mass
 from scipy.ndimage.filters import median_filter
 
-from astrometry.util.plotutils import *
 from astrometry.util.fits import *
 from astrometry.util.util import wcs_pv2sip_hdr, Tan
 from astrometry.libkd.spherematch import match_xy
@@ -144,6 +142,8 @@ class RawMeasurer(object):
         return slices
         
     def run(self, ps=None, focus=False, momentsize=5):
+        import pylab as plt
+        from astrometry.util.plotutils import dimshow
         fn = self.fn
         ext = self.ext
         pixsc = self.pixscale
@@ -1102,6 +1102,7 @@ if __name__ == '__main__':
 
     ps = None
     if args.plots is not None:
+        from astrometry.util.plotutils import PlotSequence
         ps = PlotSequence(args.plots)
         
     vals = {}
