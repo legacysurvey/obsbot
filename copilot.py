@@ -820,7 +820,7 @@ def main():
     obsdb.django_setup()
 
     import pylab as plt
-    plt.figure(figsize=(10,10))
+    plt.figure(figsize=(8,10))
 
     markmjds = []
 
