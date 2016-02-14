@@ -143,7 +143,7 @@ class RawMeasurer(object):
         
     def run(self, ps=None, focus=False, momentsize=5):
         import pylab as plt
-        from astrometry.util.plotutils import dimshow
+        from astrometry.util.plotutils import dimshow, plothist
         fn = self.fn
         ext = self.ext
         pixsc = self.pixscale
