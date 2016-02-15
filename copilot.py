@@ -774,7 +774,8 @@ def main():
     parser.add_option('--nightplot', '--night', action='store_true',
                       help="Plot tonight's data and quit")
 
-    parser.add_option('--no-plots', dest='doplots', default=True, action='store_false', help='Do not create QA plots')
+    parser.add_option('--qa-plots', dest='doplots', default=False,
+                      action='store_true', help='Create QA plots')
 
     parser.add_option('--keep-plots', action='store_true',
                       help='Do not remove PNG-format plots (normally merged into PDF)')
