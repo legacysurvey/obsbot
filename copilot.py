@@ -7,25 +7,23 @@ transparency, and advises whether & how to replan.
 
 '''
 from __future__ import print_function
-import sys
-import os
-import re
-
 try:
     from collections import OrderedDict
 except:
     print('Failed to import OrderedDict.  You are probably using python 2.6.  Please re-run with python2.7')
     sys.exit(-1)
 
+import sys
+import os
+import re
 import time
 import json
 import datetime
-from glob import glob
 import optparse
+from collections import Counter
+from glob import glob
 
 import numpy as np
-
-import matplotlib
 
 import fitsio
 import ephem
@@ -38,8 +36,11 @@ from measure_raw import measure_raw, get_nominal_cal, get_default_extension
 
 from tractor.sfd import SFDMap
 
+def datenow():
+    return datetime.datetime.utcnow()
+
 def mjdnow():
-    return datetomjd(datetime.datetime.utcnow())
+    return datetomjd(datenow())
 
 def db_to_fits(mm):
     from astrometry.util.fits import fits_table
@@ -577,7 +578,7 @@ def process_image(fn, ext, gvs, sfd, opt, obs, tiles):
         for b in 'grz':
             plandict['sb'+b] = gvs.sb_dict[b] + dsky
         # Note that nightlystrategy.py takes UTC dates.
-        start = datetime.datetime.utcnow()
+        start = datenow()
         # Start the strategy 5 minutes from now.
         start += datetime.timedelta(0, 5*60)
         d = start.date()
@@ -597,7 +598,7 @@ def process_image(fn, ext, gvs, sfd, opt, obs, tiles):
         # probably also get away with subtracting, like, 12 hours from
         # now()...
         sun = ephem.Sun()
-        obs.date = datetime.datetime.utcnow()
+        obs.date = datenow()
         # not the proper horizon, but this doesn't matter -- just need it to
         # be before -18-degree twilight.
         obs.horizon = 0.
@@ -781,7 +782,7 @@ def main():
     parser.add_option('--mjdstart', type=float, default=None,
                       help='MJD (UTC) at which to start plot')
 
-    now = datetomjd(datetime.datetime.utcnow())
+    now = mjdnow()
     parser.add_option('--mjdend', type=float, default=None,
                       help='MJD (UTC) at which to end plot (default: now, which is %.3f)' % now)
 
@@ -802,6 +803,7 @@ def main():
     opt,args = parser.parse_args()
 
     if not opt.show:
+        import matplotlib
         matplotlib.use('Agg')
 
     imagedir = opt.rawdata
@@ -838,7 +840,7 @@ def main():
         if opt.mjdstart is not None:
             sdate = ephem.Date(mjdtodate(opt.mjdend))
         else:
-            sdate = ephem.Date(datetime.datetime.utcnow())
+            sdate = ephem.Date(datenow())
         
         (sunset, eve12, eve18, morn18, morn12, sunrise) = get_twilight(
             cam, sdate)
@@ -952,24 +954,24 @@ class Copilot(object):
         self.obs = obs
         self.tiles = tiles
         
-        # Set lastimages to the empty set so that we process
+        # Set oldimages to the empty set so that we process
         # backlogged images.
-        self.lastimages = set()
+        self.oldimages = set()
         backlog = self.get_new_images()
         # (note to self, need explicit backlog because we skip existing
         # for the backlogged files, unlike new ones.)
         self.backlog = skip_existing_files(
             [os.path.join(imagedir, fn) for fn in backlog], rawext)
 
-        # ... then reset lastimages to the current file list.
-        self.lastimages = set(os.listdir(imagedir))
+        # ... then reset oldimages to the current file list.
+        self.oldimages = set(os.listdir(imagedir))
 
         # initialize timers for plot_if_time_elapsed()
-        self.lastPlot = self.lastNewImage = datetime.datetime.utcnow()
+        self.lastPlot = self.lastNewImage = datenow()
 
     def get_new_images(self):
         images = set(os.listdir(self.imagedir))
-        newimgs = images - self.lastimages
+        newimgs = images - self.oldimages
         newimgs = list(newimgs)
         newimgs = [fn for fn in newimgs if
                    fn.endswith('.fits.fz') or fn.endswith('.fits')]
@@ -991,7 +993,7 @@ class Copilot(object):
         return newestimg
 
     def plot_if_time_elapsed(self):
-        now = datetime.datetime.utcnow()
+        now = datenow()
         dt  = (now - self.lastNewImage).total_seconds()
         dtp = (now - self.lastPlot    ).total_seconds()
         if not (dt > 60 and dtp > 60):
@@ -1007,7 +1009,7 @@ class Copilot(object):
     def plot_recent(self, markmjds=[]):
         plot_recent(self.opt, self.gvs, markmjds=markmjds,
                     show_plot=self.opt.show)
-        self.lastPlot = datetime.datetime.utcnow()
+        self.lastPlot = datenow()
             
     def process_image(self, path):
         return process_image(path, self.rawext, self.gvs, self.sfd,
@@ -1015,6 +1017,10 @@ class Copilot(object):
         
     def run(self):
         print('Checking directory for new files:', self.imagedir)
+
+        # Keep track of how many times we've failed to process a file...
+        failCounter = Counter()
+
         sleep = False
         while True:
             print
@@ -1029,6 +1035,13 @@ class Copilot(object):
                     continue
                 fn = self.backlog.pop()
 
+            maxFail = 10
+            if failCounter[fn] >= maxFail:
+                print('Failed to read file: %s, ext: %s, %i times.  Ignoring.' %
+                      (fn, self.rawext))
+                self.oldimages.add(fn)
+                continue
+                
             path = os.path.join(self.imagedir, fn)
             print('Found new file:', path)
             try:
@@ -1038,17 +1051,19 @@ class Copilot(object):
             except:
                 print('Failed to open %s: maybe not fully written yet.'
                       % path)
+                failCounter.update([fn])
                 continue
 
             try:
                 self.process_image(path)
-                self.lastimages.add(fn)
-                self.lastNewImage = datetime.datetime.utcnow()
+                self.oldimages.add(fn)
+                self.lastNewImage = datenow()
             except IOError:
                 print('Failed to read FITS image: %s, ext %s' %
                       (path, self.rawext))
                 import traceback
                 traceback.print_exc()
+                failCounter.update([fn])
                 continue
     
             self.plot_recent()
