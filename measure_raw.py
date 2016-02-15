@@ -52,15 +52,15 @@ mosaic_nominal_cal = dict(
     r = (27.01,
          20.91,
          0.10),
-    z = (26.26.518,
+    z = (26.518,
          18.46,
          0.06,),
 )
 mosaic_nominal_cal.update({
-    ('z', 'im4' ): 26.406,
-    ('z', 'im7' ): 26.609,
-    ('z', 'im11'): 26.556,
-    ('z', 'im16'): 26.499,
+    ('z', 'im4' ): (26.406, 18.46, 0.06),
+    ('z', 'im7' ): (26.609, 18.46, 0.06),
+    ('z', 'im11'): (26.556, 18.46, 0.06),
+    ('z', 'im16'): (26.499, 18.46, 0.06),
 })
 
 # Color terms
@@ -95,8 +95,10 @@ class RawMeasurer(object):
 
         self.debug = True
 
+        self.camera = 'camera'
+        
     def get_nominal_cal(self, band, ext=None):
-        return get_nominal_cal(band, ext=ext)
+        return get_nominal_cal(self.camera, band, ext=ext)
         
     def remove_sky_gradients(self, img):
         # Ugly removal of sky gradients by subtracting median in first x and then y
@@ -787,6 +789,10 @@ class RawMeasurer(object):
 
 
 class DECamMeasurer(RawMeasurer):
+    def __init__(self, *args, **kwargs):
+        super(DECamMeasurer, self).__init__(*args, **kwargs)
+        self.camera = 'decam'
+
     def read_raw(self, F, ext):
         return read_raw_decam(F, ext)
 
@@ -805,6 +811,9 @@ class DECamMeasurer(RawMeasurer):
 
 
 class Mosaic3Measurer(RawMeasurer):
+    def __init__(self, *args, **kwargs):
+        super(Mosaic3Measurer, self).__init__(*args, **kwargs)
+        self.camera = 'mosaic3'
 
     def get_band(self, primhdr):
         band = super(Mosaic3Measurer,self).get_band(primhdr)
