@@ -952,9 +952,12 @@ class Copilot(object):
         self.obs = obs
         self.tiles = tiles
         
-        # Set lastimages to the empty set to find backlogged images.
+        # Set lastimages to the empty set so that we process
+        # backlogged images.
         self.lastimages = set()
         backlog = self.get_new_images()
+        # (note to self, need explicit backlog because we skip existing
+        # for the backlogged files, unlike new ones.)
         self.backlog = skip_existing_files(
             [os.path.join(imagedir, fn) for fn in backlog], rawext)
 
@@ -991,14 +994,15 @@ class Copilot(object):
         now = datetime.datetime.utcnow()
         dt  = (now - self.lastNewImage).total_seconds()
         dtp = (now - self.lastPlot    ).total_seconds()
-        if dt > 60 and dtp > 60:
-            print('No new images seen for', dt, 'seconds.')
-            markmjds = []
-            longtime = 300
-            if dt > longtime:
-                edate = self.lastNewImage +datetime.timedelta(0,longtime)
-                markmjds.append((datetomjd(edate),'r'))
-            self.plot_recent(markmjds=markmjds)
+        if not (dt > 60 and dtp > 60):
+            return
+        print('No new images seen for', dt, 'seconds.')
+        markmjds = []
+        longtime = 300
+        if dt > longtime:
+            edate = self.lastNewImage +datetime.timedelta(0,longtime)
+            markmjds.append((datetomjd(edate),'r'))
+        self.plot_recent(markmjds=markmjds)
 
     def plot_recent(self, markmjds=[]):
         plot_recent(self.opt, self.gvs, markmjds=markmjds,
@@ -1011,48 +1015,45 @@ class Copilot(object):
         
     def run(self):
         print('Checking directory for new files:', self.imagedir)
+        sleep = False
         while True:
-            first = True
-            # Wait for a new image to appear
-            while True:
-                print
-                if not first:
-                    time.sleep(5.)
-                first = False
+            print
+            if sleep:
+                time.sleep(5.)
+            sleep = True
 
-                fn = self.get_newest_image()
-                if fn is None:
-                    self.plot_if_time_elapsed()
-                    if len(self.backlog):
-                        fn = self.backlog.pop()
-                        print('Processing an image from the backlog:', fn)
-                    else:
-                        continue
-
-                path = os.path.join(self.imagedir, fn)
-                print('Found new file:', path)
-                try:
-                    print('Trying to open image:', path,
-                          'extension:', self.rawext)
-                    fitsio.read(path, ext=self.rawext)
-                except:
-                    print('Failed to open %s -- maybe not fully written yet.' % path)
+            fn = self.get_newest_image()
+            if fn is None:
+                self.plot_if_time_elapsed()
+                if len(self.backlog) == 0:
                     continue
-                break
-    
+                fn = self.backlog.pop()
+
+            path = os.path.join(self.imagedir, fn)
+            print('Found new file:', path)
+            try:
+                print('Trying to open image: %s, ext: %s' % 
+                      (path, self.rawext))
+                fitsio.read(path, ext=self.rawext)
+            except:
+                print('Failed to open %s: maybe not fully written yet.'
+                      % path)
+                continue
+
             try:
                 self.process_image(path)
                 self.lastimages.add(fn)
                 self.lastNewImage = datetime.datetime.utcnow()
             except IOError:
-                print('Failed to read FITS image:', path,
-                      'extension', self.rawext)
+                print('Failed to read FITS image: %s, ext %s' %
+                      (path, self.rawext))
                 import traceback
                 traceback.print_exc()
                 continue
     
             self.plot_recent()
+            sleep = False
+            
 
-        
 if __name__ == '__main__':
     main()
