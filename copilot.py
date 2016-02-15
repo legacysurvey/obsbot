@@ -949,6 +949,12 @@ class Copilot(object):
         self.rawext = rawext
 
         self.sleeptime = 5.
+        # How often to re-plot
+        self.plotTimeout = 60.
+
+        # How long before we mark a line on the plot because we
+        # haven't seen an image.
+        self.longtime = 300.
         
         # Objects passed through to process_image, plot_recent.
         self.opt = opt
@@ -1000,18 +1006,21 @@ class Copilot(object):
 
     def plot_if_time_elapsed(self):
         now = datenow()
-        dt  = (now - self.lastNewImage).total_seconds()
-        dtp = (now - self.lastPlot    ).total_seconds()
-        if not (dt > 60 and dtp > 60):
+        dtp = (now - self.lastPlot).total_seconds()
+        if dtp < self.plotTimeout:
             return
+        dt  = (now - self.lastNewImage).total_seconds()
         print('No new images seen for', dt, 'seconds.')
         markmjds = []
-        longtime = 300
-        if dt > longtime:
-            edate = self.lastNewImage +datetime.timedelta(0,longtime)
+        if dt > self.longtime:
+            edate = (self.lastNewImage +
+                     datetime.timedelta(0, self.longtime))
             markmjds.append((datetomjd(edate),'r'))
-        self.plot_recent(markmjds=markmjds)
+        self.timeout_plot(markmjds=markmjds)
 
+    def timeout_plot(self, **kwargs):
+        self.plot_recent(**kwargs)
+        
     def plot_recent(self, markmjds=[]):
         plot_recent(self.opt, self.gvs, markmjds=markmjds,
                     show_plot=self.opt.show)
