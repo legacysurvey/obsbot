@@ -948,6 +948,8 @@ class Copilot(object):
         self.imagedir = imagedir
         self.rawext = rawext
 
+        self.sleeptime = 5.
+        
         # Objects passed through to process_image, plot_recent.
         self.opt = opt
         self.gvs = gvs
@@ -970,6 +972,9 @@ class Copilot(object):
         # initialize timers for plot_if_time_elapsed()
         self.lastPlot = self.lastNewImage = datenow()
 
+        # Keep track of how many times we've failed to process a file...
+        self.failCounter = Counter()
+        
     def get_new_images(self):
         images = set(os.listdir(self.imagedir))
         newimgs = images - self.oldimages
@@ -1016,60 +1021,57 @@ class Copilot(object):
         return process_image(path, self.rawext, self.gvs, self.sfd,
                              self.opt, self.obs, self.tiles)
         
+    def run_one(self):
+        fn = self.get_newest_image()
+        if fn is None:
+            self.plot_if_time_elapsed()
+            if len(self.backlog) == 0:
+                return False
+            fn = self.backlog.pop()
+
+        maxFail = 10
+        if self.failCounter[fn] >= maxFail:
+            print('Failed to read file: %s, ext: %s, %i times.' %
+                  (fn, self.rawext, maxFail) + '  Ignoring.')
+            self.oldimages.add(fn)
+            return False
+            
+        path = os.path.join(self.imagedir, fn)
+        print('Found new file:', path)
+        try:
+            print('Trying to open image: %s, ext: %s' % 
+                  (path, self.rawext))
+            fitsio.read(path, ext=self.rawext)
+        except:
+            print('Failed to open %s: maybe not fully written yet.'
+                  % path)
+            self.failCounter.update([fn])
+            return False
+
+        try:
+            self.process_image(path)
+            self.oldimages.add(fn)
+            self.lastNewImage = datenow()
+        except IOError:
+            print('Failed to read FITS image: %s, ext %s' %
+                  (path, self.rawext))
+            import traceback
+            traceback.print_exc()
+            self.failCounter.update([fn])
+            return False
+
+        self.plot_recent()
+        return True
+
     def run(self):
         print('Checking directory for new files:', self.imagedir)
-
-        # Keep track of how many times we've failed to process a file...
-        failCounter = Counter()
-
         sleep = False
         while True:
             print
             if sleep:
-                time.sleep(5.)
-            sleep = True
-
-            fn = self.get_newest_image()
-            if fn is None:
-                self.plot_if_time_elapsed()
-                if len(self.backlog) == 0:
-                    continue
-                fn = self.backlog.pop()
-
-            maxFail = 10
-            if failCounter[fn] >= maxFail:
-                print('Failed to read file: %s, ext: %s, %i times.  Ignoring.' %
-                      (fn, self.rawext))
-                self.oldimages.add(fn)
-                continue
-                
-            path = os.path.join(self.imagedir, fn)
-            print('Found new file:', path)
-            try:
-                print('Trying to open image: %s, ext: %s' % 
-                      (path, self.rawext))
-                fitsio.read(path, ext=self.rawext)
-            except:
-                print('Failed to open %s: maybe not fully written yet.'
-                      % path)
-                failCounter.update([fn])
-                continue
-
-            try:
-                self.process_image(path)
-                self.oldimages.add(fn)
-                self.lastNewImage = datenow()
-            except IOError:
-                print('Failed to read FITS image: %s, ext %s' %
-                      (path, self.rawext))
-                import traceback
-                traceback.print_exc()
-                failCounter.update([fn])
-                continue
-    
-            self.plot_recent()
-            sleep = False
-            
+                time.sleep(self.sleeptime)
+            gotone = self.run_one()
+            sleep = not gotone
 
 if __name__ == '__main__':
     main()
