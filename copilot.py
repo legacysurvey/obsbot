@@ -31,7 +31,7 @@ from astrometry.util.starutil_numpy import hmsstring2ra, dmsstring2dec, mjdtodat
 
 from nightlystrategy import ExposureFactor, getParserAndGlobals, setupGlobals
 
-from measure_raw import measure_raw, get_nominal_cal, get_default_extension
+from measure_raw import measure_raw, get_nominal_cal, get_default_extension, camera_name
 
 from tractor.sfd import SFDMap
 
@@ -113,8 +113,15 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None,
                       markmjds=[], show_plot=True):
     import pylab as plt
     T = db_to_fits(mm)
-
+    print(len(T), 'exposures')
+    
     T.mjd_end = T.mjd_obs + T.exptime / 86400.
+
+    #Tall = T
+    Tnonobject = T[T.obstype != 'object']
+    print(len(Tnonobject), 'exposures are not OBJECTs')
+    T = T[T.obstype == 'object']
+    print(len(T), 'OBJECT exposures')
 
     ccmap = dict(g='g', r='r', z='m')
 
@@ -326,6 +333,13 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None,
     plt.axhline(0.9, color='k', ls='--', alpha=0.5)
     plt.axhline(1.1, color='k', ls='--', alpha=0.5)
 
+    F = Tnonobject[Tnonobject.obstype == 'focus']
+    print(len(F), 'focus frames')
+    if len(F):
+        plt.plot(F.mjd_obs, 0.9 + np.zeros(len(F)), 'ko')
+        for f in F:
+            plt.text(f.mjd_obs, 0.88, 'F', ha='center', va='top')
+    
     if len(T) > 50:
         ii = [np.argmin(T.expnum + (T.expnum == 0)*1000000),
               np.argmax(T.expnum)]
@@ -336,6 +350,11 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None,
             continue
         plt.text(T.mjd_obs[i], mx, '%i ' % T.expnum[i],
                  rotation=90, va='top', ha='center')
+        if len(T) <= 50:
+            # Mark focus frames too
+            for i in range(len(F)):
+                plt.text(F.mjd_obs[i], mx, '%i ' % F.expnum[i],
+                         rotation=90, va='top', ha='center')
 
     plt.ylim(mn,mx)
     plt.ylabel('Depth factor')
@@ -467,45 +486,62 @@ def process_image(fn, ext, gvs, sfd, opt, obs, tiles):
 
     # Read primary FITS header
     phdr = fitsio.read_header(fn)
-    expnum = phdr.get('EXPNUM', 0)
 
     obstype = phdr.get('OBSTYPE','').strip()
     print('obstype:', obstype)
-    if obstype in ['zero', 'focus', 'dome flat']:
-        print('Skipping obstype =', obstype)
-        return None, None, expnum
-    elif obstype == '':
-        print('Empty OBSTYPE in header:', fn)
-        return None, None, expnum
-
     exptime = phdr.get('EXPTIME')
-    if exptime == 0:
-        print('Exposure time EXPTIME in header =', exptime)
-        return None, None, expnum
-
-    if expnum == '':
-        print('No expnum in header')
-        # HACK -- Mosaic3 assume filename like mos3.64083.fits
-        basefn = os.path.basename(fn)
-        print('basefn', basefn)
-        m = re.match('mos3?\D*(\d*)\.fits.*', basefn)
-        if m is None:
-            return None, None, expnum
-        expnum = m.group(1)
-        print('expnum string guessed from filename:', expnum)
-        expnum = int(expnum, 10)
-        print('Parsed expnum', expnum)
+    expnum = phdr.get('EXPNUM', 0)
 
     filt = phdr['FILTER']
     filt = filt.strip()
     filt = filt.split()[0]
-    if filt == 'solid':
-        print('Solid (block) filter.')
-        return None, None, expnum
 
+    airmass = phdr['AIRMASS']
+    ra  = hmsstring2ra (phdr['RA'])
+    dec = dmsstring2dec(phdr['DEC'])
+    
     # Write QA plots to files named by the exposure number
     print('Exposure number:', expnum)
 
+    skip = False
+    if obstype in ['zero', 'focus', 'dome flat', '']:
+        print('Skipping obstype =', obstype)
+        skip = True
+    if exptime == 0:
+        print('Exposure time EXPTIME in header =', exptime)
+        skip = True
+    if expnum == '':
+        print('No expnum in header')
+        skip = True
+    if filt == 'solid':
+        print('Solid (block) filter.')
+        skip = True
+
+    if skip and not db:
+        return None
+
+    if db:
+        import obsdb
+        if ext is None:
+            ext = get_default_extension(fn)
+        m,created = obsdb.MeasuredCCD.objects.get_or_create(
+            filename=fn, extension=ext)
+        m.obstype = obstype
+        m.camera  = camera_name(phdr)
+        m.expnum  = expnum
+        m.exptime = exptime
+        m.mjd_obs = phdr['MJD-OBS']
+        m.airmass = airmass
+        m.rabore  = ra
+        m.decbore = dec
+        m.band = phdr['FILTER'][0]
+        m.bad_pixcnt = ('PIXCNT1' in phdr)
+        m.readtime = phdr.get('READTIME', 0.)
+
+    if skip:
+        m.save()
+        return None
+        
     if opt.doplots:
         from astrometry.util.plotutils import PlotSequence
         ps = PlotSequence('qa-%i' % expnum)
@@ -541,10 +577,6 @@ def process_image(fn, ext, gvs, sfd, opt, obs, tiles):
 
     trans = M.get('transparency', 0)
     band = M['band']
-    actual_exptime = phdr['EXPTIME']
-    airmass = phdr['AIRMASS']
-    ra  = hmsstring2ra (phdr['RA'])
-    dec = dmsstring2dec(phdr['DEC'])
     # Look up E(B-V) in SFD map
     ebv = sfd.ebv(ra, dec)[0]
     print('E(B-V): %.3f' % ebv)
@@ -557,21 +589,21 @@ def process_image(fn, ext, gvs, sfd, opt, obs, tiles):
         expfactor = ExposureFactor(band, airmass, ebv, M['seeing'], fakezp,
                                    M['skybright'], gvs)
         print('Exposure factor:              %6.3f' % expfactor)
-        exptime = expfactor * gvs.base_exptimes[band]
-        print('Target exposure time:         %6.1f' % exptime)
-        exptime = np.clip(exptime, gvs.floor_exptimes[band],
+        t_exptime = expfactor * gvs.base_exptimes[band]
+        print('Target exposure time:         %6.1f' % t_exptime)
+        t_exptime = np.clip(t_exptime, gvs.floor_exptimes[band],
                           gvs.ceil_exptimes[band])
-        print('Clipped exposure time:        %6.1f' % exptime)
+        print('Clipped exposure time:        %6.1f' % t_exptime)
     
-        if band == 'z' and exptime > gvs.t_sat_max:
-            exptime = gvs.t_sat_max
-            print('Reduced exposure time to avoid z-band saturation: %6.1f', exptime)
+        if band == 'z' and t_exptime > gvs.t_sat_max:
+            t_exptime = gvs.t_sat_max
+            print('Reduced exposure time to avoid z-band saturation: %6.1f', t_exptime)
 
         print
 
-        print('Actual exposure time taken:   %6.1f' % actual_exptime)
+        print('Actual exposure time taken:   %6.1f' % exptime)
     
-        print('Depth (exposure time) factor: %6.3f' % (actual_exptime / exptime))
+        print('Depth (exposure time) factor: %6.3f' % (exptime / t_exptime))
         
         # If you were going to re-plan, you would run with these args:
         plandict = dict(seeing=M['seeing'], transparency=trans)
@@ -637,26 +669,13 @@ def process_image(fn, ext, gvs, sfd, opt, obs, tiles):
     if not db:
         return rtn
 
-    import obsdb
-    m,created = obsdb.MeasuredCCD.objects.get_or_create(
-        filename=fn, extension=M['extension'])
-
-    m.camera = M['camera']
-    m.expnum = expnum
-    m.exptime = actual_exptime
-    m.mjd_obs = phdr['MJD-OBS']
-    m.airmass = airmass
     m.racenter  = M['ra_ccd']
     m.deccenter = M['dec_ccd']
-    m.rabore  = ra
-    m.decbore = dec
-    m.band = band
     m.ebv  = ebv
     zp = M.get('zp', 0.)
     if zp is None:
         zp = 0.
     m.zeropoint = zp
-
     m.transparency = trans
     m.seeing = M.get('seeing', 0.)
     m.sky = M['skybright']
@@ -664,8 +683,6 @@ def process_image(fn, ext, gvs, sfd, opt, obs, tiles):
     m.dx = M.get('dx', 0)
     m.dy = M.get('dy', 0)
     m.nmatched = M.get('nmatched',0)
-    m.bad_pixcnt = ('PIXCNT1' in phdr)
-    m.readtime = phdr.get('READTIME', 0.)
 
     img = fitsio.read(fn, ext=1)
     cheaphash = np.sum(img)
