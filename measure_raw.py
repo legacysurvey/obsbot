@@ -25,11 +25,12 @@ import photutils
 
 import tractor
 
-def get_nominal_cal(cam, band):
+def get_nominal_cal(cam, band, ext=None):
     if cam.lower() in ['decam']:
         return decam_nominal_cal[band]
     if cam.lower() in ['mosaic', 'mosaic3']:
-        return mosaic_nominal_cal[band]
+        d = mosaic_nominal_cal
+        return d.get((band, ext), d[band])
 
 # zp, sky, kx
 decam_nominal_cal = dict(
@@ -51,10 +52,17 @@ mosaic_nominal_cal = dict(
     r = (27.01,
          20.91,
          0.10),
-    z = (26.46,
+    z = (26.518,
          18.46,
          0.06,),
 )
+mosaic_nominal_cal.update({
+    ('z', 'im4' ): (26.406, 18.46, 0.06),
+    ('z', 'im7' ): (26.609, 18.46, 0.06),
+    ('z', 'im11'): (26.556, 18.46, 0.06),
+    ('z', 'im16'): (26.499, 18.46, 0.06),
+})
+
 # Color terms
 ps1_to_mosaic = ps1_to_decam
 
@@ -86,6 +94,11 @@ class RawMeasurer(object):
         self.det_thresh = 20
 
         self.debug = True
+
+        self.camera = 'camera'
+        
+    def get_nominal_cal(self, band, ext=None):
+        return get_nominal_cal(self.camera, band, ext=ext)
         
     def remove_sky_gradients(self, img):
         # Ugly removal of sky gradients by subtracting median in first x and then y
@@ -204,7 +217,7 @@ class RawMeasurer(object):
         exptime = primhdr['EXPTIME']
         airmass = primhdr['AIRMASS']
         print('Band', band, 'Exptime', exptime, 'Airmass', airmass)
-        zp0, sky0, kx = self.get_nominal_cal(band)
+        zp0, sky0, kx = self.get_nominal_cal(band, ext=self.ext)
     
         # Find the sky value and noise level
         sky,sig1 = self.get_sky_and_sigma(img)
@@ -776,11 +789,12 @@ class RawMeasurer(object):
 
 
 class DECamMeasurer(RawMeasurer):
+    def __init__(self, *args, **kwargs):
+        super(DECamMeasurer, self).__init__(*args, **kwargs)
+        self.camera = 'decam'
+
     def read_raw(self, F, ext):
         return read_raw_decam(F, ext)
-
-    def get_nominal_cal(self, band):
-        return decam_nominal_cal[band]
 
     def get_sky_and_sigma(self, img):
         sky,sig1 = sensible_sigmaclip(img[1500:2500, 500:1000])
@@ -797,6 +811,9 @@ class DECamMeasurer(RawMeasurer):
 
 
 class Mosaic3Measurer(RawMeasurer):
+    def __init__(self, *args, **kwargs):
+        super(Mosaic3Measurer, self).__init__(*args, **kwargs)
+        self.camera = 'mosaic3'
 
     def get_band(self, primhdr):
         band = super(Mosaic3Measurer,self).get_band(primhdr)
@@ -826,9 +843,6 @@ class Mosaic3Measurer(RawMeasurer):
         img[:,:] = 0
         img[trimA] = trimg
         return img,hdr
-
-    def get_nominal_cal(self, band):
-        return mosaic_nominal_cal[band]
 
     def get_sky_and_sigma(self, img):
         # Spline sky model to handle (?) ghost / pupil?

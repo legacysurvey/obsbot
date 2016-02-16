@@ -4,8 +4,6 @@ TO-DO:
 -- t_sat_max should be recomputed based on skybright!!
 -- FIXMEs -- filter changing -- here we set filter ONCE PER NIGHT!
 
--- setting the filter was disabled for 2016-02-05 broken filter changer!
-
 '''
 
 

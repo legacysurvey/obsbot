@@ -7,25 +7,23 @@ transparency, and advises whether & how to replan.
 
 '''
 from __future__ import print_function
-import sys
-import os
-import re
-
 try:
     from collections import OrderedDict
 except:
     print('Failed to import OrderedDict.  You are probably using python 2.6.  Please re-run with python2.7')
     sys.exit(-1)
 
+import sys
+import os
+import re
 import time
 import json
 import datetime
-from glob import glob
 import optparse
+from collections import Counter
+from glob import glob
 
 import numpy as np
-
-import matplotlib
 
 import fitsio
 import ephem
@@ -38,8 +36,11 @@ from measure_raw import measure_raw, get_nominal_cal, get_default_extension
 
 from tractor.sfd import SFDMap
 
+def datenow():
+    return datetime.datetime.utcnow()
+
 def mjdnow():
-    return datetomjd(datetime.datetime.utcnow())
+    return datetomjd(datenow())
 
 def db_to_fits(mm):
     from astrometry.util.fits import fits_table
@@ -577,7 +578,7 @@ def process_image(fn, ext, gvs, sfd, opt, obs, tiles):
         for b in 'grz':
             plandict['sb'+b] = gvs.sb_dict[b] + dsky
         # Note that nightlystrategy.py takes UTC dates.
-        start = datetime.datetime.utcnow()
+        start = datenow()
         # Start the strategy 5 minutes from now.
         start += datetime.timedelta(0, 5*60)
         d = start.date()
@@ -597,7 +598,7 @@ def process_image(fn, ext, gvs, sfd, opt, obs, tiles):
         # probably also get away with subtracting, like, 12 hours from
         # now()...
         sun = ephem.Sun()
-        obs.date = datetime.datetime.utcnow()
+        obs.date = datenow()
         # not the proper horizon, but this doesn't matter -- just need it to
         # be before -18-degree twilight.
         obs.horizon = 0.
@@ -773,7 +774,8 @@ def main():
     parser.add_option('--nightplot', '--night', action='store_true',
                       help="Plot tonight's data and quit")
 
-    parser.add_option('--no-plots', dest='doplots', default=True, action='store_false', help='Do not create QA plots')
+    parser.add_option('--qa-plots', dest='doplots', default=False,
+                      action='store_true', help='Create QA plots')
 
     parser.add_option('--keep-plots', action='store_true',
                       help='Do not remove PNG-format plots (normally merged into PDF)')
@@ -781,7 +783,7 @@ def main():
     parser.add_option('--mjdstart', type=float, default=None,
                       help='MJD (UTC) at which to start plot')
 
-    now = datetomjd(datetime.datetime.utcnow())
+    now = mjdnow()
     parser.add_option('--mjdend', type=float, default=None,
                       help='MJD (UTC) at which to end plot (default: now, which is %.3f)' % now)
 
@@ -802,6 +804,7 @@ def main():
     opt,args = parser.parse_args()
 
     if not opt.show:
+        import matplotlib
         matplotlib.use('Agg')
 
     imagedir = opt.rawdata
@@ -820,7 +823,7 @@ def main():
     obsdb.django_setup()
 
     import pylab as plt
-    plt.figure(figsize=(10,10))
+    plt.figure(figsize=(8,10))
 
     markmjds = []
 
@@ -838,7 +841,7 @@ def main():
         if opt.mjdstart is not None:
             sdate = ephem.Date(mjdtodate(opt.mjdend))
         else:
-            sdate = ephem.Date(datetime.datetime.utcnow())
+            sdate = ephem.Date(datenow())
         
         (sunset, eve12, eve18, morn18, morn12, sunrise) = get_twilight(
             cam, sdate)
@@ -878,7 +881,6 @@ def main():
         now = mjdnow()
         
         ccds = obsdb.MeasuredCCD.objects.all().filter(mjd_obs__gt=now - 0.25)
-
         #ccds = obsdb.MeasuredCCD.objects.all()
 
         print(ccds.count(), 'measured CCDs')
@@ -934,88 +936,151 @@ def main():
         plot_recent(opt, gvs, markmjds=markmjds, show_plot=False)
         sys.exit(0)
     
-    
-    backlog = os.listdir(imagedir)
-    backlog = [fn for fn in backlog if
-               fn.endswith('.fits.fz') or fn.endswith('.fits')]
-    backlog = skip_existing_files([os.path.join(imagedir, fn) for fn in backlog], rawext)
-    
 
-    lastimages = set(os.listdir(imagedir))
-    
-    print('Checking directory for new files:', imagedir)
-    lastNewImage = datetime.datetime.utcnow()
-    lastPlot = lastNewImage
-    while True:
-        first = True
-        # Wait for a new image to appear
-        while True:
-            print
-            if not first:
-                time.sleep(5.)
-            first = False
+    copilot = Copilot(imagedir, rawext, opt, gvs, sfd, obs, tiles)
+    copilot.run()
+
+
+
+class Copilot(object):
+    def __init__(self, imagedir, rawext,
+                 opt, gvs, sfd, obs, tiles):
+        self.imagedir = imagedir
+        self.rawext = rawext
+
+        self.sleeptime = 5.
+        # How often to re-plot
+        self.plotTimeout = 60.
+
+        # How long before we mark a line on the plot because we
+        # haven't seen an image.
+        self.longtime = 300.
+        
+        # Objects passed through to process_image, plot_recent.
+        self.opt = opt
+        self.gvs = gvs
+        self.sfd = sfd
+        self.obs = obs
+        self.tiles = tiles
+        
+        # Set oldimages to the empty set so that we process
+        # backlogged images.
+        self.oldimages = set()
+        backlog = self.get_new_images()
+        # (note to self, need explicit backlog because we skip existing
+        # for the backlogged files, unlike new ones.)
+        self.backlog = skip_existing_files(
+            [os.path.join(imagedir, fn) for fn in backlog], rawext)
+
+        # ... then reset oldimages to the current file list.
+        self.oldimages = set(os.listdir(imagedir))
+
+        # initialize timers for plot_if_time_elapsed()
+        self.lastPlot = self.lastNewImage = datenow()
+
+        # Keep track of how many times we've failed to process a file...
+        self.failCounter = Counter()
+        
+    def get_new_images(self):
+        images = set(os.listdir(self.imagedir))
+        newimgs = images - self.oldimages
+        newimgs = list(newimgs)
+        newimgs = [fn for fn in newimgs if
+                   fn.endswith('.fits.fz') or fn.endswith('.fits')]
+        return newimgs
+
+    def get_newest_image(self):
+        newimgs = self.get_new_images()
+        if len(newimgs) == 0:
+            return None
+        # Take the one with the latest timestamp.
+        latest = None
+        newestimg = None
+        for fn in newimgs:
+            st = os.stat(os.path.join(self.imagedir, fn))
+            t = st.st_mtime
+            if latest is None or t > latest:
+                newestimg = fn
+                latest = t
+        return newestimg
+
+    def plot_if_time_elapsed(self):
+        now = datenow()
+        dtp = (now - self.lastPlot).total_seconds()
+        if dtp < self.plotTimeout:
+            return
+        dt  = (now - self.lastNewImage).total_seconds()
+        print('No new images seen for', dt, 'seconds.')
+        markmjds = []
+        if dt > self.longtime:
+            edate = (self.lastNewImage +
+                     datetime.timedelta(0, self.longtime))
+            markmjds.append((datetomjd(edate),'r'))
+        self.timeout_plot(markmjds=markmjds)
+
+    def timeout_plot(self, **kwargs):
+        self.plot_recent(**kwargs)
+        
+    def plot_recent(self, markmjds=[]):
+        plot_recent(self.opt, self.gvs, markmjds=markmjds,
+                    show_plot=self.opt.show)
+        self.lastPlot = datenow()
             
-            images = set(os.listdir(imagedir))
-            newimgs = images - lastimages
-            newimgs = list(newimgs)
-            newimgs = [fn for fn in newimgs if
-                       fn.endswith('.fits.fz') or fn.endswith('.fits')]
-            #print('Found new images:', newimgs)
-            if len(newimgs) == 0:
-                now = datetime.datetime.utcnow()
-                dt = (now - lastNewImage).total_seconds()
-                dtp = (now - lastPlot).total_seconds()
-                if dt > 60 and dtp > 60:
-                #if dt > 5 and dtp > 5:
-                    print('No new images seen for', dt, 'seconds.')
-                    markmjds = []
-                    longtime = 300
-                    if dt > longtime:
-                        markmjds.append((datetomjd(lastNewImage+datetime.timedelta(0,longtime)),'r'))
-                    plot_recent(opt, gvs, markmjds=markmjds, show_plot=opt.show)
-                    lastPlot = now
+    def process_image(self, path):
+        return process_image(path, self.rawext, self.gvs, self.sfd,
+                             self.opt, self.obs, self.tiles)
+        
+    def run_one(self):
+        fn = self.get_newest_image()
+        if fn is None:
+            self.plot_if_time_elapsed()
+            if len(self.backlog) == 0:
+                return False
+            fn = self.backlog.pop()
 
-                if len(backlog):
-                    newimgs = [backlog.pop()]
-                    print('Processing an image from the backlog:', newimgs[0])
-                else:
-                    continue
-    
-            # Take the one with the latest timestamp.
-            latest = None
-            newestimg = None
-            for fn in newimgs:
-                st = os.stat(os.path.join(imagedir, fn))
-                t = st.st_mtime
-                if latest is None or t > latest:
-                    newestimg = fn
-                    latest = t
-    
-            fn = os.path.join(imagedir, newestimg)
-            print('Found new file:', fn)
-            try:
-                print('Trying to open image:', fn, 'extension:', rawext)
-                fitsio.read(fn, ext=rawext)
-            except:
-                print('Failed to open', fn, '-- maybe not fully written yet.')
-                #import traceback
-                #traceback.print_exc()
-                continue
-            break
+        maxFail = 10
+        if self.failCounter[fn] >= maxFail:
+            print('Failed to read file: %s, ext: %s, %i times.' %
+                  (fn, self.rawext, maxFail) + '  Ignoring.')
+            self.oldimages.add(fn)
+            return False
+            
+        path = os.path.join(self.imagedir, fn)
+        print('Found new file:', path)
+        try:
+            print('Trying to open image: %s, ext: %s' % 
+                  (path, self.rawext))
+            fitsio.read(path, ext=self.rawext)
+        except:
+            print('Failed to open %s: maybe not fully written yet.'
+                  % path)
+            self.failCounter.update([fn])
+            return False
 
         try:
-            (M, plandict, expnum) = process_image(
-                fn, rawext, gvs, sfd, opt, obs, tiles)
-            lastimages.add(newestimg)
-            lastNewImage = datetime.datetime.utcnow()
+            self.process_image(path)
+            self.oldimages.add(fn)
+            self.lastNewImage = datenow()
         except IOError:
-            print('Failed to read FITS image:', fn, 'extension', rawext)
+            print('Failed to read FITS image: %s, ext %s' %
+                  (path, self.rawext))
             import traceback
             traceback.print_exc()
-            continue
+            self.failCounter.update([fn])
+            return False
 
-        plot_recent(opt, gvs, show_plot=opt.show)
-        lastPlot = now
-        
+        self.plot_recent()
+        return True
+
+    def run(self):
+        print('Checking directory for new files:', self.imagedir)
+        sleep = False
+        while True:
+            print
+            if sleep:
+                time.sleep(self.sleeptime)
+            gotone = self.run_one()
+            sleep = not gotone
+
 if __name__ == '__main__':
     main()
