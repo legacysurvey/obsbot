@@ -83,7 +83,7 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
             cimg = img[trim:-top, trim:-trim]
             return cimg, trim, trim
 
-    def run(self, ps=None):
+    def run(self, ps=None, plotfn=None):
         meas = super(Mosaic3FocusMeas, self).run(ps=ps, focus=True)
         # momentsize=10)
 
@@ -117,24 +117,25 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
         K = np.argsort(ps1mag + 1000*edge)
 
         nstars = min(10, len(K))
-        plt.clf()
-        plt.subplots_adjust(hspace=0, wspace=0)
-        sp = 1
-        mn,mx = np.percentile(img.ravel(), [50,99])
-        kwa = dict(vmin=mn, vmax=mx, cmap='gray')
-        for shifty in shifts:
-            for k in K[:nstars]:
-                plt.subplot(len(shifts), nstars, sp)
-                sp += 1
-                i = I[k]
-                j = J[k]
-                x = fx[j]
-                y = fy[j] + shifty
-                dimshow(img[y-S:y+S+1, x-S:x+S+1], ticks=False, **kwa)
-                #if shifty == 0.:
-                #    print('Plotting focus sweep star at', x,y)
-        plt.suptitle('Focus sweep stars')
-        ps.savefig()
+        if ps is not None:
+            plt.clf()
+            plt.subplots_adjust(hspace=0, wspace=0)
+            sp = 1
+            mn,mx = np.percentile(img.ravel(), [50,99])
+            kwa = dict(vmin=mn, vmax=mx, cmap='gray')
+            for shifty in shifts:
+                for k in K[:nstars]:
+                    plt.subplot(len(shifts), nstars, sp)
+                    sp += 1
+                    i = I[k]
+                    j = J[k]
+                    x = fx[j]
+                    y = fy[j] + shifty
+                    dimshow(img[y-S:y+S+1, x-S:x+S+1], ticks=False, **kwa)
+                    #if shifty == 0.:
+                    #    print('Plotting focus sweep star at', x,y)
+            plt.suptitle('Focus sweep stars')
+            ps.savefig()
 
         meas.update(I=I, J=J, K=K)
 
@@ -173,9 +174,10 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
 
         FF = []
 
-        for Y,name in [(allcxx, 'PSF CXX'), (allcyy, 'PSF CYY')]:
-            plt.clf()
-    
+        # Fit XX and YY covariances as a quadratic function of focus.
+        names = ('PSF CXX', 'PSF CYY')
+        fitvals = []
+        for name,Y in zip(names, [allcxx, allcyy]):
             X,I = np.unique(allfocus, return_inverse=True)
             Ymn,Ysig = np.zeros(len(X)), np.zeros(len(X))
             for i in range(len(X)):
@@ -185,13 +187,11 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
                 ysig = (y1 - y2) / 2
                 Ymn [i] = ymn
                 Ysig[i] = ysig
-            plt.plot(allfocus, Y, 'b.', alpha=0.25)
-            plt.errorbar(X, Ymn, yerr=Ysig, fmt='o', color='g')
-    
-            xmn = np.median(X)
+
+            xmed = np.median(X)
             dx = (np.max(X) - np.min(X)) / 2.
             # Rescale xx in [-1,1]
-            xx = (X - xmn) / dx
+            xx = (X - xmed) / dx
             A = np.zeros((len(xx),3))
             A[:,0] = 1.
             A[:,1] = xx
@@ -202,26 +202,60 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
             R = np.linalg.lstsq(A, b)
             s = R[0]
             #print('Least-squares quadratic:', s)
-            ax = plt.axis()
-            xx = np.linspace(ax[0], ax[1], 500)
-            rx = (xx - xmn)/dx
-            plt.plot(xx, s[0] + rx*s[1] + rx**2*s[2], 'b-', alpha=0.5)
-            plt.axis(ax)
-            plt.ylim(0, 16)
-            plt.xlabel('Focus shift (um)')
-            plt.ylabel(name)
+            mn,mx = allfocus.min(),allfocus.max()
+            d = mx-mn
+            mn -= 0.1 * d
+            mx += 0.1 * d
+            xx = np.linspace(mn, mx, 500)
+            rx = (xx - xmed)/dx
+            qq = s[0] + rx*s[1] + rx**2*s[2]
+            # minimum
             fbest = -s[1] / (2. * s[2])
-            fbest = fbest * dx + xmn
+            fbest = fbest * dx + xmed
+            fitvals.append((X, Ymn, Ysig, s, xx, qq, fbest))
             print('Focus position from %s: %.1f' % (name, fbest))
-            plt.title('Focus: %.1f' % fbest)
-            plt.axvline(fbest, color='b')
-            ps.savefig()
             FF.append(fbest)
 
         fmean = np.mean(FF)
         print('Mean focus: %.1f' % fmean)
+
+        if plotfn is None and ps is None:
+            return meas
         
-        plt.clf()
+        if plotfn is not None:
+            plt.clf()
+            
+        for i,(name,Y,(X,Ymn,Ysig, s, xx, qq, fbest)) in enumerate(zip(
+                names, (allcxx, allcyy), fitvals)):
+
+            if plotfn is not None:
+                plt.subplot(3,1, 1+i)
+            else:
+                plt.clf()
+            plt.plot(allfocus, Y, 'b.', alpha=0.25)
+            plt.errorbar(X, Ymn, yerr=Ysig, fmt='o', color='g')
+            ax = plt.axis()
+            plt.plot(xx, qq, 'b-', alpha=0.5)
+            plt.axis(ax)
+            plt.ylim(0, 25)
+            plt.xlabel('Focus shift (um)')
+            plt.ylabel(name)
+            if plotfn is not None:
+                plt.text(ax[0] + 0.9*(ax[1]-ax[0]),
+                         ax[2] + 0.8*(ax[3]-ax[2]),
+                         'Focus: %.1f' % fbest,
+                         ha='right', va='top', fontsize=12)
+            else:
+                plt.title('Focus: %.1f' % fbest)
+            plt.axvline(fbest, color='b')
+            if plotfn is None:
+                ps.savefig()
+
+        if plotfn is not None:
+            plt.subplot(3,1, 3)
+        else:
+            plt.clf()
+        
         Y = allcxy
         plt.plot(allfocus, Y, 'b.', alpha=0.25)
         plt.ylim(-2,2)
@@ -231,7 +265,12 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
         for f in FF:
             plt.axvline(f, color='b', alpha=0.5)
         plt.axvline(fmean, color='b')
-        ps.savefig()
+
+        if plotfn is not None:
+            plt.suptitle('Focus expnum = %i' % self.primhdr.get('EXPNUM', 0))
+            plt.savefig(plotfn)
+        else:
+            ps.savefig()
         
         return meas
             

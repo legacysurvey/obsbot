@@ -539,11 +539,14 @@ def process_image(fn, ext, gvs, sfd, opt, obs, tiles):
         m.readtime = phdr.get('READTIME', 0.)
 
     if opt.focus and obstype == 'focus' and m.camera == 'mosaic3':
-        from mosaic_focus import *
+        from mosaic_focus import Mosaic3FocusMeas
 
-        meas = Mosaic3FocusMeas(fn)
-        meas.run(ps=None, plotfn='focus.png')
-        
+        if ext is None:
+            ext = get_default_extension(fn)
+        meas = Mosaic3FocusMeas(fn, ext)
+        focusfn = 'focus.png'
+        meas.run(ps=None, plotfn=focusfn)
+        print('Wrote', focusfn)
         
     if skip:
         m.save()
