@@ -538,6 +538,13 @@ def process_image(fn, ext, gvs, sfd, opt, obs, tiles):
         m.bad_pixcnt = ('PIXCNT1' in phdr)
         m.readtime = phdr.get('READTIME', 0.)
 
+    if opt.focus and obstype == 'focus' and m.camera == 'mosaic3':
+        from mosaic_focus import *
+
+        meas = Mosaic3FocusMeas(fn)
+        meas.run(ps=None, plotfn='focus.png')
+        
+        
     if skip:
         m.save()
         return None
@@ -787,6 +794,9 @@ def main(cmdlineargs=None, get_copilot=False):
     parser.add_option('--no-db', dest='db', default=True, action='store_false',
                       help='Do not append results to database')
 
+    parser.add_option('--no-focus', dest='focus', default=True,
+                      action='store_false', help='Do not analyze focus frames')
+    
     parser.add_option('--fits', help='Write database to given FITS table')
     parser.add_option('--plot', action='store_true',
                       help='Plot recent data and quit')
