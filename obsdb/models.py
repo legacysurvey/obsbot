@@ -1,6 +1,10 @@
 from django.db import models
 import numpy as np
 
+#class MeasuredCCDManager(models.Manager):
+#    def object_frames(self):
+
+        
 class MeasuredCCD(models.Model):
     camera = models.CharField(
         max_length=32,
@@ -20,6 +24,8 @@ class MeasuredCCD(models.Model):
     rabore = models.FloatField(default=0)
     decbore = models.FloatField(default=0)
 
+    obstype = models.CharField(max_length=64, default='object')
+    
     object = models.CharField(max_length=64, default='')
     tileid = models.IntegerField(default=0)
     passnumber = models.IntegerField(default=0)

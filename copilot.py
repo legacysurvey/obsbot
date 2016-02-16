@@ -49,6 +49,7 @@ def db_to_fits(mm):
                   'band', 'ebv', 'zeropoint', 'transparency', 'seeing',
                   'sky', 'expfactor', 'camera', 'dx', 'dy', 'nmatched',
                   'md5sum', 'bad_pixcnt', 'readtime',
+                  'obstype',
                   'object', 'tileid', 'passnumber', 'tileebv']:
         g = getattr(mm[0], field)
         if isinstance(g, basestring):
@@ -886,9 +887,10 @@ def main(cmdlineargs=None, get_copilot=False):
 
         now = mjdnow()
         
-        ccds = obsdb.MeasuredCCD.objects.all().filter(mjd_obs__gt=now - 0.25)
         #ccds = obsdb.MeasuredCCD.objects.all()
-
+        #ccds = obsdb.MeasuredCCD.objects.all().filter(mjd_obs__gt=now - 0.25)
+        ccds = obsdb.MeasuredCCD.objects.all().filter(mjd_obs__gt=57434)
+        
         print(ccds.count(), 'measured CCDs')
         for ccd in ccds:
             try:
