@@ -540,13 +540,17 @@ def process_image(fn, ext, gvs, sfd, opt, obs, tiles):
 
     if opt.focus and obstype == 'focus' and m.camera == 'mosaic3':
         from mosaic_focus import Mosaic3FocusMeas
-
         if ext is None:
             ext = get_default_extension(fn)
         meas = Mosaic3FocusMeas(fn, ext)
         focusfn = 'focus.png'
         meas.run(ps=None, plotfn=focusfn)
         print('Wrote', focusfn)
+        show_plot = opt.show
+        if show_plot:
+            plt.draw()
+            plt.show(block=False)
+            plt.pause(0.001)
         
     if skip:
         m.save()

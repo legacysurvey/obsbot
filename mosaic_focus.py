@@ -241,8 +241,7 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
             plt.xlabel('Focus shift (um)')
             plt.ylabel(name)
             if plotfn is not None:
-                plt.text(ax[0] + 0.9*(ax[1]-ax[0]),
-                         ax[2] + 0.8*(ax[3]-ax[2]),
+                plt.text(ax[0] + 0.9*(ax[1]-ax[0]), 20,
                          'Focus: %.1f' % fbest,
                          ha='right', va='top', fontsize=12)
             else:
