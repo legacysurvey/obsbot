@@ -516,6 +516,8 @@ def process_image(fn, ext, gvs, sfd, opt, obs, tiles):
     kwa = {}
     if ext is not None:
         kwa.update(ext=ext)
+    if opt.n_fwhm is not None:
+        kwa.update(n_fwhm=opt.n_fwhm)
     M = measure_raw(fn, ps=ps, **kwa)
 
     if opt.doplots:
@@ -762,6 +764,8 @@ def main(cmdlineargs=None):
     parser.add_option('--rawdata', help='Directory to monitor for new images: default $MOS3_DATA if set, else "rawdata"', default=None)
     parser.add_option('--portion', help='Portion of the night: default %default', type=float, default='1.0')
 
+    parser.add_option('--n-fwhm', default=None, type=int, help='Number of stars on which to measure FWHM')
+    
     parser.add_option('--no-db', dest='db', default=True, action='store_false',
                       help='Do not append results to database')
 
@@ -823,7 +827,6 @@ def main(cmdlineargs=None):
 
     from django.conf import settings
     import obsdb
-    obsdb.django_setup()
 
     import pylab as plt
     plt.figure(figsize=(8,10))
@@ -874,7 +877,7 @@ def main(cmdlineargs=None):
         T = db_to_fits(ccds)
         T.writeto(opt.fits)
         print('Wrote', opt.fits)
-        sys.exit(0)
+        return 0
 
     if opt.fix_db:
 
@@ -902,7 +905,7 @@ def main(cmdlineargs=None):
                 import traceback
                 traceback.print_exc()
 
-        sys.exit(0)
+        return 0
             
     # Get nightlystrategy data structures; use fake command-line args.
     # these don't matter at all, since we only use the ExposureFactor() function
@@ -912,7 +915,7 @@ def main(cmdlineargs=None):
 
     if opt.plot:
         plot_recent(opt, gvs, markmjds=markmjds, show_plot=False)
-        sys.exit(0)
+        return 0
         
     print('Loading SFD maps...')
     sfd = SFDMap()
@@ -937,12 +940,12 @@ def main(cmdlineargs=None):
             mp.map(bounce_process_image,
                    [(fn, rawext, gvs, sfd, opt, obs, tiles) for fn in fns])
         plot_recent(opt, gvs, markmjds=markmjds, show_plot=False)
-        sys.exit(0)
+        return 0
     
 
     copilot = Copilot(imagedir, rawext, opt, gvs, sfd, obs, tiles)
     copilot.run()
-
+    return 0
 
 
 class Copilot(object):
@@ -1086,4 +1089,6 @@ class Copilot(object):
             sleep = not gotone
 
 if __name__ == '__main__':
+    import obsdb
+    obsdb.django_setup()
     main()

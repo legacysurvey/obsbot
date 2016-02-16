@@ -154,7 +154,8 @@ class RawMeasurer(object):
         slices = find_objects(blobs)
         return slices
         
-    def run(self, ps=None, focus=False, momentsize=5):
+    def run(self, ps=None, focus=False, momentsize=5,
+            n_fwhm=100):
         import pylab as plt
         from astrometry.util.plotutils import dimshow, plothist
         fn = self.fn
@@ -658,8 +659,11 @@ class RawMeasurer(object):
     
         fwhms = []
         psf_r = 15
-        for i,(xi,yi,fluxi) in enumerate(zip(fx[J],fy[J],apflux[J])):
-            #print('Fitting source', i, 'of', len(J))
+        if n_fwhm not in [0, None]:
+            Jf = J[:n_fwhm]
+            
+        for i,(xi,yi,fluxi) in enumerate(zip(fx[Jf],fy[Jf],apflux[Jf])):
+            #print('Fitting source', i, 'of', len(Jf))
             ix = int(np.round(xi))
             iy = int(np.round(yi))
             xlo = max(0, ix-psf_r)
@@ -873,7 +877,7 @@ class Mosaic3Measurer(RawMeasurer):
 
     
 
-def measure_raw_decam(fn, ext='N4', ps=None):
+def measure_raw_decam(fn, ext='N4', ps=None, **kwargs):
     '''
     Reads the given file *fn*, extension *ext*', and measures a number of
     quantities that are useful for depth estimates:
@@ -944,12 +948,12 @@ def measure_raw_decam(fn, ext='N4', ps=None):
 
     '''
     meas = DECamMeasurer(fn, ext)
-    results = meas.run(ps)
+    results = meas.run(ps, **kwargs)
     return results
 
-def measure_raw_mosaic3(fn, ext='im4', ps=None):
+def measure_raw_mosaic3(fn, ext='im4', ps=None, **kwargs):
     meas = Mosaic3Measurer(fn, ext)
-    results = meas.run(ps)
+    results = meas.run(ps, **kwargs)
     return results
 
 def measure_raw(fn, **kwargs):
