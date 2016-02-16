@@ -277,13 +277,23 @@ def main():
                 print('Failed to open', fn, '-- maybe not fully written yet.')
                 continue
             break
-    
+
+        nopass1path = os.path.join(scriptdir, 'nopass1')
+        dopass1 = not os.path.exists(nopass1path)
+        if not dopass1:
+            print('Not considering Pass 1 because file exists:', nopass1path)
+        nopass2path = os.path.join(scriptdir, 'nopass2')
+        dopass2 = not os.path.exists(nopass2path)
+        if not dopass2:
+            print('Not considering Pass 2 because file exists:', nopass2path)
+        
         try:
             ok = found_new_image(fn, rawext, opt, obs, gvs, seqnumpath,
                                  J1, J2, J3,
                                  os.path.join(scriptdir, expscriptpattern),
                                  os.path.join(scriptdir, slewscriptpattern),
-                                 tiles, planned_tiles)
+                                 tiles, planned_tiles,
+                                 dopass1=dopass1, dopass2=dopass2)
             if not ok:
                 print('%s: found_new_image returned False' %
                       (str(ephem.now())))
@@ -300,7 +310,8 @@ def main():
 
 
 def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
-                    expscriptpat, slewscriptpat, tiles, planned_tiles):
+                    expscriptpat, slewscriptpat, tiles, planned_tiles,
+                    dopass1=True, dopass2=True):
 
     print('%s: found new image %s' % (str(ephem.now()), fn))
 
@@ -358,14 +369,37 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
     print('Nominal sky : %6.02f' % nomsky)
     print('Sky over nom: %6.02f   (positive means brighter than nom)' %
           brighter)
+
+    transcut = 0.9
+    seeingcut = 1.25
+    brightcut = 0.25
+    
+    transok = trans > transcut
+    seeingok = seeing < seeingcut
+    brightok = brighter < brightcut
+
+    pass1ok = transok and seeingok and brightok
+    pass2ok = transok or  seeingok
     
     nextpass = 3
-    if trans > 0.90 and seeing < 1.25 and brighter < 0.25:
+    if pass1ok and dopass1:
         nextpass = 1
 
-    elif (trans > 0.90) or (seeing < 1.25):
+    elif pass2ok and dopass2:
         nextpass = 2
 
+    print('Transparency cut: %s       (%6.2f vs %6.2f)' %
+          (('pass' if transok else 'fail'), trans, transcut))
+    print('Seeing       cut: %s       (%6.2f vs %6.2f)' %
+          (('pass' if seeingok else 'fail'), seeing, seeingcut))
+    print('Brightness   cut: %s       (%6.2f vs %6.2f)' %
+          (('pass' if brightok else 'fail'), skybright, nomsky+brightcut))
+    print('Pass 1 = transparency AND seeing AND brightness: %s' % pass1ok)
+    if pass1ok and not dopass1:
+        print('Pass 1 forbidden by observer!')
+    print('Pass 2 = transparency OR  seeing               : %s' % pass2ok)
+    if pass2ok and not dopass2:
+        print('Pass 2 forbidden by observer!')
     print('Selected pass:', nextpass)
 
     # Choose the next tile from the right JSON tile list Jp
