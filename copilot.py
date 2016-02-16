@@ -19,7 +19,6 @@ import re
 import time
 import json
 import datetime
-import optparse
 from collections import Counter
 from glob import glob
 
@@ -751,8 +750,9 @@ def skip_existing_files(imgfns, rawext):
     return fns
 
     
-def main():
+def main(cmdlineargs=None):
     global gSFD
+    import optparse
     parser = optparse.OptionParser(usage='%prog')
 
     plotfn_default = 'recent.png'
@@ -801,8 +801,11 @@ def main():
     parser.add_option('--no-show', dest='show', default=True, action='store_false',
                       help='Do not show plot window, just save it.')
 
-    opt,args = parser.parse_args()
-
+    if cmdlineargs is None:
+        opt,args = parser.parse_args()
+    else:
+        opt,args = parser.parse_args(cmdlineargs)
+        
     if not opt.show:
         import matplotlib
         matplotlib.use('Agg')
