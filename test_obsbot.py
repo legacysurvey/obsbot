@@ -5,7 +5,6 @@ import os
 class TestCopilot(TestCase):
 
     def setUp(self):
-        # os.setenv('PS1CAT_DIR',
         self.testdatadir = os.path.join(os.path.dirname(__file__),
                                         'testdata')
 
@@ -56,8 +55,90 @@ class TestCopilot(TestCase):
 
         
     def test_new_image(self):
-        pass
+        from copilot import main, Copilot
+        import tempfile
+        import time
+        
+        # Test reading a new image from $MOS3_DATA
+        dirname = tempfile.mkdtemp()
+        os.environ['MOS3_DATA'] = dirname
 
+        args = ['--n-fwhm', '10']
+        copilot = main(cmdlineargs=args, get_copilot=True)
+
+        def fake_process_image(self, fn):
+            self.processed.append(fn)
+
+        def fake_plot_recent(self):
+            self.plotted = True
+            
+        Copilot.process_image = fake_process_image
+        Copilot.plot_recent   = fake_plot_recent
+        copilot.processed = []
+        copilot.plotted = False
+        
+        # No new files, no backlog, no timeout -- nothing should happen.
+        copilot.run_one()
+
+        self.assertEqual(len(copilot.processed), 0)
+        self.assertEqual(copilot.plotted, False)
+
+        copilot.processed = []
+        copilot.plotted = False
+
+        # Create symlink
+        fn = 'mos3.68488.im4.fits.fz'
+        path = os.path.join(self.testdatadir, fn)
+        sym = os.path.join(dirname, fn)
+        os.symlink(path, sym)
+
+        copilot.run_one()
+        
+        self.assertEqual(len(copilot.processed), 1)
+        self.assertEqual(copilot.plotted, True)
+
+        copilot.processed = []
+        copilot.plotted = False
+
+        # Create another copy of the symlink, wait one second, then
+        # create empty file -- Copilot should read the empty one
+        # first, but fail to read "maxFail" times, then ignore it and
+        # go on to read the symlink.
+
+        # copilot remembers the first image processed above.
+        self.assertEqual(len(copilot.oldimages), 1)
+
+        sym2 = os.path.join(dirname, 'x' + fn)
+        os.symlink(path, sym2)
+        time.sleep(1.)
+        
+        f,tmpfn = tempfile.mkstemp(dir=dirname, suffix='.fits')
+        os.close(f)
+
+        for i in range(copilot.maxFail):
+            copilot.run_one()
+            self.assertEqual(len(copilot.processed), 0)
+            self.assertEqual(copilot.plotted, False)
+
+        # AFTER the maxFail'th time, the bad file gets added to
+        # 'oldimages', and (still) doesn't get processed.
+        copilot.run_one()
+        self.assertEqual(len(copilot.oldimages), 2)
+        self.assertEqual(len(copilot.processed), 0)
+        self.assertEqual(copilot.plotted, False)
+
+        # The time after THAT, the symlink should get processed.
+        copilot.run_one()
+        self.assertEqual(len(copilot.oldimages), 3)
+        self.assertEqual(len(copilot.processed), 1)
+        self.assertEqual(copilot.plotted, True)
+        self.assertEqual(copilot.processed[0], sym2)
+        
+        # Clean up
+        os.unlink(sym2)
+        os.unlink(sym)
+        os.unlink(tmpfn)
+        os.rmdir(dirname)
 
 if __name__ == '__main__':
     unittest.main()

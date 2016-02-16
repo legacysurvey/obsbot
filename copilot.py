@@ -752,7 +752,7 @@ def skip_existing_files(imgfns, rawext):
     return fns
 
     
-def main(cmdlineargs=None):
+def main(cmdlineargs=None, get_copilot=False):
     global gSFD
     import optparse
     parser = optparse.OptionParser(usage='%prog')
@@ -944,6 +944,11 @@ def main(cmdlineargs=None):
     
 
     copilot = Copilot(imagedir, rawext, opt, gvs, sfd, obs, tiles)
+
+    # for testability
+    if get_copilot:
+        return copilot
+
     copilot.run()
     return 0
 
@@ -953,6 +958,9 @@ class Copilot(object):
                  opt, gvs, sfd, obs, tiles):
         self.imagedir = imagedir
         self.rawext = rawext
+
+        # How many times to re-try processing a new image file
+        self.maxFail = 10
 
         self.sleeptime = 5.
         # How often to re-plot
@@ -1044,10 +1052,9 @@ class Copilot(object):
                 return False
             fn = self.backlog.pop()
 
-        maxFail = 10
-        if self.failCounter[fn] >= maxFail:
+        if self.failCounter[fn] >= self.maxFail:
             print('Failed to read file: %s, ext: %s, %i times.' %
-                  (fn, self.rawext, maxFail) + '  Ignoring.')
+                  (fn, self.rawext, self.maxFail) + '  Ignoring.')
             self.oldimages.add(fn)
             return False
             
