@@ -703,7 +703,7 @@ def process_image(fn, ext, gvs, sfd, opt, obs, tiles):
 def bounce_process_image(X):
     process_image(*X)
 
-def plot_recent(opt, gvs, markmjds=[], **kwargs):
+def plot_recent(opt, gvs, tiles=None, markmjds=[], **kwargs):
     import obsdb
 
     if opt.mjdend is None:
@@ -747,19 +747,50 @@ def plot_recent(opt, gvs, markmjds=[], **kwargs):
                       mjdrange=(mjd_start, mjd_end), markmjds=markmjds,
                       **kwargs)
 
-    # from astrometry.util.fits import fits_table
-    # tiles = fits_table(opt.tiles)
-    # plt.clf()
-    # I = (tiles.in_desi == 1) * (tiles.z_done == 0)
-    # plt.plot(tiles.ra[I], tiles.dec[I], 'k.', alpha=0.01)
-    # I = (tiles.in_desi == 1) * (tiles.z_done > 0)
-    # plt.plot(tiles.ra[I], tiles.dec[I], 'k.', alpha=0.5)
-    # plt.plot([m.rabore for m in mm], [m.decbore for m in mm], 'm.')
-    # plt.xlabel('RA (deg)')
-    # plt.ylabel('Dec (deg)')
-    # plt.axis([360,0,-20,90])
-    # plt.savefig('radec.png')
+    planfn = 'mosbot-plan.fits'
+    if not os.path.exists(planfn) or tiles is None:
+        return
 
+    from astrometry.util.fits import fits_table
+    P = fits_table(planfn)
+
+    mlast = mm.order_by('mjd_obs').last()
+
+    mrecent = mm.order_by('-mjd_obs')[:10]
+    
+    plt.clf()
+    I = (tiles.in_desi == 1) * (tiles.z_done == 0)
+    plt.plot(tiles.ra[I], tiles.dec[I], 'k.', alpha=0.01)
+    I = (tiles.in_desi == 1) * (tiles.z_done > 0)
+    plt.plot(tiles.ra[I], tiles.dec[I], 'k.', alpha=0.5)
+    plt.plot([m.rabore for m in mm], [m.decbore for m in mm], 'm.')
+
+    plt.plot(mlast.rabore, mlast.decbore, 'mo')
+
+    I = np.flatnonzero(P.type == 'P')
+    plt.plot(P[I].ra, P[I].dec, 'm*-')
+
+    I = np.flatnonzero(P.type == '1')
+    plt.plot(P[I].ra, P[I].dec, 'k^')
+    I = np.flatnonzero(P.type == '2')
+    plt.plot(P[I].ra, P[I].dec, 'ks')
+    I = np.flatnonzero(P.type == '3')
+    plt.plot(P[I].ra, P[I].dec, 'kp')
+    
+    plt.xlabel('RA (deg)')
+    plt.ylabel('Dec (deg)')
+    #plt.axis([360,0,-20,90])
+
+    ralo = min(P.ra.min(), min([m.ra for m in mrecent]))
+    rahi = max(P.ra.max(), max([m.ra for m in mrecent]))
+    declo = min(P.dec.min(), min([m.dec for m in mrecent]))
+    dechi = max(P.dec.max(), max([m.dec for m in mrecent]))
+
+    plt.axis([ralo, rahi, declo, dechi])
+    
+    plt.savefig('radec.png')
+
+    
 def skip_existing_files(imgfns, rawext):
     import obsdb
     fns = []
@@ -941,7 +972,7 @@ def main(cmdlineargs=None, get_copilot=False):
     obs = setupGlobals(nsopt, gvs)
 
     if opt.plot:
-        plot_recent(opt, gvs, markmjds=markmjds, show_plot=False)
+        plot_recent(opt, gvs, tiles=tiles, markmjds=markmjds, show_plot=False)
         return 0
         
     print('Loading SFD maps...')
@@ -966,7 +997,7 @@ def main(cmdlineargs=None, get_copilot=False):
             sfd = None
             mp.map(bounce_process_image,
                    [(fn, rawext, gvs, sfd, opt, obs, tiles) for fn in fns])
-        plot_recent(opt, gvs, markmjds=markmjds, show_plot=False)
+        plot_recent(opt, gvs, tiles=tiles, markmjds=markmjds, show_plot=False)
         return 0
     
 
@@ -1063,7 +1094,7 @@ class Copilot(object):
         self.plot_recent(**kwargs)
         
     def plot_recent(self, markmjds=[]):
-        plot_recent(self.opt, self.gvs, markmjds=markmjds,
+        plot_recent(self.opt, self.gvs, tiles=self.tiles, markmjds=markmjds,
                     show_plot=self.opt.show)
         self.lastPlot = datenow()
             
