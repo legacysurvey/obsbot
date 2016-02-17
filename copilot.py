@@ -123,6 +123,9 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None,
     T = T[T.obstype == 'object']
     print(len(T), 'OBJECT exposures')
 
+    if len(T) == 0:
+        return
+    
     ccmap = dict(g='g', r='r', z='m')
 
     #bands = 'grz'
