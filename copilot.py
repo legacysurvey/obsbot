@@ -751,6 +751,7 @@ def plot_recent(opt, gvs, tiles=None, markmjds=[], **kwargs):
     if not os.path.exists(planfn) or tiles is None:
         return
 
+    import pylab as plt
     from astrometry.util.fits import fits_table
     P = fits_table(planfn)
 
@@ -781,10 +782,10 @@ def plot_recent(opt, gvs, tiles=None, markmjds=[], **kwargs):
     plt.ylabel('Dec (deg)')
     #plt.axis([360,0,-20,90])
 
-    ralo = min(P.ra.min(), min([m.ra for m in mrecent]))
-    rahi = max(P.ra.max(), max([m.ra for m in mrecent]))
-    declo = min(P.dec.min(), min([m.dec for m in mrecent]))
-    dechi = max(P.dec.max(), max([m.dec for m in mrecent]))
+    ralo = min(P.ra.min(), min([m.rabore for m in mrecent]))
+    rahi = max(P.ra.max(), max([m.rabore for m in mrecent]))
+    declo = min(P.dec.min(), min([m.decbore for m in mrecent]))
+    dechi = max(P.dec.max(), max([m.decbore for m in mrecent]))
 
     plt.axis([ralo, rahi, declo, dechi])
     
