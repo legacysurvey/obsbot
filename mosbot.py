@@ -428,7 +428,7 @@ def found_new_image(fn, ext, opt, obs, gvs, seqnumpath, J1, J2, J3,
     print('%s: sequence number: %i' % (str(ephem.now()), seqnum))
     
     # How many exposures ahead should we write?
-    Nahead = 3
+    Nahead = 10
 
     # Set observing conditions for computing exposure time
     gvs.transparency = trans
