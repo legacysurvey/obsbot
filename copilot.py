@@ -788,9 +788,10 @@ def plot_recent(opt, gvs, tiles=None, markmjds=[], **kwargs):
     dechi = max(P.dec.max(), max([m.decbore for m in mrecent]))
 
     plt.axis([ralo, rahi, declo, dechi])
-    
-    plt.savefig('radec.png')
 
+    fn = 'radec.png'
+    plt.savefig(fn)
+    print('Wrote', fn)
     
 def skip_existing_files(imgfns, rawext):
     import obsdb

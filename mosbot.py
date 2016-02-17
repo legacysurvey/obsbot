@@ -98,10 +98,6 @@ def main(cmdlineargs=None, get_mosbot=False):
     print('Reading tiles table', opt.tiles)
     tiles = fits_table(opt.tiles)
     
-    #imagedir = opt.rawdata
-    #if imagedir is None:
-    #    imagedir = os.environ.get('MOS3_DATA', 'rawdata')
-
     if opt.rawdata is None:
         opt.rawdata = os.environ.get('MOS3_DATA', 'rawdata')
     
@@ -109,7 +105,6 @@ def main(cmdlineargs=None, get_mosbot=False):
     if get_mosbot:
         return mosbot
     mosbot.run()
-
 
 
 class Mosbot(object):
@@ -287,12 +282,6 @@ class Mosbot(object):
 
             try:
                 ok = self.found_new_image(newestfn)
-                # , rawext, opt, obs, gvs, seqnumpath,
-                # J1, J2, J3,
-                # os.path.join(self.scriptdir, self.expscriptpattern),
-                # os.path.join(self.scriptdir, self.slewscriptpattern),
-                # tiles, planned_tiles,
-                # dopass1=dopass1, dopass2=dopass2)
                 if ok:
                     self.oldimages.update(newimgs)
                     
