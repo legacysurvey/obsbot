@@ -754,30 +754,33 @@ def plot_recent(opt, gvs, tiles=None, markmjds=[], **kwargs):
     import pylab as plt
     from astrometry.util.fits import fits_table
     P = fits_table(planfn)
-
+    
     mlast = mm.order_by('mjd_obs').last()
 
     mrecent = mm.order_by('-mjd_obs')[:10]
     
     plt.clf()
     I = (tiles.in_desi == 1) * (tiles.z_done == 0)
-    plt.plot(tiles.ra[I], tiles.dec[I], 'k.', alpha=0.01)
+    plt.plot(tiles.ra[I], tiles.dec[I], 'k.', alpha=0.05)
     I = (tiles.in_desi == 1) * (tiles.z_done > 0)
     plt.plot(tiles.ra[I], tiles.dec[I], 'k.', alpha=0.5)
     plt.plot([m.rabore for m in mm], [m.decbore for m in mm], 'm.')
+
+    I = np.flatnonzero(P.type == '1')
+    I = I[:10]
+    plt.plot(P[I].ra, P[I].dec, 'k^', alpha=0.3)
+    I = np.flatnonzero(P.type == '2')
+    I = I[:10]
+    plt.plot(P[I].ra, P[I].dec, 'ks', alpha=0.3)
+    I = np.flatnonzero(P.type == '3')
+    I = I[:10]
+    plt.plot(P[I].ra, P[I].dec, 'kp', alpha=0.3)
 
     plt.plot(mlast.rabore, mlast.decbore, 'mo')
 
     I = np.flatnonzero(P.type == 'P')
     plt.plot(P[I].ra, P[I].dec, 'm*-')
 
-    I = np.flatnonzero(P.type == '1')
-    plt.plot(P[I].ra, P[I].dec, 'k^')
-    I = np.flatnonzero(P.type == '2')
-    plt.plot(P[I].ra, P[I].dec, 'ks')
-    I = np.flatnonzero(P.type == '3')
-    plt.plot(P[I].ra, P[I].dec, 'kp')
-    
     plt.xlabel('RA (deg)')
     plt.ylabel('Dec (deg)')
     #plt.axis([360,0,-20,90])
@@ -786,8 +789,10 @@ def plot_recent(opt, gvs, tiles=None, markmjds=[], **kwargs):
     rahi = max(P.ra.max(), max([m.rabore for m in mrecent]))
     declo = min(P.dec.min(), min([m.decbore for m in mrecent]))
     dechi = max(P.dec.max(), max([m.decbore for m in mrecent]))
-
-    plt.axis([ralo, rahi, declo, dechi])
+    dr = rahi - ralo
+    dd = dechi - declo
+    
+    plt.axis([ralo-0.1*dr, rahi+0.1*dr, declo-0.1*dd, dechi+0.1*dd])
 
     fn = 'radec.png'
     plt.savefig(fn)
