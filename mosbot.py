@@ -275,7 +275,7 @@ class Mosbot(object):
                     self.oldimages.update(newimgs)
 
             except IOError:
-                print('Failed to read FITS image:', fn)
+                print('Failed to read FITS image:', newestfn)
                 import traceback
                 traceback.print_exc()
 
