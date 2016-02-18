@@ -139,7 +139,6 @@ class Mosbot(object):
 
     def write_initial_script(self, J, passnum, exptime, scriptfn, seqnumfn):
         quitfile = 'quit'
-        nowscriptpattern  = 'now-%i.sh'
 
         # 775
         chmod = (stat.S_IXUSR | stat.S_IWUSR | stat.S_IRUSR |
@@ -201,21 +200,6 @@ class Mosbot(object):
             tilename = str(j['object'])
             self.planned_tiles[seq] = tilename
             
-            # Write now-##.sh
-            fn = nowscriptpattern % seq
-            path = os.path.join(self.scriptdir, fn)
-            f = open(path, 'w')
-            f.write('echo "Do stuff before exposure %i?"' % seq)
-            f.close()
-            os.chmod(path, chmod)
-            print('Wrote', path)
-            script.append('. %s' % fn)
-
-            ra  = ra2hms (j['RA' ])
-            dec = dec2dms(j['dec'])
-            status = ('Exp %i: Tile %s, Pass %i, RA %s, Dec %s' %
-                      (seq, tilename, passnum, ra, dec))
-
             if exptime is not None:
                 j['expTime'] = exptime
             
@@ -225,6 +209,11 @@ class Mosbot(object):
             f = open(path, 'w')
             s = ('# Exp %i: Tile: %s, Pass: %i; default\n' %
                  (seq, tilename, passnum))
+
+            ra  = ra2hms (j['RA' ])
+            dec = dec2dms(j['dec'])
+            status = ('Exp %i: Tile %s, Pass %i, RA %s, Dec %s' %
+                      (seq, tilename, passnum, ra, dec))
             
             s += expscript_for_json(j, status=status)
             f.write(s)
@@ -284,13 +273,13 @@ class Mosbot(object):
                 ok = self.found_new_image(newestfn)
                 if ok:
                     self.oldimages.update(newimgs)
-                    
+
             except IOError:
                 print('Failed to read FITS image:', fn)
                 import traceback
                 traceback.print_exc()
-                continue
-            
+
+
     def found_new_image(self, fn):
         ext = self.opt.ext
 
@@ -563,9 +552,6 @@ class Mosbot(object):
                 P.type.append('%i' % passnum)
     
         P.to_np_arrays()
-        for c in P.columns():
-            print('col:', c, 'type', P.get(c).dtype)
-    
         fn = 'mosbot-plan.fits'
         tmpfn = fn + '.tmp'
         P.writeto(tmpfn)
