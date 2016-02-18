@@ -632,6 +632,15 @@ class RawMeasurer(object):
             meas.update(zp=None)
             return meas
 
+        goodpix,lo,hi = sigmaclip(dm, low=3, high=3)
+        dmagmed = np.median(goodpix)
+        print(len(goodpix), 'stars used for zeropoint median')
+        print('Using median zeropoint:')
+        zp_med = zp0 + dmagmed
+        trans_med = 10.**(-0.4 * (zp0 - zp_med - kx * (airmass - 1.)))
+        print('Zeropoint %6.3f' % zp_med)
+        print('Transparency: %.3f' % trans_med)
+        
         dm = ps1mag - apmag2[J]
         dmag2,dsig2 = sensible_sigmaclip(dm, nsigma=2.5)
         #print('Sky-sub mag offset', dmag2)
@@ -656,7 +665,13 @@ class RawMeasurer(object):
         print('Zeropoint %6.3f' % zp_obs)
         print('Fiducial  %6.3f' % zp0)
         print('Transparency: %.3f' % transparency)
-    
+
+        # print('Using sky-subtracted values:')
+        # zp_sky = zp0 + dmag2
+        # trans_sky = 10.**(-0.4 * (zp0 - zp_sky - kx * (airmass - 1.)))
+        # print('Zeropoint %6.3f' % zp_sky)
+        # print('Transparency: %.3f' % trans_sky)
+        
         fwhms = []
         psf_r = 15
         if n_fwhm not in [0, None]:
@@ -877,7 +892,7 @@ class Mosaic3Measurer(RawMeasurer):
 
     
 
-def measure_raw_decam(fn, ext='N4', ps=None, **kwargs):
+def measure_raw_decam(fn, ext='N4', ps=None, measargs={}, **kwargs):
     '''
     Reads the given file *fn*, extension *ext*', and measures a number of
     quantities that are useful for depth estimates:
@@ -947,12 +962,12 @@ def measure_raw_decam(fn, ext='N4', ps=None, **kwargs):
       - Take the median of the fit FWHMs -> FWHM estimate
 
     '''
-    meas = DECamMeasurer(fn, ext)
+    meas = DECamMeasurer(fn, ext, **measargs)
     results = meas.run(ps, **kwargs)
     return results
 
-def measure_raw_mosaic3(fn, ext='im4', ps=None, **kwargs):
-    meas = Mosaic3Measurer(fn, ext)
+def measure_raw_mosaic3(fn, ext='im4', ps=None, measargs={}, **kwargs):
+    meas = Mosaic3Measurer(fn, ext, **measargs)
     results = meas.run(ps, **kwargs)
     return results
 
@@ -1112,8 +1127,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Script to make measurements on raw DECam images to estimate sky brightness, PSF size, and zeropoint / transparency for exposure-time scaling.')
     parser.add_argument('--', '-o', dest='outfn', default='raw.fits',
                         help='Output file name')
-    parser.add_argument('--ext', default=[], action='append',
-                        help='FITS image extension to read: default "N4"; may be repeated')
+    parser.add_argument('--ext', help='Extension to read for computing observing conditions: default "N4" for DECam, "im4" for Mosaic3', default=None)
+    #    parser.add_argument('--ext', default=[], action='append',
+    #    help='FITS image extension to read: default "N4"; may be repeated')
+    parser.add_argument('--aprad', help='Aperture photometry radius in arcsec',
+                        type=float, default=None)
+    
     parser.add_argument('--plots', help='Make plots with this filename prefix',
                         default=None)
     parser.add_argument('images', metavar='DECam-filename.fits.fz', nargs='+',
@@ -1121,27 +1140,33 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     fns = args.images
-    exts = args.ext
-    if len(exts) == 0:
-        exts = ['N4']
+    #exts = args.ext
+    #if len(exts) == 0:
+    #    exts = ['N4']
 
+    ext = args.ext
+    
     ps = None
     if args.plots is not None:
         from astrometry.util.plotutils import PlotSequence
         ps = PlotSequence(args.plots)
+
+    measargs = dict()
+    if args.aprad is not None:
+        measargs.update(aprad=args.aprad)
         
     vals = {}
     for fn in fns:
-        for ext in exts:
-            print()
-            print('Measuring', fn, 'ext', ext)
-            d = measure_raw_decam(fn, ext=ext,ps=ps)
-            d.update(filename=fn, ext=ext)
-            for k,v in d.items():
-                if not k in vals:
-                    vals[k] = [v]
-                else:
-                    vals[k].append(v)
+        #for ext in exts:
+        print()
+        print('Measuring', fn, 'ext', ext)
+        d = measure_raw(fn, ext=ext,ps=ps, measargs=measargs)
+        d.update(filename=fn, ext=ext)
+        for k,v in d.items():
+            if not k in vals:
+                vals[k] = [v]
+            else:
+                vals[k].append(v)
 
     T = fits_table()
     for k,v in vals.items():
