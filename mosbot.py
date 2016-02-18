@@ -270,7 +270,7 @@ class Mosbot(object):
             newestfn = self.get_newest_image(newimgs)
 
             try:
-                ok = self.found_new_image(newestfn)
+                ok = self.found_new_image(os.path.join(self.imagedir, newestfn))
                 if ok:
                     self.oldimages.update(newimgs)
 
