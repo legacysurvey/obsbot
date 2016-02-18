@@ -779,7 +779,7 @@ def plot_recent(opt, gvs, tiles=None, markmjds=[], **kwargs):
     plt.plot(mlast.rabore, mlast.decbore, 'mo')
 
     I = np.flatnonzero(P.type == 'P')
-    plt.plot(P[I].ra, P[I].dec, 'm*-')
+    plt.plot(P[I].ra, P[I].dec, 'm*-', ms=12)
 
     plt.xlabel('RA (deg)')
     plt.ylabel('Dec (deg)')
