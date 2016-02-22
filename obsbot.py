@@ -31,7 +31,7 @@ class NominalCalibration(object):
         pass
 
     
-
+# From Anna Patej's nightlystrategy / mosaicstrategy
 def exposure_factor(self, fid, cal,
                     airmass, ebv, seeing, skybright, transparency):
     '''
@@ -55,6 +55,11 @@ def exposure_factor(self, fid, cal,
                 8.91 * r_half**2 +
                 ps**2/12.)
 
+    # Nightlystrategy.py has:
+    # pfact = 1.15
+    # Neff_fid = ((4.0*np.pi*sig_fid**2)**(1.0/pfact)+(8.91*r_half**2)**(1.0/pfact))**pfact
+
+    
     neff_fid = Neff(fid.seeing)
     neff     = Neff(seeing)
 
@@ -66,4 +71,14 @@ def exposure_factor(self, fid, cal,
                (neff / neff_fid) *
                10.**(-0.4 * (skybright - fid.skybright)))
     return scaling
+
+# From Anna Patej's nightlystrategy / mosaicstrategy
+def get_airmass(alt):
+    if (alt < 0.07):
+        alt = 0.07
+    secz = 1.0/np.sin(alt)
+    seczm1 = secz-1.0
+    airm = secz-0.0018167*seczm1-0.002875*seczm1**2-0.0008083*seczm1**3
+    return airm
+
 
