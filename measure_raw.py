@@ -69,7 +69,7 @@ ps1_to_mosaic = ps1_to_decam
 
 
 class RawMeasurer(object):
-    def __init__(self, fn, ext, aprad=7., skyrad_inner=7., skyrad_outer=10.,
+    def __init__(self, fn, ext, nom, aprad=7., skyrad_inner=7.,skyrad_outer=10.,
                  minstar=5, pixscale=0.262, maxshift=120.):#maxshift=60.):
         '''
         aprad: float
@@ -77,11 +77,14 @@ class RawMeasurer(object):
 
         skyrad_{inner,outer}: floats
         Sky annulus radius in arcsec
+
+        nom: nominal calibration, eg NominalCalibration object
         '''
 
         self.fn = fn
         self.ext = ext
-
+        self.nom = nom
+        
         self.aprad = aprad
         self.skyrad = (skyrad_inner, skyrad_outer)
         self.minstar = minstar
@@ -218,8 +221,11 @@ class RawMeasurer(object):
         exptime = primhdr['EXPTIME']
         airmass = primhdr['AIRMASS']
         print('Band', band, 'Exptime', exptime, 'Airmass', airmass)
-        zp0, sky0, kx = self.get_nominal_cal(band, ext=self.ext)
-    
+
+        zp0 = self.nom.zeropoint(band, ext=self.ext)
+        sky0 = self.nom.sky(band)
+        kx = self.fiducial_exptime(band).kx
+        
         # Find the sky value and noise level
         sky,sig1 = self.get_sky_and_sigma(img)
 

@@ -470,7 +470,6 @@ def set_tile_fields(ccd, hdr, tiles):
 gSFD = None
 
 def process_image(fn, ext, nom, sfd, opt, obs, tiles):
-    portion = opt.portion
     db = opt.db
     print('Reading', fn)
 
@@ -667,7 +666,8 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
             passnum = 3
         plandict['pass'] = passnum
     
-        plandict['portion'] = portion
+        ## ??
+        plandict['portion'] = 1.0
         
         print('Replan command:')
         print()
@@ -825,12 +825,18 @@ def main(cmdlineargs=None, get_copilot=False):
     import optparse
     parser = optparse.OptionParser(usage='%prog')
 
+    # Mosaic or Decam?
+    from camera import (nominal_cal, ephem_observer, default_extension,
+                        tile_path)
+    nom = nominal_cal
+    obs = ephem_observer()
+    
     plotfn_default = 'recent.png'
     
-    parser.add_option('--ext', help='Extension to read for computing observing conditions: default "N4" for DECam, "im4" for Mosaic3', default=None)
+    parser.add_option('--ext', default=default_extension,
+                      help='Extension to read for computing observing conditions: default %default')
     parser.add_option('--extnum', type=int, help='Integer extension to read')
     parser.add_option('--rawdata', help='Directory to monitor for new images: default $MOS3_DATA if set, else "rawdata"', default=None)
-    parser.add_option('--portion', help='Portion of the night: default %default', type=float, default='1.0')
 
     parser.add_option('--n-fwhm', default=None, type=int, help='Number of stars on which to measure FWHM')
     
@@ -870,7 +876,7 @@ def main(cmdlineargs=None, get_copilot=False):
 
     parser.add_option('--fix-db', action='store_true')
 
-    parser.add_option('--tiles', default='obstatus/mosaic-tiles_obstatus.fits',
+    parser.add_option('--tiles', default=tile_path,
                       help='Tiles table, default %default')
 
     parser.add_option('--no-show', dest='show', default=True, action='store_false',
@@ -892,7 +898,8 @@ def main(cmdlineargs=None, get_copilot=False):
     rawext = opt.ext
     if opt.extnum is not None:
         rawext = opt.extnum
-
+    assert(rawext is not None)
+        
     from astrometry.util.fits import fits_table
     tiles = fits_table(opt.tiles)
 
@@ -901,11 +908,6 @@ def main(cmdlineargs=None, get_copilot=False):
 
     import pylab as plt
     plt.figure(figsize=(8,10))
-
-    # Mosaic or Decam?
-    from camera import nominal_cal, ephem_observer
-    nom = nominal_cal
-    obs = ephem_observer()
 
     markmjds = []
 

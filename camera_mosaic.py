@@ -17,3 +17,5 @@ def ephem_observer():
     #mosaic.pressure = 780.0 # mbar
     #mosaic.horizon = -np.sqrt(2.0*mosaic.elev/R_earth)
     return mosaic
+
+tile_path = 'obstatus/mosaic-tiles_obstatus.fits'

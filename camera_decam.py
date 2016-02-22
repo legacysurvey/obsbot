@@ -17,3 +17,5 @@ def ephem_observer():
     #decam.pressure = 780.0 # mbar
     #decam.horizon = -np.sqrt(2.0*decam.elev/R_earth)
     return decam
+
+tile_path = 'obstatus/decam-tiles_obstatus.fits'
