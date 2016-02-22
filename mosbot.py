@@ -1,12 +1,8 @@
 '''
 TO-DO:
 
--- t_sat_max should be recomputed based on skybright!!
 -- FIXMEs -- filter changing -- here we set filter ONCE PER NIGHT!
-
 '''
-
-
 
 from __future__ import print_function
 import sys
