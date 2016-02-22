@@ -1,8 +1,8 @@
 #! /usr/bin/env python2.7
 '''
 
-This script is meant to be run during DECaLS observing.  It waits for
-new images to appear, measures their sky brightness, seeing, and
+This script is meant to be run during DECaLS/MzLS observing.  It waits
+for new images to appear, measures their sky brightness, seeing, and
 transparency, and advises whether & how to replan.
 
 '''
@@ -29,9 +29,9 @@ import ephem
 
 from astrometry.util.starutil_numpy import hmsstring2ra, dmsstring2dec, mjdtodate, datetomjd
 
-from nightlystrategy import ExposureFactor, getParserAndGlobals, setupGlobals
-
 from measure_raw import measure_raw, get_nominal_cal, get_default_extension, camera_name
+
+from obsbot import exposure_factor
 
 from tractor.sfd import SFDMap
 
@@ -109,12 +109,12 @@ def get_twilight(camera, date):
 
     return (sunset, eve12, eve18, morn18, morn12, sunrise)
 
-def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None,
+def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
                       markmjds=[], show_plot=True):
     import pylab as plt
     T = db_to_fits(mm)
     print(len(T), 'exposures')
-    
+
     T.mjd_end = T.mjd_obs + T.exptime / 86400.
 
     #Tall = T
@@ -269,12 +269,15 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None,
     plt.subplot(SP,1,4)
     mx = 300
     for band,Tb in zip(bands, TT):
-        basetime = gvs.base_exptimes[band]
-        lo,hi = gvs.floor_exptimes[band], gvs.ceil_exptimes[band]
+        fid = nom.fiducial_exptime(band)
+
+        basetime = fid.exptime
+        lo,hi = fid.exptime_min, fid.exptime_max
         exptime = basetime * Tb.expfactor
         clipped = np.clip(exptime, lo, hi)
         if band == 'z':
-            clipped = np.minimum(clipped, gvs.t_sat_max)
+            t_sat = nom.saturation_time(band, Tb.sky)
+            clipped = np.minimum(clipped, t_sat)
         Tb.clipped_exptime = clipped
         Tb.depth_factor = Tb.exptime / clipped
         I = np.flatnonzero(exptime > clipped)
@@ -295,13 +298,16 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None,
 
         dt = dict(g=-0.5,r=+0.5,z=0)[band]
 
-        basetime = gvs.base_exptimes[band]
+        fid = nom.fiducial_exptime(band)
+        basetime = fid.exptime
+        lo,hi = fid.exptime_min, fid.exptime_max
+
         plt.axhline(basetime+dt, color=ccmap[band], alpha=0.2)
-        lo,hi = gvs.floor_exptimes[band], gvs.ceil_exptimes[band]
         plt.axhline(lo+dt, color=ccmap[band], ls='--', alpha=0.5)
         plt.axhline(hi+dt, color=ccmap[band], ls='--', alpha=0.5)
         if band == 'z':
-            plt.axhline(gvs.t_sat_max, color=ccmap[band], ls='--', alpha=0.5)
+            plt.plot(Tb.mjd_obs, t_sat, color=ccmap[band], ls='--', alpha=0.5)
+
     plt.ylim(yl,min(mx, yh))
     plt.ylabel('Target exposure time (s)')
 
@@ -463,7 +469,7 @@ def set_tile_fields(ccd, hdr, tiles):
 # SFD map isn't picklable, use global instead
 gSFD = None
 
-def process_image(fn, ext, gvs, sfd, opt, obs, tiles):
+def process_image(fn, ext, nom, sfd, opt, obs, tiles):
     portion = opt.portion
     db = opt.db
     print('Reading', fn)
@@ -588,21 +594,22 @@ def process_image(fn, ext, gvs, sfd, opt, obs, tiles):
 
     if trans > 0:
 
-        gvs.transparency = trans
+        fid = nom.fiducial_exptime(band)
 
-        fakezp = -99
-        expfactor = ExposureFactor(band, airmass, ebv, M['seeing'], fakezp,
-                                   M['skybright'], gvs)
+        expfactor = exposure_factor(fid, nom,
+                                    airmass, ebv, M['seeing'], M['skybright'],
+                                    trans)
         print('Exposure factor:              %6.3f' % expfactor)
-        t_exptime = expfactor * gvs.base_exptimes[band]
+        t_exptime = expfactor * fid.exptime
         print('Target exposure time:         %6.1f' % t_exptime)
-        t_exptime = np.clip(t_exptime, gvs.floor_exptimes[band],
-                          gvs.ceil_exptimes[band])
+        t_exptime = np.clip(t_exptime, fid.exptime_min, fid.exptime_max)
         print('Clipped exposure time:        %6.1f' % t_exptime)
     
-        if band == 'z' and t_exptime > gvs.t_sat_max:
-            t_exptime = gvs.t_sat_max
-            print('Reduced exposure time to avoid z-band saturation: %6.1f', t_exptime)
+        if band == 'z':
+            t_sat = nom.saturation_time(band, M['skybright'])
+            if t_exptime > t_sat:
+                t_exptime = t_sat
+                print('Reduced exposure time to avoid z-band saturation: %.1f' % t_exptime)
 
         print
 
@@ -613,9 +620,9 @@ def process_image(fn, ext, gvs, sfd, opt, obs, tiles):
         # If you were going to re-plan, you would run with these args:
         plandict = dict(seeing=M['seeing'], transparency=trans)
         # Assume the sky is as much brighter than canonical in each band... unlikely
-        dsky = M['skybright'] - gvs.sb_dict[M['band']]
+        dsky = M['skybright'] - nom.sky(M['band'])
         for b in 'grz':
-            plandict['sb'+b] = gvs.sb_dict[b] + dsky
+            plandict['sb'+b] = nom.sky(b) + dsky
         # Note that nightlystrategy.py takes UTC dates.
         start = datenow()
         # Start the strategy 5 minutes from now.
@@ -703,7 +710,7 @@ def process_image(fn, ext, gvs, sfd, opt, obs, tiles):
 def bounce_process_image(X):
     process_image(*X)
 
-def plot_recent(opt, gvs, tiles=None, markmjds=[], **kwargs):
+def plot_recent(opt, nom, tiles=None, markmjds=[], **kwargs):
     import obsdb
 
     if opt.mjdend is None:
@@ -743,7 +750,7 @@ def plot_recent(opt, gvs, tiles=None, markmjds=[], **kwargs):
     markmjds.append((ephemdate_to_mjd(morn12),'g'))
     #print('Morning twi12:', morn12, markmjds[-1])
     
-    plot_measurements(mm, plotfn, gvs, allobs=allobs,
+    plot_measurements(mm, plotfn, nom, allobs=allobs,
                       mjdrange=(mjd_start, mjd_end), markmjds=markmjds,
                       **kwargs)
 
@@ -895,6 +902,11 @@ def main(cmdlineargs=None, get_copilot=False):
     import pylab as plt
     plt.figure(figsize=(8,10))
 
+    # Mosaic or Decam?
+    from camera import nominal_cal, ephem_observer
+    nom = nominal_cal
+    obs = ephem_observer()
+
     markmjds = []
 
     if opt.nightplot:
@@ -971,15 +983,10 @@ def main(cmdlineargs=None, get_copilot=False):
                 traceback.print_exc()
 
         return 0
-            
-    # Get nightlystrategy data structures; use fake command-line args.
-    # these don't matter at all, since we only use the ExposureFactor() function
-    parser,gvs = getParserAndGlobals()
-    nsopt,nsargs = parser.parse_args('--date 2015-01-01 --pass 1 --portion 1'.split())
-    obs = setupGlobals(nsopt, gvs)
+
 
     if opt.plot:
-        plot_recent(opt, gvs, tiles=tiles, markmjds=markmjds, show_plot=False)
+        plot_recent(opt, nom, tiles=tiles, markmjds=markmjds, show_plot=False)
         return 0
         
     print('Loading SFD maps...')
@@ -999,16 +1006,16 @@ def main(cmdlineargs=None, get_copilot=False):
             
         if mp is None:
             for fn in fns:
-                process_image(fn, rawext, gvs, sfd, opt, obs, tiles)
+                process_image(fn, rawext, nom, sfd, opt, obs, tiles)
         else:
             sfd = None
             mp.map(bounce_process_image,
-                   [(fn, rawext, gvs, sfd, opt, obs, tiles) for fn in fns])
-        plot_recent(opt, gvs, tiles=tiles, markmjds=markmjds, show_plot=False)
+                   [(fn, rawext, nom, sfd, opt, obs, tiles) for fn in fns])
+        plot_recent(opt, nom, tiles=tiles, markmjds=markmjds, show_plot=False)
         return 0
     
 
-    copilot = Copilot(imagedir, rawext, opt, gvs, sfd, obs, tiles)
+    copilot = Copilot(imagedir, rawext, opt, nom, sfd, obs, tiles)
 
     # for testability
     if get_copilot:
@@ -1020,7 +1027,7 @@ def main(cmdlineargs=None, get_copilot=False):
 
 class Copilot(object):
     def __init__(self, imagedir, rawext,
-                 opt, gvs, sfd, obs, tiles):
+                 opt, nom, sfd, obs, tiles):
         self.imagedir = imagedir
         self.rawext = rawext
 
@@ -1037,7 +1044,7 @@ class Copilot(object):
         
         # Objects passed through to process_image, plot_recent.
         self.opt = opt
-        self.gvs = gvs
+        self.nom = nom
         self.sfd = sfd
         self.obs = obs
         self.tiles = tiles
@@ -1101,12 +1108,12 @@ class Copilot(object):
         self.plot_recent(**kwargs)
         
     def plot_recent(self, markmjds=[]):
-        plot_recent(self.opt, self.gvs, tiles=self.tiles, markmjds=markmjds,
+        plot_recent(self.opt, self.nom, tiles=self.tiles, markmjds=markmjds,
                     show_plot=self.opt.show)
         self.lastPlot = datenow()
             
     def process_image(self, path):
-        return process_image(path, self.rawext, self.gvs, self.sfd,
+        return process_image(path, self.rawext, self.nom, self.sfd,
                              self.opt, self.obs, self.tiles)
         
     def run_one(self):

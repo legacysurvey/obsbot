@@ -1,12 +1,7 @@
 from __future__ import print_function
-from osbbot import NominalCalibration, ExposureTimeCalculator
+from obsbot import NominalCalibration
 
-class DecamExptime(object):
-    def update(self, **kwargs):
-        for k,v in kwargs.items():
-            setattr(self, k, v)
-
-class DecamNominalCalibration(object):
+class DecamNominalCalibration(NominalCalibration):
     '''
     '''
     def __init__(self):
@@ -30,9 +25,7 @@ class DecamNominalCalibration(object):
     def sky(self, band):
         return self.sky0[band]
 
-    def fiducial_exptime(self, band):
-        fid = DecamExptime()
-
+    def _fiducial_exptime(self, fid, band):
         if band == 'g':
             fid.update(
                 k_co = 0.17,
@@ -53,9 +46,5 @@ class DecamNominalCalibration(object):
         else:
             raise ValueError('Unknown band "%s"' % band)
 
-        fid.update(
-            skybright = self.sky(band),
-            seeing = 1.3,
-            )
-        
         return fid
+

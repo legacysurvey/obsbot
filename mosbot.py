@@ -497,8 +497,7 @@ class Mosbot(object):
                 t_sat = np.floor(30000. / skyflux)
                 if exptime > t_sat:
                     exptime = t_sat
-                    print('Reduced exposure time to avoid z-band saturation:',
-                          exptime)
+                    print('Reduced exposure time to avoid z-band saturation: %.1f' % exptime)
             exptime = int(exptime)
     
             print('Changing exptime from', jplan['expTime'], 'to', exptime)

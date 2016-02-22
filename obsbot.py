@@ -2,6 +2,11 @@ from __future__ import print_function
 
 import numpy as np
 
+class NominalExptime(object):
+    def update(self, **kwargs):
+        for k,v in kwargs.items():
+            setattr(self, k, v)
+
 class NominalCalibration(object):
     '''
     Overridden or instantiated by Mosaic / DECam nominal calibrations.
@@ -26,30 +31,86 @@ class NominalCalibration(object):
         - k_co
         - A_co
         - seeing
+        - exptime, exptime_min, exptime_max
+
         
         '''
-        pass
+        fid = NominalExptime()
 
+        if band == 'g':
+            fid.update(
+                exptime     =  50.,
+                exptime_max = 125.,
+                exptime_min =  40.,
+                )
+
+        elif band == 'r':
+            fid.update(
+                exptime     =  50.,
+                exptime_max = 125.,
+                exptime_min =  40.,
+                )
+
+        elif band == 'z':
+            fid.update(
+                k_co = 0.06,
+                A_co = 1.263,
+                exptime     = 100.,
+                exptime_max = 250.,
+                exptime_min =  80.,
+                )
+        else:
+            raise ValueError('Unknown band "%s"' % band)
+
+        fid.update(
+            skybright = self.sky(band),
+            seeing = 1.3,
+            )
+
+        # Camera-specific update:
+        fid = self._fiducial_exptime(fid, band)
+        
+        return fid
+
+    def _fiducial_exptime(self, fid, band):
+        return fid
+
+    def saturation_time(self, band, skybright):
+        skyflux = 10. ** ((skybright - self.zeropoint(band)) / -2.5)
+        skyflux *= self.pixscale**2
+        # print('Predicted sky flux per pixel per second: %.1f' %skyflux)
+        t_sat = 30000. / skyflux
+        return t_sat
+
+            
+    
     
 # From Anna Patej's nightlystrategy / mosaicstrategy
-def exposure_factor(self, fid, cal,
+def exposure_factor(fid, cal,
                     airmass, ebv, seeing, skybright, transparency):
     '''
     Computes a factor by which the exposure time should be scaled
     relative to nominal.
 
-    *fid*: fiducial 
+    *fid*: fiducial exposure time properties
+    *cal*: nominal camera calibration properties
     *airmass*: airmass, float > 1
     *ebv*: extinction E(B-V) mags
     *seeing*: FWHM in arcsec
     *skybright*: sky brightness
     *transparency*: sky transparency
+
+    Returns:
+    scaling: exposure time scale factor,
+      scaling = T_new/T_fiducial
+
+
     '''
 
     r_half = 0.45 #arcsec
     ps = cal.pixscale
 
-    def Neff(self, seeing):
+    def Neff(seeing):
         # magic 2.35: convert seeing FWHM into sigmas in arcsec.
         return (4. * np.pi * (seeing / 2.35)**2 +
                 8.91 * r_half**2 +
@@ -63,8 +124,14 @@ def exposure_factor(self, fid, cal,
     neff_fid = Neff(fid.seeing)
     neff     = Neff(seeing)
 
-    # scaling = T_new/T_fid
-
+    # print('exposure_factor:')
+    # print('Transparency:', transparency)
+    # print('airmass:', airmass)
+    # print('ebv:', ebv)
+    # print('seeing:', seeing)
+    # print('sky:', skybright)
+    # print('neff:', neff, 'fid', neff_fid)
+    
     scaling = (1./transparency**2 *
                10.**(0.8 * fid.k_co * (airmass - 1.)) *
                10.**(0.8 * fid.A_co * ebv) *
