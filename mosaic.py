@@ -37,6 +37,7 @@ class MosaicNominalCalibration(object):
         - skybright
         - k_co
         - A_co
+        - seeing
         
         '''
         fid = MosaicExptime()
