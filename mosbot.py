@@ -27,9 +27,8 @@ from astrometry.util.fits import *
 
 from mosaicstrategy import (
     ExposureFactor, getParserAndGlobals, setupGlobals,
-    GetAirmass, StartAndEndTimes, s_to_days, readTilesTable, GetNightlyStrategy,
-    WriteJSON)
-from measure_raw import measure_raw, get_default_extension
+    GetAirmass )
+from measure_raw import measure_raw, get_default_extension, get_nominal_cal
 
 from jnox import *
 from copilot import get_tile_from_name
@@ -484,14 +483,26 @@ class Mosbot(object):
             exptime *= 1.1
             exptime = int(np.ceil(exptime))
             print('Exposure time with safety factor:', exptime)
-    
+
             exptime = np.clip(exptime, self.gvs.floor_exptimes[nextband],
                               self.gvs.ceil_exptimes[nextband])
             print('Clipped exptime', exptime)
-            if nextband == 'z' and exptime > self.gvs.t_sat_max:
-                exptime = self.gvs.t_sat_max
-                print('Reduced exposure time to avoid z-band saturation:',
-                      exptime)
+            if nextband == 'z':
+                # Compute cap on exposure time to avoid saturation /
+                # loss of dynamic range.
+                # Convert sky brightness in mag/arcsec^2 into counts
+
+                cal = get_nominal_cal(M['camera'], nextband)
+                nextzp0 = cal[0]
+
+                skyflux = 10. ** ((nextsky - nextzp0) / -2.5)
+                skyflux *= M['pixscale']**2
+                print('Predicted sky flux per pixel per second: %.1f' %skyflux)
+                t_sat = np.floor(30000. / skyflux)
+                if exptime > t_sat:
+                    exptime = t_sat
+                    print('Reduced exposure time to avoid z-band saturation:',
+                          exptime)
             exptime = int(exptime)
     
             print('Changing exptime from', jplan['expTime'], 'to', exptime)

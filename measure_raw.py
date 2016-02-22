@@ -261,7 +261,7 @@ class RawMeasurer(object):
         camera = primhdr.get('INSTRUME','').strip().lower()
         # -> "decam" / "mosaic3"
         meas = dict(band=band, airmass=airmass, 
-                    skybright=skybr, primhdr=primhdr,
+                    skybright=skybr, pixscale=pixsc, primhdr=primhdr,
                     hdr=hdr, wcs=wcs, ra_ccd=ra_ccd, dec_ccd=dec_ccd,
                     extension=ext, camera=camera, 
                     ndetected=ndetected)
