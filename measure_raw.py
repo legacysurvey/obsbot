@@ -22,54 +22,15 @@ from astrometry.libkd.spherematch import match_xy
 from legacyanalysis.ps1cat import ps1cat, ps1_to_decam
 
 import photutils
-
 import tractor
 
-def get_nominal_cal(cam, band, ext=None):
-    if cam.lower() in ['decam']:
-        return decam_nominal_cal[band]
-    if cam.lower() in ['mosaic', 'mosaic3']:
-        d = mosaic_nominal_cal
-        return d.get((band, ext), d[band])
-
-# zp, sky, kx
-decam_nominal_cal = dict(
-    g = (26.610,
-         22.04,
-         0.17,),
-    r = (26.818,
-         20.91,
-         0.10,),
-    z = (26.484,
-         18.46,
-         0.06,),
-    )
-
-mosaic_nominal_cal = dict(
-    g = (26.93,
-         22.04,
-         0.17),
-    r = (27.01,
-         20.91,
-         0.10),
-    z = (26.518,
-         18.46,
-         0.06,),
-)
-mosaic_nominal_cal.update({
-    ('z', 'im4' ): (26.406, 18.46, 0.06),
-    ('z', 'im7' ): (26.609, 18.46, 0.06),
-    ('z', 'im11'): (26.556, 18.46, 0.06),
-    ('z', 'im16'): (26.499, 18.46, 0.06),
-})
-
-# Color terms
+# Color terms -- no MOSAIC specific ones yet:
 ps1_to_mosaic = ps1_to_decam
 
 
-
 class RawMeasurer(object):
-    def __init__(self, fn, ext, nom, aprad=7., skyrad_inner=7.,skyrad_outer=10.,
+    def __init__(self, fn, ext, nom, aprad=7., skyrad_inner=7.,
+                 skyrad_outer=10.,
                  minstar=5, pixscale=0.262, maxshift=120.):#maxshift=60.):
         '''
         aprad: float
@@ -99,9 +60,6 @@ class RawMeasurer(object):
         self.debug = True
 
         self.camera = 'camera'
-        
-    def get_nominal_cal(self, band, ext=None):
-        return get_nominal_cal(self.camera, band, ext=ext)
         
     def remove_sky_gradients(self, img):
         # Ugly removal of sky gradients by subtracting median in first x and then y
@@ -815,6 +773,9 @@ class RawMeasurer(object):
 
 class DECamMeasurer(RawMeasurer):
     def __init__(self, *args, **kwargs):
+        if not 'pixscale' in kwargs:
+            import decam
+            kwargs.update(pixscale = decam.decam_nominal_pixscale)
         super(DECamMeasurer, self).__init__(*args, **kwargs)
         self.camera = 'decam'
 
@@ -837,6 +798,9 @@ class DECamMeasurer(RawMeasurer):
 
 class Mosaic3Measurer(RawMeasurer):
     def __init__(self, *args, **kwargs):
+        if not 'pixscale' in kwargs:
+            import mosaic
+            kwargs.update(pixscale = mosaic.mosaic_nominal_pixscale)
         super(Mosaic3Measurer, self).__init__(*args, **kwargs)
         self.camera = 'mosaic3'
 

@@ -1,18 +1,26 @@
 from __future__ import print_function
 from obsbot import NominalCalibration
 
+mosaic_nominal_pixscale = 0.262
+
 class MosaicNominalCalibration(NominalCalibration):
     '''
     '''
     def __init__(self):
-        self.pixscale = 0.26
+        self.pixscale = mosaic_nominal_pixscale
         self.overhead = 30
         
         self.zp0 = dict(
             g = 26.930,
             r = 27.014,
-            z = 26.455,
+            z = 26.518,
             )
+        self.zp0.update({
+            ('z', 'im4' ): 26.406,
+            ('z', 'im7' ): 26.609,
+            ('z', 'im11'): 26.556,
+            ('z', 'im16'): 26.499,
+            })
 
         self.sky0 = dict(
             g = 22.04,
@@ -21,6 +29,11 @@ class MosaicNominalCalibration(NominalCalibration):
             )
         
     def zeropoint(self, band, ext=None):
+        if ext is not None:
+            try:
+                return self.zp0[(band, ext)]
+            except KeyError:
+                pass
         return self.zp0[band]
 
     def sky(self, band):

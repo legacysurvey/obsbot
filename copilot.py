@@ -29,7 +29,7 @@ import ephem
 
 from astrometry.util.starutil_numpy import hmsstring2ra, dmsstring2dec, mjdtodate, datetomjd
 
-from measure_raw import measure_raw, get_nominal_cal, get_default_extension, camera_name
+from measure_raw import measure_raw, get_default_extension, camera_name
 
 from obsbot import exposure_factor, get_tile_from_name
 
@@ -221,8 +221,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     plt.subplot(SP,1,2)
     mx = 20
     for band,Tb in zip(bands, TT):
-        nom = get_nominal_cal(Tb.camera[0], band)
-        zp0,sky0,kx0 = nom
+        sky0 = nom.sky(band)
         plt.plot(Tb.mjd_obs, Tb.sky, 'o', color=ccmap[band])
         plt.axhline(sky0, color=ccmap[band], alpha=0.5)
 

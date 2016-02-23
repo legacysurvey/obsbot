@@ -1,11 +1,13 @@
 from __future__ import print_function
 from obsbot import NominalCalibration
 
+decam_nominal_pixscale = 0.262
+
 class DecamNominalCalibration(NominalCalibration):
     '''
     '''
     def __init__(self):
-        self.pixscale = 0.262
+        self.pixscale = decam_nominal_pixscale
         self.overhead = 30
 
         self.zp0 = dict(
