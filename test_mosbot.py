@@ -14,7 +14,7 @@ class TestMosbot(unittest.TestCase):
         import tempfile
         tempdir = tempfile.mkdtemp()
         args = ['--script', os.path.join(tempdir, 'tonight.sh')]
-        ## FIXME -- will need to update these to have current dates; also put in git
+
         fn1 = os.path.join(self.testdatadir, 'pass1.json')
         fn2 = os.path.join(self.testdatadir, 'pass2.json')
         fn3 = os.path.join(self.testdatadir, 'pass3.json')
@@ -52,7 +52,7 @@ class TestMosbot(unittest.TestCase):
         f.close()
         
         fn = os.path.join(self.testdatadir, 'mos3.68488.im4.fits.fz')
-        mosbot.found_new_image(fn)
+        mosbot.process_file(fn)
             
 
 if __name__ == '__main__':

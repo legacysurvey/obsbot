@@ -23,7 +23,8 @@ from astrometry.util.fits import *
 
 from measure_raw import measure_raw
 from jnox import *
-from obsbot import exposure_factor, get_tile_from_name, get_airmass
+from obsbot import (exposure_factor, get_tile_from_name, get_airmass,
+                    NewFileWatcher)
 
 def main(cmdlineargs=None, get_mosbot=False):
     import optparse
@@ -98,8 +99,10 @@ def main(cmdlineargs=None, get_mosbot=False):
     mosbot.run()
 
 
-class Mosbot(object):
+class Mosbot(NewFileWatcher):
     def __init__(self, J1, J2, J3, opt, nom, obs, tiles):
+        super(Mosbot, self).__init__(opt.rawdata, backlog=False)
+        self.timeout = None
         self.J1 = J1
         self.J2 = J2
         self.J3 = J3
@@ -107,7 +110,6 @@ class Mosbot(object):
         self.nom = nom
         self.obs = obs
         self.tiles = tiles
-        self.imagedir = opt.rawdata
 
         self.scriptdir = os.path.dirname(opt.scriptfn)
         # Create scriptdir (one path component only), if necessary
@@ -125,7 +127,12 @@ class Mosbot(object):
         if opt.write_script:
             # Default to Pass 2!
             J = [J1,J2,J3][opt.passnum - 1]
-            self.write_initial_script(J, opt.passnum, opt.exptime, opt.scriptfn, self.seqnumfn)
+            self.write_initial_script(J, opt.passnum, opt.exptime,
+                                      opt.scriptfn, self.seqnumfn)
+
+    def filter_new_files(self, fns):
+        return [fn for fn in fns if
+                fn.endswith('.fits.fz') or fn.endswith('.fits')]
 
     def write_initial_script(self, J, passnum, exptime, scriptfn, seqnumfn):
         quitfile = 'quit'
@@ -223,54 +230,7 @@ class Mosbot(object):
         os.chmod(scriptfn, chmod)
         print('Wrote', scriptfn)
 
-
-    ### Borrowed from copilot.py ...
-    def get_new_images(self):
-        images = set(os.listdir(self.imagedir))
-        newimgs = images - self.oldimages
-        newimgs = list(newimgs)
-        newimgs = [fn for fn in newimgs if
-                   fn.endswith('.fits.fz') or fn.endswith('.fits')]
-        return newimgs
-
-    def get_newest_image(self, newimgs):
-        if len(newimgs) == 0:
-            return None
-        # Take the one with the latest timestamp.
-        latest = None
-        newestimg = None
-        for fn in newimgs:
-            st = os.stat(os.path.join(self.imagedir, fn))
-            t = st.st_mtime
-            if latest is None or t > latest:
-                newestimg = fn
-                latest = t
-        return newestimg
-
-        
-    def run(self):
-        print('Watching directory "%s" for new files' % self.imagedir)
-        self.oldimages = set(os.listdir(self.imagedir))
-
-        while True:
-            time.sleep(5.)
-            newimgs = self.get_new_images()
-            if len(newimgs) == 0:
-                continue
-            newestfn = self.get_newest_image(newimgs)
-
-            try:
-                ok = self.found_new_image(os.path.join(self.imagedir, newestfn))
-                if ok:
-                    self.oldimages.update(newimgs)
-
-            except IOError:
-                print('Failed to read FITS image:', newestfn)
-                import traceback
-                traceback.print_exc()
-
-
-    def found_new_image(self, fn):
+    def process_file(self, fn):
         ext = self.opt.ext
 
         expscriptpat  = os.path.join(self.scriptdir, self.expscriptpattern)
