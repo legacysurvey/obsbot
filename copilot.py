@@ -19,8 +19,6 @@ import re
 import time
 import json
 import datetime
-from collections import Counter
-from glob import glob
 
 import numpy as np
 
@@ -31,15 +29,10 @@ from astrometry.util.starutil_numpy import hmsstring2ra, dmsstring2dec, mjdtodat
 
 from measure_raw import measure_raw, get_default_extension, camera_name
 
-from obsbot import exposure_factor, get_tile_from_name
+from obsbot import (exposure_factor, get_tile_from_name, NewFileWatcher,
+                    mjdnow, datenow)
 
 from tractor.sfd import SFDMap
-
-def datenow():
-    return datetime.datetime.utcnow()
-
-def mjdnow():
-    return datetomjd(datenow())
 
 def db_to_fits(mm):
     from astrometry.util.fits import fits_table
@@ -548,6 +541,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
     M = measure_raw(fn, ps=ps, **kwa)
 
     if opt.doplots:
+        from glob import glob
         # Gather all the QAplots into a single pdf and clean them up.
         qafile = 'qa-%i.pdf' % expnum
         pnglist = sorted(glob('qa-%i-??.png' % expnum))
@@ -1007,147 +1001,56 @@ def main(cmdlineargs=None, get_copilot=False):
     return 0
 
 
-class Copilot(object):
+class Copilot(NewFileWatcher):
     def __init__(self, imagedir, rawext,
                  opt, nom, sfd, obs, tiles):
-        self.imagedir = imagedir
         self.rawext = rawext
-
-        # How many times to re-try processing a new image file
-        self.maxFail = 10
-
-        self.sleeptime = 5.
-        # How often to re-plot
-        self.plotTimeout = 60.
+        super(Copilot, self).__init__(imagedir, backlog=True)
 
         # How long before we mark a line on the plot because we
         # haven't seen an image.
         self.longtime = 300.
         
-        # Objects passed through to process_image, plot_recent.
+        # Objects passed through to process_file, plot_recent.
         self.opt = opt
         self.nom = nom
         self.sfd = sfd
         self.obs = obs
         self.tiles = tiles
         
-        # Set oldimages to the empty set so that we process
-        # backlogged images.
-        self.oldimages = set()
-        backlog = self.get_new_images()
-        # (note to self, need explicit backlog because we skip existing
-        # for the backlogged files, unlike new ones.)
-        self.backlog = skip_existing_files(
-            [os.path.join(imagedir, fn) for fn in backlog], rawext)
+    def filter_backlog(self, backlog):
+        return skip_existing_files(
+            [os.path.join(self.dir, fn) for fn in backlog], self.rawext)
 
-        # ... then reset oldimages to the current file list.
-        self.oldimages = set(os.listdir(imagedir))
+    def filter_new_files(self, fns):
+        return [fn for fn in fns if
+                fn.endswith('.fits.fz') or fn.endswith('.fits')]
 
-        # initialize timers for plot_if_time_elapsed()
-        self.lastPlot = self.lastNewImage = datenow()
+    def try_open_file(self, path):
+        print('Trying to open file: %s, ext: %s' % (path, self.rawext))
+        fitsio.read(path, ext=self.rawext)
 
-        # Keep track of how many times we've failed to process a file...
-        self.failCounter = Counter()
-        
-    def get_new_images(self):
-        images = set(os.listdir(self.imagedir))
-        newimgs = images - self.oldimages
-        newimgs = list(newimgs)
-        newimgs = [fn for fn in newimgs if
-                   fn.endswith('.fits.fz') or fn.endswith('.fits')]
-        return newimgs
-
-    def get_newest_image(self):
-        newimgs = self.get_new_images()
-        if len(newimgs) == 0:
-            return None
-        # Take the one with the latest timestamp.
-        latest = None
-        newestimg = None
-        for fn in newimgs:
-            st = os.stat(os.path.join(self.imagedir, fn))
-            t = st.st_mtime
-            if latest is None or t > latest:
-                newestimg = fn
-                latest = t
-        return newestimg
-
-    def plot_if_time_elapsed(self):
+    def timed_out(self, dt):
         now = datenow()
-        dtp = (now - self.lastPlot).total_seconds()
-        if dtp < self.plotTimeout:
-            return
-        dt  = (now - self.lastNewImage).total_seconds()
+        dt  = (now - self.lastNewFile).total_seconds()
         print('No new images seen for', dt, 'seconds.')
         markmjds = []
         if dt > self.longtime:
-            edate = (self.lastNewImage +
+            edate = (self.lastNewFile +
                      datetime.timedelta(0, self.longtime))
             markmjds.append((datetomjd(edate),'r'))
-        self.timeout_plot(markmjds=markmjds)
-
-    def timeout_plot(self, **kwargs):
-        self.plot_recent(**kwargs)
+        self.plot_recent(markmjds=markmjds)
         
+    def process_file(self, path):
+        return process_image(path, self.rawext, self.nom, self.sfd,
+                             self.opt, self.obs, self.tiles)
+
+    def processed_file(self, path):
+        self.plot_recent()
+
     def plot_recent(self, markmjds=[]):
         plot_recent(self.opt, self.nom, tiles=self.tiles, markmjds=markmjds,
                     show_plot=self.opt.show)
-        self.lastPlot = datenow()
-            
-    def process_image(self, path):
-        return process_image(path, self.rawext, self.nom, self.sfd,
-                             self.opt, self.obs, self.tiles)
-        
-    def run_one(self):
-        fn = self.get_newest_image()
-        if fn is None:
-            self.plot_if_time_elapsed()
-            if len(self.backlog) == 0:
-                return False
-            fn = self.backlog.pop()
-
-        if self.failCounter[fn] >= self.maxFail:
-            print('Failed to read file: %s, ext: %s, %i times.' %
-                  (fn, self.rawext, self.maxFail) + '  Ignoring.')
-            self.oldimages.add(fn)
-            return False
-            
-        path = os.path.join(self.imagedir, fn)
-        print('Found new file:', path)
-        try:
-            print('Trying to open image: %s, ext: %s' % 
-                  (path, self.rawext))
-            fitsio.read(path, ext=self.rawext)
-        except:
-            print('Failed to open %s: maybe not fully written yet.'
-                  % path)
-            self.failCounter.update([fn])
-            return False
-
-        try:
-            self.process_image(path)
-            self.oldimages.add(fn)
-            self.lastNewImage = datenow()
-        except IOError:
-            print('Failed to read FITS image: %s, ext %s' %
-                  (path, self.rawext))
-            import traceback
-            traceback.print_exc()
-            self.failCounter.update([fn])
-            return False
-
-        self.plot_recent()
-        return True
-
-    def run(self):
-        print('Checking directory for new files:', self.imagedir)
-        sleep = False
-        while True:
-            print
-            if sleep:
-                time.sleep(self.sleeptime)
-            gotone = self.run_one()
-            sleep = not gotone
 
 if __name__ == '__main__':
     import obsdb

@@ -66,14 +66,14 @@ class TestCopilot(TestCase):
         args = ['--n-fwhm', '10']
         copilot = main(cmdlineargs=args, get_copilot=True)
 
-        def fake_process_image(self, fn):
+        def fake_process_file(self, fn):
             self.processed.append(fn)
 
         def fake_plot_recent(self):
             self.plotted = True
             
-        Copilot.process_image = fake_process_image
-        Copilot.plot_recent   = fake_plot_recent
+        Copilot.process_file = fake_process_file
+        Copilot.plot_recent  = fake_plot_recent
         copilot.processed = []
         copilot.plotted = False
         
@@ -106,7 +106,7 @@ class TestCopilot(TestCase):
         # go on to read the symlink.
 
         # copilot remembers the first image processed above.
-        self.assertEqual(len(copilot.oldimages), 1)
+        self.assertEqual(len(copilot.oldfiles), 1)
 
         sym2 = os.path.join(dirname, 'x' + fn)
         os.symlink(path, sym2)
@@ -123,13 +123,13 @@ class TestCopilot(TestCase):
         # AFTER the maxFail'th time, the bad file gets added to
         # 'oldimages', and (still) doesn't get processed.
         copilot.run_one()
-        self.assertEqual(len(copilot.oldimages), 2)
+        self.assertEqual(len(copilot.oldfiles), 2)
         self.assertEqual(len(copilot.processed), 0)
         self.assertEqual(copilot.plotted, False)
 
         # The time after THAT, the symlink should get processed.
         copilot.run_one()
-        self.assertEqual(len(copilot.oldimages), 3)
+        self.assertEqual(len(copilot.oldfiles), 3)
         self.assertEqual(len(copilot.processed), 1)
         self.assertEqual(copilot.plotted, True)
         self.assertEqual(copilot.processed[0], sym2)

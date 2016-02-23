@@ -1,7 +1,7 @@
 from __future__ import print_function
 from obsbot import NominalCalibration
 
-mosaic_nominal_pixscale = 0.262
+mosaic_nominal_pixscale = 0.260
 
 class MosaicNominalCalibration(NominalCalibration):
     '''

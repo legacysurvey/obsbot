@@ -1,5 +1,9 @@
 from __future__ import print_function
 
+import os
+import datetime
+from collections import Counter
+
 import numpy as np
 
 class NominalExptime(object):
@@ -167,3 +171,134 @@ def get_tile_from_name(name, tiles):
     tile = tiles[I[0]]
     return tile
 
+def datenow():
+    return datetime.datetime.utcnow()
+
+def mjdnow():
+    from astrometry.util.starutil_numpy import datetomjd
+    return datetomjd(datenow())
+
+class NewFileWatcher(object):
+    def __init__(self, dir, backlog=True):
+        self.dir = dir
+
+        # How many times to re-try processing a new file
+        self.maxFail = 10
+
+        self.sleeptime = 5.
+
+        # How often to call the timeout function -- this is the time
+        # since the last new file was seen, OR since the last time the
+        # timeout was called.
+        self.timeout = 60.
+
+        # Get current file list
+        files = set(os.listdir(self.dir))
+
+        if backlog:
+            # (note to self, need explicit backlog because we skip existing
+            # for the backlogged files, unlike new ones.)
+            self.backlog = self.filter_backlog(files)
+            # ... then reset oldfiles to the current file list.
+            self.oldfiles = set(files)
+        else:
+            self.backlog = set()
+            self.oldfiles = set(self.filter_new_files(files))
+            
+        # initialize timeout counter
+        self.lastTimeout = datenow()
+        self.lastNewFile = datenow()
+
+        # Keep track of how many times we've failed to process a file...
+        self.failCounter = Counter()
+
+    def filter_backlog(self, backlog):
+        return self.filter_new_files(backlog)
+
+    def filter_new_files(self, fns):
+        return fns
+
+    def timed_out(self, dt):
+        pass
+    
+    def get_new_files(self):
+        files = set(os.listdir(self.dir))
+        newfiles = list(files - self.oldfiles)
+        newfiles = self.filter_new_files(newfiles)
+        return newfiles
+
+    def get_newest_file(self):
+        newfiles = self.get_new_files()
+        if len(newfiles) == 0:
+            return None
+        # Take the one with the latest timestamp.
+        latest = None
+        newestfile = None
+        for fn in newfiles:
+            st = os.stat(os.path.join(self.dir, fn))
+            t = st.st_mtime
+            if latest is None or t > latest:
+                newestfile = fn
+                latest = t
+        return newestfile
+
+    def try_open_file(self, path):
+        pass
+    
+    def run_one(self):
+        fn = self.get_newest_file()
+        if fn is None:
+            if self.timeout is None:
+                return False
+            # Check timeout
+            now = datenow()
+            dt = (now - self.lastTimeout).total_seconds()
+            if dt < self.timeout:
+                return False
+            self.timed_out(dt)
+            self.lastTimout = datenow()
+            if len(self.backlog) == 0:
+                return False
+            fn = self.backlog.pop()
+
+        if self.failCounter[fn] >= self.maxFail:
+            print('Failed to process file: %s, %i times.  Ignoring.' %
+                  (fn, self.maxFail))
+            self.oldfiles.add(fn)
+            return False
+            
+        path = os.path.join(self.dir, fn)
+        print('Found new file:', path)
+        try:
+            self.try_open_file(path)
+        except:
+            print('Failed to open %s: maybe not fully written yet.' % path)
+            self.failCounter.update([fn])
+            return False
+
+        try:
+            self.process_file(path)
+            self.oldfiles.add(fn)
+            self.processed_file(path)
+            self.lastNewFile = self.lastTimeout = datenow()
+            return True
+            
+        except IOError:
+            print('Failed to read file: %s' % path)
+            import traceback
+            traceback.print_exc()
+            self.failCounter.update([fn])
+            return False
+
+
+    def run(self):
+        print('Checking directory for new files:', self.dir)
+        sleep = False
+        while True:
+            print
+            if sleep:
+                time.sleep(self.sleeptime)
+            gotone = self.run_one()
+            sleep = not gotone
+    
+    
