@@ -1,3 +1,4 @@
+from __future__ import print_function
 #
 # Client for SISPI Remote CommandServer
 # Code from Klaus Honscheid, 2015-11-06, [decam-chatter 1546]
@@ -52,14 +53,21 @@ class RemoteClient():
             if object is None:
                 object = 'zero'
             paramstr = json.dumps(dict(expType=exptype, object=object))
+
+        print("Calling addexposure, parameter='%s'" % paramstr)
             
-        return self.execute('addexposure', parameter=paramstr)
+        #return self.execute('addexposure', parameter=paramstr)
 
 
 
 if __name__ == '__main__':
-    rc = RemoteClient(cs_host='10.10.168.162', cs_port=7767)
-    rc.addexposure()
-    rc.addexposure(exptype='dark')
+    # rc = RemoteClient(cs_host='10.10.168.162', cs_port=7767)
+    # rc.addexposure()
+    # rc.addexposure(exptype='dark')
+    # rc.addexposure(exptype='zero')
+    # rc.addexposure(exptype='dome flat', filter='z', exptime=50)
+
+    rc = RemoteClient()
     rc.addexposure(exptype='zero')
-    rc.addexposure(exptype='dome flat', filter='z', exptime=50)
+    #rc.addexposure(ra=42, dec=12, exptime=17., filter='g')
+
