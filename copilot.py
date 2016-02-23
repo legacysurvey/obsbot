@@ -31,7 +31,7 @@ from astrometry.util.starutil_numpy import hmsstring2ra, dmsstring2dec, mjdtodat
 
 from measure_raw import measure_raw, get_nominal_cal, get_default_extension, camera_name
 
-from obsbot import exposure_factor
+from obsbot import exposure_factor, get_tile_from_name
 
 from tractor.sfd import SFDMap
 
@@ -435,25 +435,6 @@ def ephemdate_to_mjd(edate):
     #   mjdnow - enow ==> 15019.499915068824
     mjd = float(edate) + 15019.5
     return mjd
-
-def get_tile_from_name(name, tiles):
-    # Parse objname like 'MzLS_5623_z'
-    parts = name.split('_')
-    ok = (len(parts) == 3)
-    if ok:
-        band = parts[2]
-        ok = ok and (band in 'grz')
-    if not ok:
-        return None
-    try:
-        tileid = int(parts[1])
-    except:
-        return None
-    # Find this tile in the tiles table.
-    I = np.flatnonzero(tiles.tileid == tileid)
-    assert(len(I) == 1)
-    tile = tiles[I[0]]
-    return tile
 
 def set_tile_fields(ccd, hdr, tiles):
     obj = hdr['OBJECT']

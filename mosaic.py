@@ -6,7 +6,8 @@ class MosaicNominalCalibration(NominalCalibration):
     '''
     def __init__(self):
         self.pixscale = 0.26
-
+        self.overhead = 30
+        
         self.zp0 = dict(
             g = 26.930,
             r = 27.014,

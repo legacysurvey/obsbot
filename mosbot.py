@@ -21,25 +21,23 @@ import ephem
 from astrometry.util.plotutils import *
 from astrometry.util.fits import *
 
-from mosaicstrategy import (
-    getParserAndGlobals, setupGlobals,
-    GetAirmass )
-from measure_raw import measure_raw, get_default_extension, get_nominal_cal
-
+from measure_raw import measure_raw
 from jnox import *
-from copilot import get_tile_from_name
-from obsbot import exposure_factor
+from obsbot import exposure_factor, get_tile_from_name, get_airmass
 
 def main(cmdlineargs=None, get_mosbot=False):
     import optparse
     parser = optparse.OptionParser(usage='%prog <pass1.json> <pass2.json> <pass3.json>')
+
+    from camera_mosaic import (ephem_observer, default_extension, nominal_cal,
+                               tile_path)
     
     parser.add_option('--rawdata', help='Directory to monitor for new images: default $MOS3_DATA if set, else "rawdata"', default=None)
     parser.add_option('--script', dest='scriptfn', help='Write top-level shell script, default is %default', default='/mosaic3/exec/mosbot/tonight.sh')
     parser.add_option('--no-write-script', dest='write_script', default=True, action='store_false')
-    parser.add_option('--ext', help='Extension to read for computing observing conditions, default %default', default='im4')
+    parser.add_option('--ext', help='Extension to read for computing observing conditions, default %default', default=default_extension)
     parser.add_option('--tiles',
-                      default='obstatus/mosaic-tiles_obstatus.fits',
+                      default=tile_path,
                       help='Observation status file, default %default')
 
     parser.add_option('--pass', dest='passnum', type=int, default=2,
@@ -86,36 +84,29 @@ def main(cmdlineargs=None, get_mosbot=False):
         print('No tiles!')
         return
 
-    # nightlystrategy setup
-    parser,gvs = getParserAndGlobals()
-    nsopt,nsargs = parser.parse_args('--date 2015-01-01 --pass 1 --portion 1'.split())
-    obs = setupGlobals(nsopt, gvs)
-
+    obs = ephem_observer()
+    
     print('Reading tiles table', opt.tiles)
     tiles = fits_table(opt.tiles)
     
     if opt.rawdata is None:
         opt.rawdata = os.environ.get('MOS3_DATA', 'rawdata')
     
-    mosbot = Mosbot(J1, J2, J3, opt, gvs, obs, tiles)
+    mosbot = Mosbot(J1, J2, J3, opt, nominal_cal, obs, tiles)
     if get_mosbot:
         return mosbot
     mosbot.run()
 
 
 class Mosbot(object):
-    def __init__(self, J1, J2, J3, opt, gvs, obs, tiles):
+    def __init__(self, J1, J2, J3, opt, nom, obs, tiles):
         self.J1 = J1
         self.J2 = J2
         self.J3 = J3
-        self.gvs = gvs
-        self.obs = obs
         self.opt = opt
+        self.nom = nom
+        self.obs = obs
         self.tiles = tiles
-
-        import mosaic
-        self.nom = mosaic.MosaicNominalCalibration()
-        
         self.imagedir = opt.rawdata
 
         self.scriptdir = os.path.dirname(opt.scriptfn)
@@ -341,7 +332,7 @@ class Mosbot(object):
         skybright = M['skybright']
         
         # eg, nominal = 20, sky = 19, brighter is 1 mag brighter than nom.
-        nomsky = self.gvs.sb_dict[M['band']]
+        nomsky = self.nom.sky(M['band'])
         brighter = nomsky - skybright
     
         print('Transparency: %6.02f' % trans)
@@ -412,7 +403,6 @@ class Mosbot(object):
         Nahead = 10
     
         # Set observing conditions for computing exposure time
-        self.gvs.transparency = trans
         self.obs.date = now
     
         P = fits_table()
@@ -462,7 +452,7 @@ class Mosbot(object):
             ephemstr = str('%s,f,%s,%s,20' % (tilename, rastr, decstr))
             etile = ephem.readdb(ephemstr)
             etile.compute(self.obs)
-            airmass = GetAirmass(float(etile.alt))
+            airmass = get_airmass(float(etile.alt))
             print('Airmass of planned tile:', airmass)
     
             if M['band'] == nextband:
@@ -470,7 +460,7 @@ class Mosbot(object):
             else:
                 # Guess that the sky is as much brighter than canonical
                 # in the next band as it is in this one!
-                nextsky = ((skybright - nomsky) + self.gvs.sb_dict[nextband])
+                nextsky = ((skybright - nomsky) + self.nom.sky(nextband))
 
             fid = self.nom.fiducial_exptime(nextband)
             expfactor = exposure_factor(fid, self.nom,
@@ -523,7 +513,7 @@ class Mosbot(object):
             os.rename(slewtmpfn, slewscriptfn)
             print('Wrote', slewscriptfn)
     
-            self.obs.date += (exptime + self.gvs.overheads) / 86400.
+            self.obs.date += (exptime + self.nom.overhead) / 86400.
     
             print('%s: updated exposure %i to tile %s' %
                   (str(ephem.now()), nextseq, tilename))

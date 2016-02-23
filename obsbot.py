@@ -14,6 +14,7 @@ class NominalCalibration(object):
     Attributes (must) include:
 
     - pixscale -- in arcsec/pixel
+    - overhead -- in seconds
     
     '''
 
@@ -146,4 +147,23 @@ def get_airmass(alt):
     airm = secz-0.0018167*seczm1-0.002875*seczm1**2-0.0008083*seczm1**3
     return airm
 
+
+def get_tile_from_name(name, tiles):
+    # Parse objname like 'MzLS_5623_z'
+    parts = name.split('_')
+    ok = (len(parts) == 3)
+    if ok:
+        band = parts[2]
+        ok = ok and (band in 'grz')
+    if not ok:
+        return None
+    try:
+        tileid = int(parts[1])
+    except:
+        return None
+    # Find this tile in the tiles table.
+    I = np.flatnonzero(tiles.tileid == tileid)
+    assert(len(I) == 1)
+    tile = tiles[I[0]]
+    return tile
 
