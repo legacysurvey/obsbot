@@ -247,6 +247,9 @@ class NewFileWatcher(object):
     def try_open_file(self, path):
         pass
     
+    def heartbeat(self):
+        pass
+
     def run_one(self):
         fns = self.get_new_files()
         fn = self.get_newest_file(newfiles=fns)
@@ -296,7 +299,6 @@ class NewFileWatcher(object):
             self.failCounter.update([fn])
             return False
 
-
     def run(self):
         print('Checking directory for new files:', self.dir)
         sleep = False
@@ -306,5 +308,5 @@ class NewFileWatcher(object):
                 time.sleep(self.sleeptime)
             gotone = self.run_one()
             sleep = not gotone
-    
+            self.heartbeat()
     

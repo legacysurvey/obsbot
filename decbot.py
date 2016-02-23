@@ -17,7 +17,7 @@ from astrometry.util.fits import *
 
 from measure_raw import measure_raw
 from obsbot import (exposure_factor, get_tile_from_name, get_airmass,
-                    NewFileWatcher)
+                    NewFileWatcher, datenow)
 
 def main(cmdlineargs=None, get_decbot=False):
     import optparse
@@ -106,13 +106,50 @@ class Decbot(NewFileWatcher):
         
         self.planned_tiles = OrderedDict()
 
-        # - initialize planned_tiles
-        # - add "heartbeat" method
+        self.queueMargin = 45.
+        
         # - queue new exposure from planned_tiles when we think the
         #   current exposure is nearly done; update seqnum
         # - update planned_tiles as new images come in
         #   - write out a JSON plan with the upcoming tiles, as a backup.
+
+        # Set up initial planned_tiles
+        J = [J1,J2,J3][opt.passnum - 1]
+        for i,j in enumerate(J):
+            if opt.exptime is not None:
+                j['expTime'] = exptime
+            self.planned_tiles[i] = j
+
+        # Queue two exposures to start?
+        e0 = self.queue_exposure()
+        e1 = self.queue_exposure()
+
+        # When should we queue the next exposure?
+        dt = e0['expTime'] + e1['expTime'] + 2 * self.nom.overhead
+        # margin
+        dt -= self.queueMargin
+        self.queuetime = (datenow() +
+                          datetime.timedelta(0, dt))
         
+    def heartbeat(self):
+        ## Is it time to queue a new exposure?
+        now = datenow()
+        print('Heartbeat.  Now is', now, 'queue time is', self.queuetime)
+        if now < self.queuetime:
+            return
+        print('Time to queue an exposure!')
+        e = self.queue_exposure()
+        # schedule next one
+        dt = e['expTime'] + self.nom.overhead - self.queueMargin
+        self.queuetime = now + datetime.timedelta(0, dt)
+
+    def queue_exposure(self):
+        j = self.planned_tiles[self.seqnum]
+        self.seqnum += 1
+        # FIXME -- actually queue j...
+
+        return j
+    
     def filter_new_files(self, fns):
         return [fn for fn in fns if
                 fn.endswith('.fits.fz') or fn.endswith('.fits')]
@@ -249,13 +286,15 @@ class Decbot(NewFileWatcher):
         P.ra = []
         P.dec = []
         P.passnumber = []
-        
+
+        upcoming = []
+
         iahead = 0
         for ii,jplan in enumerate(J[iplan:]):
             if iahead >= Nahead:
                 break
             tilename = str(jplan['object'])
-            nextseq = self.seqnum + 1 + iahead
+            nextseq = self.seqnum + iahead
 
             print('Considering planning tile %s for exp %i' %
                   (tilename, nextseq))
@@ -264,7 +303,7 @@ class Decbot(NewFileWatcher):
             dup = False
             for s in range(nextseq-1, 0, -1):
                 t = self.planned_tiles[s]
-                if t == tilename:
+                if t['object'] == tilename:
                     dup = True
                     print('Wanted to plan tile %s (pass %i element %i) for exp %i'
                           % (tilename, nextpass, iplan+ii, nextseq),
@@ -273,16 +312,13 @@ class Decbot(NewFileWatcher):
             if dup:
                 continue
     
-            self.planned_tiles[nextseq] = tilename
             iahead += 1
     
             # Find this tile in the tiles table.
             tile = get_tile_from_name(tilename, self.tiles)
             ebv = tile.ebv_med
-    
             nextband = str(jplan['filter'])[0]
-    
-            print('Selected tile:', tile.tileid, nextband)
+            print('Selected tile:', tile.tileid, tilename, nextband)
             rastr  = ra2hms (jplan['RA' ])
             decstr = dec2dms(jplan['dec'])
             ephemstr = str('%s,f,%s,%s,20' % (tilename, rastr, decstr))
@@ -326,7 +362,9 @@ class Decbot(NewFileWatcher):
     
             print('%s: updating exposure %i to tile %s' %
                   (str(ephem.now()), nextseq, tilename))
-    
+
+            self.planned_tiles[nextseq] = jplan
+            
             self.obs.date += (exptime + self.nom.overhead) / 86400.
             
             P.tilename.append(tilename)
@@ -336,6 +374,8 @@ class Decbot(NewFileWatcher):
             P.dec.append(jplan['dec'])
             P.passnumber.append(nextpass)
             P.type.append('P')
+
+            upcoming.append(jplan)
     
         for i,J in enumerate([self.J1,self.J2,self.J3]):
             passnum = i+1
@@ -359,6 +399,17 @@ class Decbot(NewFileWatcher):
         os.rename(tmpfn, fn)
         print('Wrote', fn)
 
+        # Write upcoming plan to a JSON file
+        fn = 'decbot-plan.json'
+        tmpfn = fn + '.tmp'
+        jstr = json.dumps(upcoming, sort_keys=True,
+                          indent=4, separators=(',', ': '))
+        f = open(tmpfn, 'w')
+        f.write(jstr + '\n')
+        f.close()
+        os.rename(tmpfn, fn)
+        print('Wrote', fn)
+        
         return True
     
 
