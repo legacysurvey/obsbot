@@ -53,10 +53,11 @@ class RemoteClient():
             if object is None:
                 object = 'zero'
             paramstr = json.dumps(dict(expType=exptype, object=object))
+            #paramstr = 'exptype=%s' % exptype
 
         print("Calling addexposure, parameter='%s'" % paramstr)
             
-        #return self.execute('addexposure', parameter=paramstr)
+        return self.execute('addexposure', parameter=paramstr)
 
 
 
@@ -68,6 +69,7 @@ if __name__ == '__main__':
     # rc.addexposure(exptype='dome flat', filter='z', exptime=50)
 
     rc = RemoteClient()
-    rc.addexposure(exptype='zero')
-    #rc.addexposure(ra=42, dec=12, exptime=17., filter='g')
+    #res = rc.addexposure(exptype='zero')
+    res = rc.addexposure(ra=42, dec=12, exptime=17., filter='g')
+    print('Got:', res)
 
