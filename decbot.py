@@ -1,9 +1,3 @@
-'''
-TO-DO:
-
--- FIXMEs -- filter changing -- here we set filter ONCE PER NIGHT!
-'''
-
 from __future__ import print_function
 import sys
 import time
@@ -22,23 +16,19 @@ from astrometry.util.plotutils import *
 from astrometry.util.fits import *
 
 from measure_raw import measure_raw
-from jnox import *
 from obsbot import (exposure_factor, get_tile_from_name, get_airmass,
                     NewFileWatcher)
 
-def main(cmdlineargs=None, get_mosbot=False):
+def main(cmdlineargs=None, get_decbot=False):
     import optparse
     parser = optparse.OptionParser(usage='%prog <pass1.json> <pass2.json> <pass3.json>')
 
-    from camera_mosaic import (ephem_observer, default_extension, nominal_cal,
-                               tile_path)
+    from camera_decam import (ephem_observer, default_extension, nominal_cal,
+                              tile_path)
     
-    parser.add_option('--rawdata', help='Directory to monitor for new images: default $MOS3_DATA if set, else "rawdata"', default=None)
-    parser.add_option('--script', dest='scriptfn', help='Write top-level shell script, default is %default', default='/mosaic3/exec/mosbot/tonight.sh')
-    parser.add_option('--no-write-script', dest='write_script', default=True, action='store_false')
+    parser.add_option('--rawdata', help='Directory to monitor for new images: default $DECAM_DATA if set, else "rawdata"', default=None)
     parser.add_option('--ext', help='Extension to read for computing observing conditions, default %default', default=default_extension)
-    parser.add_option('--tiles',
-                      default=tile_path,
+    parser.add_option('--tiles', default=tile_path,
                       help='Observation status file, default %default')
 
     parser.add_option('--pass', dest='passnum', type=int, default=2,
@@ -91,17 +81,18 @@ def main(cmdlineargs=None, get_mosbot=False):
     tiles = fits_table(opt.tiles)
     
     if opt.rawdata is None:
-        opt.rawdata = os.environ.get('MOS3_DATA', 'rawdata')
+        opt.rawdata = os.environ.get('DECAM_DATA', 'rawdata')
     
-    mosbot = Mosbot(J1, J2, J3, opt, nominal_cal, obs, tiles)
-    if get_mosbot:
-        return mosbot
-    mosbot.run()
+    decbot = Decbot(J1, J2, J3, opt, nominal_cal, obs, tiles)
+    if get_decbot:
+        return decbot
+    decbot.run()
 
 
-class Mosbot(NewFileWatcher):
+class Decbot(NewFileWatcher):
     def __init__(self, J1, J2, J3, opt, nom, obs, tiles):
-        super(Mosbot, self).__init__(opt.rawdata, backlog=False)
+        super(Decbot, self).__init__(opt.rawdata, backlog=False,
+                                     only_process_newest=True)
         self.timeout = None
         self.J1 = J1
         self.J2 = J2
@@ -111,138 +102,30 @@ class Mosbot(NewFileWatcher):
         self.obs = obs
         self.tiles = tiles
 
-        self.scriptdir = os.path.dirname(opt.scriptfn)
-        # Create scriptdir (one path component only), if necessary
-        if len(self.scriptdir) and not os.path.exists(self.scriptdir):
-            os.mkdir(self.scriptdir)
-    
-        self.seqnumfn = 'seqnum.txt'
-        self.seqnumpath = os.path.join(self.scriptdir, self.seqnumfn)
-    
-        self.expscriptpattern  = 'expose-%i.sh'
-        self.slewscriptpattern = 'slewread-%i.sh'
-
+        self.seqnum = 0
+        
         self.planned_tiles = OrderedDict()
 
-        if opt.write_script:
-            # Default to Pass 2!
-            J = [J1,J2,J3][opt.passnum - 1]
-            self.write_initial_script(J, opt.passnum, opt.exptime,
-                                      opt.scriptfn, self.seqnumfn)
-
+        # - initialize planned_tiles
+        # - add "heartbeat" method
+        # - queue new exposure from planned_tiles when we think the
+        #   current exposure is nearly done; update seqnum
+        # - update planned_tiles as new images come in
+        #   - write out a JSON plan with the upcoming tiles, as a backup.
+        
     def filter_new_files(self, fns):
         return [fn for fn in fns if
                 fn.endswith('.fits.fz') or fn.endswith('.fits')]
 
-    def write_initial_script(self, J, passnum, exptime, scriptfn, seqnumfn):
-        quitfile = 'quit'
-
-        # 775
-        chmod = (stat.S_IXUSR | stat.S_IWUSR | stat.S_IRUSR |
-                 stat.S_IXGRP | stat.S_IWGRP | stat.S_IRGRP |
-                 stat.S_IXOTH |                stat.S_IROTH)
-        
-        def log(s):
-            datecmd = 'date -u +"%Y-%m-%d %H:%M:%S"'
-            #return 'echo "mosbot $(%s): %s"' % (datecmd, s)
-            return 'echo "$(%s): %s" >> mosbot.log' % (datecmd, s)
-    
-        # Write "read.sh" for quitting gracefully without slew
-        path = os.path.join(self.scriptdir, 'read.sh')
-        f = open(path, 'w')
-        f.write(jnox_readout() + '\n' + jnox_end_exposure())
-        f.close()
-        os.chmod(path, chmod)
-
-        script = []
-        script.append(jnox_preamble(scriptfn))
-
-        script.append(log('###############'))
-        script.append(log('Starting script'))
-        script.append(log('###############'))
-
-        j = J[0]
-        f = str(j['filter'])
-        script.append(jnox_filter(f))
-        
-        # Write top-level script and shell scripts for default plan.
-        for i,j in enumerate(J):
-
-            # We make the sequence numbers start at 1, just to make things
-            # difficult for ourselves.
-            seq = i + 1
-            
-            if seq > 1:
-
-                script.append('# Check for file "%s"; read out and quit if it exists' % quitfile)
-                script.append('if [ -f %s ]; then\n  . read.sh; rm %s; exit 0;\nfi' %
-                              (quitfile,quitfile))
-                
-                # Write slewread-##.sh script
-                fn = self.slewscriptpattern % seq
-                path = os.path.join(self.scriptdir, fn)
-                f = open(path, 'w')
-                f.write(slewscript_for_json(j))
-                f.close()
-                os.chmod(path, chmod)
-                print('Wrote', path)
-                script.append('. %s' % fn)
-
-            script.append('\n### Exposure %i ###\n' % seq)
-            script.append('echo "%i" > %s' % (seq, seqnumfn))
-            script.append(log('Starting exposure %i' % seq))
-            expfn = self.expscriptpattern % seq
-            script.append(log('Tile: $(grep "Tile:" %s)' % expfn))
-            
-            tilename = str(j['object'])
-            self.planned_tiles[seq] = tilename
-            
-            if exptime is not None:
-                j['expTime'] = exptime
-            
-            # Write expose-##.sh
-            fn = self.expscriptpattern % seq
-            path = os.path.join(self.scriptdir, fn)
-            f = open(path, 'w')
-            s = ('# Exp %i: Tile: %s, Pass: %i; default\n' %
-                 (seq, tilename, passnum))
-
-            ra  = ra2hms (j['RA' ])
-            dec = dec2dms(j['dec'])
-            status = ('Exp %i: Tile %s, Pass %i, RA %s, Dec %s' %
-                      (seq, tilename, passnum, ra, dec))
-            
-            s += expscript_for_json(j, status=status)
-            f.write(s)
-            f.close()
-            os.chmod(path, chmod)
-            print('Wrote', path)
-            script.append('. %s' % fn)
-    
-        # Read out the last one!
-        script.append('. read.sh')
-    
-        script = '\n'.join(script) + '\n'
-        
-        f = open(scriptfn, 'w')
-        f.write(script)
-        f.close()
-        os.chmod(scriptfn, chmod)
-        print('Wrote', scriptfn)
-
     def process_file(self, fn):
         ext = self.opt.ext
-
-        expscriptpat  = os.path.join(self.scriptdir, self.expscriptpattern)
-        slewscriptpat = os.path.join(self.scriptdir, self.slewscriptpattern)
-        
         print('%s: found new image %s' % (str(ephem.now()), fn))
 
-        nopass1path = os.path.join(self.scriptdir, 'nopass1')
+        nopass1path = 'nopass1'
         dopass1 = not os.path.exists(nopass1path)
         if not dopass1:
             print('Not considering Pass 1 because file exists:', nopass1path)
-        nopass2path = os.path.join(self.scriptdir, 'nopass2')
+        nopass2path = 'nopass2'
         dopass2 = not os.path.exists(nopass2path)
         if not dopass2:
             print('Not considering Pass 2 because file exists:', nopass2path)
@@ -268,6 +151,7 @@ class Mosbot(NewFileWatcher):
         filt = str(phdr['FILTER'])
         filt = filt.strip()
         filt = filt.split()[0]
+        ## DECam?
         if filt == 'solid':
             print('Solid (block) filter.')
             return False
@@ -334,7 +218,7 @@ class Mosbot(NewFileWatcher):
             print('Pass 2 forbidden by observer!')
         print('Selected pass:', nextpass)
     
-        # Choose the next tile from the right JSON tile list Jp
+        # Choose the next tile from the right JSON tile list
         J = [self.J1,self.J2,self.J3][nextpass-1]
         now = ephem.now()
         iplan = None
@@ -351,24 +235,15 @@ class Mosbot(NewFileWatcher):
                   '-- latest one', str(tstart))
             return False
     
-        # Read the current sequence number
-        print('%s: reading sequence number' % (str(ephem.now())))
-        f = open(self.seqnumpath, 'r')
-        s = f.read()
-        f.close()
-        seqnum = int(s)
-        print('%s: sequence number: %i' % (str(ephem.now()), seqnum))
-        
-        # How many exposures ahead should we write?
-        Nahead = 10
-    
         # Set observing conditions for computing exposure time
         self.obs.date = now
-    
+
+        # How many exposures ahead should we plan?
+        Nahead = 10
+        
         P = fits_table()
         P.type = []
         P.tilename = []
-        #P.tileid = []
         P.filter = []
         P.exptime = []
         P.ra = []
@@ -380,10 +255,11 @@ class Mosbot(NewFileWatcher):
             if iahead >= Nahead:
                 break
             tilename = str(jplan['object'])
-            nextseq = seqnum + 1 + iahead
-    
-            print('Considering planning tile %s for exp %i' % (tilename, nextseq))
-            
+            nextseq = self.seqnum + 1 + iahead
+
+            print('Considering planning tile %s for exp %i' %
+                  (tilename, nextseq))
+
             # Check all planned tiles before this one for a duplicate tile.
             dup = False
             for s in range(nextseq-1, 0, -1):
@@ -448,38 +324,12 @@ class Mosbot(NewFileWatcher):
             print('Changing exptime from', jplan['expTime'], 'to', exptime)
             jplan['expTime'] = exptime
     
-            status = ('Exp %i: Tile %s, Pass %i, RA %s, Dec %s' %
-                      (nextseq, tilename, nextpass, rastr, decstr))
-    
             print('%s: updating exposure %i to tile %s' %
                   (str(ephem.now()), nextseq, tilename))
     
-            expscriptfn = expscriptpat % (nextseq)
-            exptmpfn = expscriptfn + '.tmp'
-            f = open(exptmpfn, 'w')
-            f.write(('# Exp %i Tile: %s, set at Seq %i, %s\n' %
-                     (nextseq, tilename, seqnum, str(ephem.now()))) +
-                    expscript_for_json(jplan, status=status))
-            f.close()
-    
-            slewscriptfn = slewscriptpat % (nextseq)
-            slewtmpfn = slewscriptfn + '.tmp'
-            f = open(slewtmpfn, 'w')
-            f.write(slewscript_for_json(jplan))
-            f.close()
-    
-            os.rename(exptmpfn, expscriptfn)
-            print('Wrote', expscriptfn)
-            os.rename(slewtmpfn, slewscriptfn)
-            print('Wrote', slewscriptfn)
-    
             self.obs.date += (exptime + self.nom.overhead) / 86400.
-    
-            print('%s: updated exposure %i to tile %s' %
-                  (str(ephem.now()), nextseq, tilename))
-    
+            
             P.tilename.append(tilename)
-            #P.tileid.append(tile.tileid)
             P.filter.append(nextband)
             P.exptime.append(exptime)
             P.ra.append(jplan['RA'])
@@ -503,63 +353,14 @@ class Mosbot(NewFileWatcher):
                 P.type.append('%i' % passnum)
     
         P.to_np_arrays()
-        fn = 'mosbot-plan.fits'
+        fn = 'decbot-plan.fits'
         tmpfn = fn + '.tmp'
         P.writeto(tmpfn)
         os.rename(tmpfn, fn)
         print('Wrote', fn)
-        
+
         return True
     
-
-def expscript_for_json(j, status=None):
-
-    ss = ('# Exposure scheduled for: %s UT\n' % j['approx_datetime'])
-
-    # Expected start time of this script, in "date -u +%s" units -- seconds since unixepoch = 1970-01-01 00:00:00
-    unixepoch = 25567.5
-    tj = ephem.Date(str(j['approx_datetime']))
-
-    ss = ['dt=$(($(date -u +%%s) - %i))' % (int((tj - unixepoch) * 86400))]
-    #ss.append('echo DT: $dt\n')
-    ss.append('if [ $dt -gt 3600 ]; then\n' +
-              '  echo; echo "WARNING: This exposure is happening more than an hour late!";\n' +
-              '  echo "Scheduled time: %s UT";\n' % j['approx_datetime'] +
-              '  echo; tput bel; sleep 0.25; tput bel; sleep 0.25; tput bel;\n' +
-              'fi\n' +
-              'if [ $dt -lt -3600 ]; then\n' +
-              '  echo; echo "WARNING: This exposure is happening more than an hour early!";\n' +
-              '  echo "Scheduled time: %s UT";\n' % j['approx_datetime'] +
-              '  echo; tput bel; sleep 0.25; tput bel; sleep 0.25; tput bel;\n' +
-              'fi\n')
-    
-    ra  = j['RA']
-    dec = j['dec']
-    ss.append(jnox_moveto(ra, dec))
-
-    # exposure time
-    et = (j['expTime'])
-    # filter
-    filter_name = str(j['filter'])
-    tilename = str(j['object'])
-    if status is None:
-        ra  = ra2hms(ra)
-        dec = dec2dms(dec)
-        status = "Tile %s, RA %s, Dec %s" % (tilename, ra, dec)
-    ss.append(jnox_exposure(et, filter_name, tilename, status))
-    return '\n'.join(ss) + '\n'
-
-def slewscript_for_json(j):
-    ra  = j['RA']
-    dec = j['dec']
-    ss = [jnox_moveto(ra, dec)]
-    # second call concludes readout
-    ss.append(jnox_readout())
-    # endobs
-    ss.append(jnox_end_exposure())
-    return '\n'.join(ss) + '\n'
-
-
 
 if __name__ == '__main__':
     main()

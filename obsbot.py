@@ -179,8 +179,9 @@ def mjdnow():
     return datetomjd(datenow())
 
 class NewFileWatcher(object):
-    def __init__(self, dir, backlog=True):
+    def __init__(self, dir, backlog=True, only_process_newest=False):
         self.dir = dir
+        self.only_process_newest = only_process_newest
 
         # How many times to re-try processing a new file
         self.maxFail = 10
@@ -227,8 +228,9 @@ class NewFileWatcher(object):
         newfiles = self.filter_new_files(newfiles)
         return newfiles
 
-    def get_newest_file(self):
-        newfiles = self.get_new_files()
+    def get_newest_file(self, newfiles=None):
+        if newfiles is None:
+            newfiles = self.get_new_files()
         if len(newfiles) == 0:
             return None
         # Take the one with the latest timestamp.
@@ -246,7 +248,8 @@ class NewFileWatcher(object):
         pass
     
     def run_one(self):
-        fn = self.get_newest_file()
+        fns = self.get_new_files()
+        fn = self.get_newest_file(newfiles=fns)
         if fn is None:
             if self.timeout is None:
                 return False
@@ -278,7 +281,10 @@ class NewFileWatcher(object):
 
         try:
             self.process_file(path)
-            self.oldfiles.add(fn)
+            if self.only_process_newest:
+                self.oldfiles.update(fns)
+            else:
+                self.oldfiles.add(fn)
             self.processed_file(path)
             self.lastNewFile = self.lastTimeout = datenow()
             return True

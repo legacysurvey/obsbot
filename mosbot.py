@@ -101,7 +101,8 @@ def main(cmdlineargs=None, get_mosbot=False):
 
 class Mosbot(NewFileWatcher):
     def __init__(self, J1, J2, J3, opt, nom, obs, tiles):
-        super(Mosbot, self).__init__(opt.rawdata, backlog=False)
+        super(Mosbot, self).__init__(opt.rawdata, backlog=False,
+                                     only_process_newest=True)
         self.timeout = None
         self.J1 = J1
         self.J2 = J2
