@@ -224,7 +224,7 @@ class RawMeasurer(object):
 
         zp0 = self.nom.zeropoint(band, ext=self.ext)
         sky0 = self.nom.sky(band)
-        kx = self.fiducial_exptime(band).kx
+        kx = self.nom.fiducial_exptime(band).k_co
         
         # Find the sky value and noise level
         sky,sig1 = self.get_sky_and_sigma(img)
@@ -896,9 +896,8 @@ class Mosaic3Measurer(RawMeasurer):
     def colorterm_ps1_to_observed(self, ps1stars, band):
         return ps1_to_mosaic(ps1stars, band)
 
-    
 
-def measure_raw_decam(fn, ext='N4', ps=None, measargs={}, **kwargs):
+def measure_raw_decam(fn, ext='N4', nom=None, ps=None, measargs={}, **kwargs):
     '''
     Reads the given file *fn*, extension *ext*', and measures a number of
     quantities that are useful for depth estimates:
@@ -968,12 +967,19 @@ def measure_raw_decam(fn, ext='N4', ps=None, measargs={}, **kwargs):
       - Take the median of the fit FWHMs -> FWHM estimate
 
     '''
-    meas = DECamMeasurer(fn, ext, **measargs)
+    if nom is None:
+        import decam
+        nom = decam.DecamNominalCalibration()
+    meas = DECamMeasurer(fn, ext, nom, **measargs)
     results = meas.run(ps, **kwargs)
     return results
 
-def measure_raw_mosaic3(fn, ext='im4', ps=None, measargs={}, **kwargs):
-    meas = Mosaic3Measurer(fn, ext, **measargs)
+def measure_raw_mosaic3(fn, ext='im4', nom=None, ps=None,
+                        measargs={}, **kwargs):
+    if nom is None:
+        import mosaic
+        nom = mosaic.MosaicNominalCalibration()
+    meas = Mosaic3Measurer(fn, ext, nom, **measargs)
     results = meas.run(ps, **kwargs)
     return results
 

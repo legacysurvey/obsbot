@@ -22,12 +22,13 @@ from astrometry.util.plotutils import *
 from astrometry.util.fits import *
 
 from mosaicstrategy import (
-    ExposureFactor, getParserAndGlobals, setupGlobals,
+    getParserAndGlobals, setupGlobals,
     GetAirmass )
 from measure_raw import measure_raw, get_default_extension, get_nominal_cal
 
 from jnox import *
 from copilot import get_tile_from_name
+from obsbot import exposure_factor
 
 def main(cmdlineargs=None, get_mosbot=False):
     import optparse
@@ -111,6 +112,9 @@ class Mosbot(object):
         self.obs = obs
         self.opt = opt
         self.tiles = tiles
+
+        import mosaic
+        self.nom = mosaic.MosaicNominalCalibration()
         
         self.imagedir = opt.rawdata
 
@@ -467,12 +471,12 @@ class Mosbot(object):
                 # Guess that the sky is as much brighter than canonical
                 # in the next band as it is in this one!
                 nextsky = ((skybright - nomsky) + self.gvs.sb_dict[nextband])
-            
-            fakezp = -99
-            expfactor = ExposureFactor(nextband, airmass, ebv, seeing,
-                                       fakezp, nextsky, self.gvs)
-            # print('Exposure factor:', expfactor)
-            exptime = expfactor * self.gvs.base_exptimes[nextband]
+
+            fid = self.nom.fiducial_exptime(nextband)
+            expfactor = exposure_factor(fid, self.nom,
+                                        airmass, ebv, seeing, nextsky, trans)
+            print('Exposure factor:', expfactor)
+            exptime = expfactor * fid.exptime
     
             ### HACK -- safety factor!
             print('Exposure time:', exptime)
@@ -480,21 +484,12 @@ class Mosbot(object):
             exptime = int(np.ceil(exptime))
             print('Exposure time with safety factor:', exptime)
 
-            exptime = np.clip(exptime, self.gvs.floor_exptimes[nextband],
-                              self.gvs.ceil_exptimes[nextband])
+            exptime = np.clip(exptime, fid.exptime_min, fid.exptime_max)
             print('Clipped exptime', exptime)
             if nextband == 'z':
                 # Compute cap on exposure time to avoid saturation /
                 # loss of dynamic range.
-                # Convert sky brightness in mag/arcsec^2 into counts
-
-                cal = get_nominal_cal(M['camera'], nextband)
-                nextzp0 = cal[0]
-
-                skyflux = 10. ** ((nextsky - nextzp0) / -2.5)
-                skyflux *= M['pixscale']**2
-                print('Predicted sky flux per pixel per second: %.1f' %skyflux)
-                t_sat = np.floor(30000. / skyflux)
+                t_sat = self.nom.saturation_time(nextband, nextsky)
                 if exptime > t_sat:
                     exptime = t_sat
                     print('Reduced exposure time to avoid z-band saturation: %.1f' % exptime)
