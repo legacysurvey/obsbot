@@ -71,7 +71,7 @@ def get_twilight(camera, date):
         obs.elev = 2120.0 # meters
         #print('Assuming KPNO')
 
-    elif cam == 'decam':
+    elif camera == 'decam':
         obs = ephem.Observer()
         obs.lon = '-70.806525'
         obs.lat = '-30.169661'
