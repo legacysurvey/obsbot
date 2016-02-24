@@ -12,11 +12,9 @@ class TestDecbot(unittest.TestCase):
         from decbot import main
         import tempfile
 
-        #### FIXME -- need DECam plans!!
-        
-        fn1 = os.path.join(self.testdatadir, 'pass1.json')
-        fn2 = os.path.join(self.testdatadir, 'pass2.json')
-        fn3 = os.path.join(self.testdatadir, 'pass3.json')
+        fn1 = os.path.join(self.testdatadir, 'decals-pass1.json')
+        fn2 = os.path.join(self.testdatadir, 'decals-pass2.json')
+        fn3 = os.path.join(self.testdatadir, 'decals-pass3.json')
 
         tmpfn1 = fn1 + '.tmp'
         tmpfn2 = fn2 + '.tmp'

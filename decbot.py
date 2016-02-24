@@ -10,10 +10,13 @@ from collections import OrderedDict
 import matplotlib
 matplotlib.use('Agg')
 
+import numpy as np
 import ephem
+import fitsio
+from astrometry.util.fits import fits_table
 
-from astrometry.util.plotutils import *
-from astrometry.util.fits import *
+from astrometry.util.starutil_numpy import  ra2hmsstring as  ra2hms
+from astrometry.util.starutil_numpy import dec2dmsstring as dec2dms
 
 from measure_raw import measure_raw
 from obsbot import (exposure_factor, get_tile_from_name, get_airmass,

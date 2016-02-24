@@ -16,13 +16,13 @@ from collections import OrderedDict
 import matplotlib
 matplotlib.use('Agg')
 
+import numpy as np
 import ephem
-
-from astrometry.util.plotutils import *
-from astrometry.util.fits import *
+import fitsio
+from astrometry.util.fits import fits_table
 
 from measure_raw import measure_raw
-from jnox import *
+from jnox import jnox_preamble, jnox_filter, jnox_moveto, jnox_exposure, jnox_readout, jnox_end_exposure, jnox_cmds_for_json, ra2hms, dec2dms
 from obsbot import (exposure_factor, get_tile_from_name, get_airmass,
                     NewFileWatcher)
 
