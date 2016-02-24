@@ -7,9 +7,6 @@ import stat
 import os
 from collections import OrderedDict
 
-import matplotlib
-matplotlib.use('Agg')
-
 import numpy as np
 import ephem
 import fitsio
@@ -108,11 +105,13 @@ def main(cmdlineargs=None, get_decbot=False):
     decbot = Decbot(J1, J2, J3, opt, nominal_cal, obs, tiles, rc)
     if get_decbot:
         return decbot
+    decbot.queue_initial_exposures()
     decbot.run()
 
 
 class Decbot(NewFileWatcher):
-    def __init__(self, J1, J2, J3, opt, nom, obs, tiles, rc):
+    def __init__(self, J1, J2, J3, opt, nom, obs, tiles, rc,
+                 queueMargin=45.):
         super(Decbot, self).__init__(opt.rawdata, backlog=False,
                                      only_process_newest=True)
         self.timeout = None
@@ -129,7 +128,7 @@ class Decbot(NewFileWatcher):
         
         self.planned_tiles = OrderedDict()
 
-        self.queueMargin = 45.
+        self.queueMargin = queueMargin
 
         self.upcoming = []
         
@@ -142,10 +141,13 @@ class Decbot(NewFileWatcher):
         J = [J1,J2,J3][opt.passnum - 1]
         for i,j in enumerate(J):
             if opt.exptime is not None:
-                j['expTime'] = exptime
+                j['expTime'] = opt.exptime
             self.planned_tiles[i] = j
 
-        # Queue two exposures to start?
+        self.queuetime = None
+
+    def queue_initial_exposures(self):
+        # Queue two exposures to start
         e0 = self.queue_exposure()
         e1 = self.queue_exposure()
 
@@ -158,10 +160,13 @@ class Decbot(NewFileWatcher):
         self.queuetime = self.queuetime.replace(microsecond = 0)
         
     def heartbeat(self):
+        if self.queuetime is None:
+            return
         ## Is it time to queue a new exposure?
         now = datenow().replace(microsecond=0)
         print('Heartbeat.  Now is', now.isoformat(),
-              'queue time is', self.queuetime.isoformat())
+              'queue time is', self.queuetime.isoformat(),
+              'dt %i' % (int((self.queuetime - now).total_seconds())))
         if now < self.queuetime:
             return
         print('Time to queue an exposure!')
@@ -389,7 +394,7 @@ class Decbot(NewFileWatcher):
     
             print('Changing exptime from', jplan['expTime'], 'to', exptime)
             jplan['expTime'] = exptime
-    
+
             print('%s: updating exposure %i to tile %s' %
                   (str(ephem.now()), nextseq, tilename))
             self.planned_tiles[nextseq] = jplan
@@ -413,8 +418,9 @@ class Decbot(NewFileWatcher):
 
         # Write a FITS table of the exposures we think we've queued,
         # the ones we have planned, and the future tiles in passes 1,2,3.
-        P = ([(j,'P') for j in self.upcoming] +
-             [(self.planned_tiles[s],'Q') for s in range(self.seqnum)])
+        P = ([(self.planned_tiles[s],'Q') for s in range(self.seqnum)] +
+             [(j,'P') for j in self.upcoming])
+             
         # Skip ones scheduled for before now
         now = ephem.now()
         for i,J in enumerate([self.J1,self.J2,self.J3]):

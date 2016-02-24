@@ -1,15 +1,42 @@
 from __future__ import print_function
 import unittest
 import os
+import datetime
+import time
 
+import Pyro.core
+class TestQueue(Pyro.core.ObjBase):
+    def __init__(self):
+        super(TestQueue, self).__init__()
+        self.commands = []
+    def execute(self, command):
+        print('Executing:', command)
+        self.commands.append(command)
+
+import threading
+class TestServer(object):
+    def __init__(self):
+        Pyro.core.initServer()
+        self.queue = TestQueue()
+        self.daemon = Pyro.core.Daemon()
+        self.url = self.daemon.connect(self.queue, 'CMDSRV')
+        print('Daemon URL:', self.url)
+        self.thread = threading.Thread(target=self)
+        self.thread.daemon = True
+        self.thread.start()
+        
+    def __call__(self):
+        print('TestServer Running at URL', self.url)
+        self.daemon.requestLoop()
+        
 class TestDecbot(unittest.TestCase):
 
     def setUp(self):
         self.testdatadir = os.path.join(os.path.dirname(__file__),
                                         'testdata')
+        self.server = TestServer()
+        print('URL type:', type(self.server.url))
 
-    def test_new_file(self):
-        from decbot import main
         import tempfile
 
         fn1 = os.path.join(self.testdatadir, 'decals-pass1.json')
@@ -33,24 +60,80 @@ class TestDecbot(unittest.TestCase):
                 tnew = now + ephem.Date(str(j['approx_datetime'])) - t0
                 tnew = str(ephem.Date(tnew))
                 j['approx_datetime'] = tnew
-                print('Updated datetime to', tnew)
+                #print('Updated datetime to', tnew)
 
             f = open(tmpfn, 'w')
             json.dump(J, f, sort_keys=True, indent=4, separators=(',', ': '))
             f.close()
-                
-        args = [tmpfn1, tmpfn2, tmpfn3]
 
-        args += ['--remote-server', 'localhost']
-        args += ['--remote-port',   '7767']
-        
+        self.jsonfiles = [tmpfn1, tmpfn2, tmpfn3]
+            
+    def test_new_file(self):
+        from decbot import main
+        args = self.jsonfiles
+        args += ['--remote-server', self.server.url.address]
+        args += ['--remote-port',   str(self.server.url.port)]
+
         decbot = main(cmdlineargs=args, get_decbot=True)
 
         fn = os.path.join(self.testdatadir, 'decam-00488199-n4.fits.fz')
         decbot.process_file(fn)
 
-        decbot.run()
+        #self.assertEqual(len(decbot.planned_tiles), 2)
+        self.assertEqual(decbot.seqnum, 2)
+        self.assertEqual(len(self.server.queue.commands), 2)
+
+    def test_queuetime(self):
+        self.server.queue.commands = []
+
+        from decbot import main
+        args = self.jsonfiles
+        args += ['--remote-server', self.server.url.address]
+        args += ['--remote-port',   str(self.server.url.port)]
+        args += ['--exptime', '2']
+        
+        print('Creating Decbot...')
+        decbot = main(cmdlineargs=args, get_decbot=True)
+
+        decbot.nom.overhead = 1.
+        decbot.queueMargin = 2.
+        decbot.queue_initial_exposures()
+        
+        self.assertEqual(decbot.seqnum, 2)
+        #self.assertEqual(len(decbot.planned_tiles), 2)
+        self.assertEqual(len(self.server.queue.commands), 2)
+        
+        now = datetime.datetime.utcnow()
+        dt = (decbot.queuetime - now).total_seconds()
+        print('Time until queuetime:', dt)
+
+        # Should be 4, minus execution time
+        self.assertGreater(dt, 3)
+        self.assertLess(dt, 4)
+
+        # Should do nothing
+        decbot.heartbeat()
+
+        self.assertEqual(decbot.seqnum, 2)
+        self.assertEqual(len(self.server.queue.commands), 2)
+
+        time.sleep(4)
+
+        # Should queue exposure
+        decbot.heartbeat()
+
+        self.assertEqual(decbot.seqnum, 3)
+        self.assertEqual(len(self.server.queue.commands), 3)
+        
+        # Now the queue time should be... exp 2 + overhead 1 - margin 2 = 1
             
+        now = datetime.datetime.utcnow()
+        dt = (decbot.queuetime - now).total_seconds()
+        print('Time until queuetime:', dt)
+
+        # Should be 1, minus execution time
+        self.assertGreater(dt, 0)
+        self.assertLess(dt, 1)
 
 if __name__ == '__main__':
     unittest.main()

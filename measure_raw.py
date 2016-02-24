@@ -10,20 +10,21 @@ import numpy as np
 
 import fitsio
 
-from scipy.stats import sigmaclip
-from scipy.ndimage.filters import gaussian_filter
-from scipy.ndimage.measurements import label, find_objects, center_of_mass
-from scipy.ndimage.filters import median_filter
+# All these imports are pushed down to where they are used
+#from scipy.stats import sigmaclip
+#from scipy.ndimage.filters import gaussian_filter
+#from scipy.ndimage.measurements import label, find_objects, center_of_mass
+#from scipy.ndimage.filters import median_filter
 
-from astrometry.util.fits import *
-from astrometry.util.util import wcs_pv2sip_hdr, Tan
-from astrometry.libkd.spherematch import match_xy
+#from astrometry.util.util import wcs_pv2sip_hdr, Tan
+#from astrometry.libkd.spherematch import match_xy
 
-from legacyanalysis.ps1cat import ps1cat, ps1_to_decam
+#from legacyanalysis.ps1cat import ps1cat, ps1_to_decam
 
-import photutils
-import tractor
+#import photutils
+#import tractor
 
+from legacyanalysis.ps1cat import ps1_to_decam
 # Color terms -- no MOSAIC specific ones yet:
 ps1_to_mosaic = ps1_to_decam
 
@@ -62,6 +63,7 @@ class RawMeasurer(object):
         self.camera = 'camera'
         
     def remove_sky_gradients(self, img):
+        from scipy.ndimage.filters import median_filter
         # Ugly removal of sky gradients by subtracting median in first x and then y
         H,W = img.shape
         meds = np.array([np.median(img[:,i]) for i in range(W)])
@@ -91,6 +93,7 @@ class RawMeasurer(object):
         return band
 
     def match_ps1_stars(self, px, py, fullx, fully, radius, stars):
+        from astrometry.libkd.spherematch import match_xy
         #print('Matching', len(px), 'PS1 and', len(fullx), 'detected stars with radius', radius)
         I,J,d = match_xy(px, py, fullx, fully, radius)
         #print(len(I), 'matches')
@@ -99,6 +102,7 @@ class RawMeasurer(object):
         return I,J,dx,dy
 
     def detection_map(self, img, sig1, psfsig, ps):
+        from scipy.ndimage.filters import gaussian_filter
         psfnorm = 1./(2. * np.sqrt(np.pi) * psfsig)
         detsn = gaussian_filter(img / sig1, psfsig) / psfnorm
         # zero out the edges -- larger margin here?
@@ -109,6 +113,7 @@ class RawMeasurer(object):
         return detsn
 
     def detect_sources(self, detsn, thresh, ps):
+        from scipy.ndimage.measurements import label, find_objects
         # HACK -- Just keep the brightest pixel in each blob!
         peaks = (detsn > thresh)
         blobs,nblobs = label(peaks)
@@ -119,6 +124,10 @@ class RawMeasurer(object):
             n_fwhm=100):
         import pylab as plt
         from astrometry.util.plotutils import dimshow, plothist
+        from legacyanalysis.ps1cat import ps1cat
+        import photutils
+        import tractor
+                
         fn = self.fn
         ext = self.ext
         pixsc = self.pixscale
@@ -254,6 +263,8 @@ class RawMeasurer(object):
             xx.append(x0 + x)
             yy.append(y0 + y)
             pkarea = detsn[y0+y-P: y0+y+P+1, x0+x-P: x0+x+P+1]
+
+            from scipy.ndimage.measurements import center_of_mass
             cy,cx = center_of_mass(pkarea)
             #print('Center of mass', cx,cy)
             fx.append(x0+x-P+cx)
@@ -402,6 +413,8 @@ class RawMeasurer(object):
         fx = fx[good]
         fy = fy[good]
 
+
+        
         # Read in the PS1 catalog, and keep those within 0.25 deg of CCD center
         # and those with main sequence colors
         pscat = ps1cat(ccdwcs=wcs)
@@ -449,6 +462,7 @@ class RawMeasurer(object):
         histo,xe,ye = np.histogram2d(dx, dy, bins=bins,
                                      range=((-radius,radius),(-radius,radius)))
         # smooth histogram before finding peak -- fuzzy matching
+        from scipy.ndimage.filters import gaussian_filter
         histo = gaussian_filter(histo, 1.)
         histo = histo.T
         mx = np.argmax(histo)
@@ -596,6 +610,7 @@ class RawMeasurer(object):
             meas.update(zp=None)
             return meas
 
+        from scipy.stats import sigmaclip
         goodpix,lo,hi = sigmaclip(dm, low=3, high=3)
         dmagmed = np.median(goodpix)
         print(len(goodpix), 'stars used for zeropoint median')
@@ -787,6 +802,7 @@ class DECamMeasurer(RawMeasurer):
         return sky,sig1
 
     def get_wcs(self, hdr):
+        from astrometry.util.util import wcs_pv2sip_hdr
         # HACK -- convert TPV WCS header to SIP.
         wcs = wcs_pv2sip_hdr(hdr)
         #print('Converted WCS to', wcs)
@@ -850,8 +866,10 @@ class Mosaic3Measurer(RawMeasurer):
     def get_wcs(self, hdr):
         # Older images have ZPX, newer TPV.
         if hdr['CTYPE1'] == 'RA---TPV':
+            from astrometry.util.util import wcs_pv2sip_hdr
             wcs = wcs_pv2sip_hdr(hdr)
         else:
+            from astrometry.util.util import Tan
             hdr['CTYPE1'] = 'RA---TAN'
             hdr['CTYPE2'] = 'DEC--TAN'
             wcs = Tan(hdr)
@@ -976,6 +994,7 @@ def get_default_extension(fn):
         return 'N4'
 
 def sensible_sigmaclip(arr, nsigma = 4.):
+    from scipy.stats import sigmaclip
     goodpix,lo,hi = sigmaclip(arr, low=nsigma, high=nsigma)
     # sigmaclip returns unclipped pixels, lo,hi, where lo,hi are
     # mean(goodpix) +- nsigma * sigma
@@ -1143,6 +1162,8 @@ if __name__ == '__main__':
                 vals[k] = [v]
             else:
                 vals[k].append(v)
+
+    from astrometry.util.fits import fits_table
 
     T = fits_table()
     for k,v in vals.items():
