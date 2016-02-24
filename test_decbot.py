@@ -41,6 +41,9 @@ class TestDecbot(unittest.TestCase):
                 
         args = [tmpfn1, tmpfn2, tmpfn3]
 
+        args += ['--remote-server', 'localhost']
+        args += ['--remote-port',   '7767']
+        
         decbot = main(cmdlineargs=args, get_decbot=True)
 
         fn = os.path.join(self.testdatadir, 'decam-00488199-n4.fits.fz')

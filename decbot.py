@@ -42,6 +42,11 @@ def main(cmdlineargs=None, get_decbot=False):
     parser.add_option('--no-cut-past', dest='cut_before_now',
                       default=True, action='store_false',
                       help='Do not cut tiles that were supposed to be observed in the past')
+
+    parser.add_option('--remote-server', default=None,
+                      help='Hostname of CommandServer for queue control')
+    parser.add_option('--remote-port', default=None, type=int,
+                      help='Port number of CommandServer for queue control')
     
     if cmdlineargs is None:
         opt,args = parser.parse_args()
@@ -78,6 +83,11 @@ def main(cmdlineargs=None, get_decbot=False):
         print('No tiles!')
         return
 
+    # Annotate with 'planpass' field
+    for i,J in enumerate([J1,J2,J3]):
+        for j in J:
+            j['planpass'] = i+1
+    
     obs = ephem_observer()
     
     print('Reading tiles table', opt.tiles)
@@ -85,15 +95,24 @@ def main(cmdlineargs=None, get_decbot=False):
     
     if opt.rawdata is None:
         opt.rawdata = os.environ.get('DECAM_DATA', 'rawdata')
-    
-    decbot = Decbot(J1, J2, J3, opt, nominal_cal, obs, tiles)
+
+    kw = dict()
+    if opt.remote_server is not None:
+        kw['cs_host'] = opt.remote_server
+    if opt.remote_port is not None:
+        kw['cs_port'] = opt.remote_port
+    from RemoteClient import RemoteClient
+    print('Creating RemoteClient connection with args:', kw)
+    rc = RemoteClient(**kw)
+        
+    decbot = Decbot(J1, J2, J3, opt, nominal_cal, obs, tiles, rc)
     if get_decbot:
         return decbot
     decbot.run()
 
 
 class Decbot(NewFileWatcher):
-    def __init__(self, J1, J2, J3, opt, nom, obs, tiles):
+    def __init__(self, J1, J2, J3, opt, nom, obs, tiles, rc):
         super(Decbot, self).__init__(opt.rawdata, backlog=False,
                                      only_process_newest=True)
         self.timeout = None
@@ -104,12 +123,15 @@ class Decbot(NewFileWatcher):
         self.nom = nom
         self.obs = obs
         self.tiles = tiles
-
+        self.rc = rc
+        
         self.seqnum = 0
         
         self.planned_tiles = OrderedDict()
 
         self.queueMargin = 45.
+
+        self.upcoming = []
         
         # - queue new exposure from planned_tiles when we think the
         #   current exposure is nearly done; update seqnum
@@ -133,11 +155,13 @@ class Decbot(NewFileWatcher):
         dt -= self.queueMargin
         self.queuetime = (datenow() +
                           datetime.timedelta(0, dt))
+        self.queuetime = self.queuetime.replace(microsecond = 0)
         
     def heartbeat(self):
         ## Is it time to queue a new exposure?
-        now = datenow()
-        print('Heartbeat.  Now is', now, 'queue time is', self.queuetime)
+        now = datenow().replace(microsecond=0)
+        print('Heartbeat.  Now is', now.isoformat(),
+              'queue time is', self.queuetime.isoformat())
         if now < self.queuetime:
             return
         print('Time to queue an exposure!')
@@ -145,12 +169,24 @@ class Decbot(NewFileWatcher):
         # schedule next one
         dt = e['expTime'] + self.nom.overhead - self.queueMargin
         self.queuetime = now + datetime.timedelta(0, dt)
+        self.queuetime = self.queuetime.replace(microsecond = 0)
 
+        self.write_plans()
+        
     def queue_exposure(self):
         j = self.planned_tiles[self.seqnum]
         self.seqnum += 1
         # FIXME -- actually queue j...
+        print('Queuing exposure:', j)
 
+        self.rc.addexposure(
+            filter=j['filter'],
+            ra=j['RA'],
+            dec=j['dec'],
+            object=j['object'],
+            exptime=j['expTime'],
+            )
+        
         return j
     
     def filter_new_files(self, fns):
@@ -281,16 +317,7 @@ class Decbot(NewFileWatcher):
         # How many exposures ahead should we plan?
         Nahead = 10
         
-        P = fits_table()
-        P.type = []
-        P.tilename = []
-        P.filter = []
-        P.exptime = []
-        P.ra = []
-        P.dec = []
-        P.passnumber = []
-
-        upcoming = []
+        self.upcoming = []
 
         iahead = 0
         for ii,jplan in enumerate(J[iplan:]):
@@ -365,55 +392,53 @@ class Decbot(NewFileWatcher):
     
             print('%s: updating exposure %i to tile %s' %
                   (str(ephem.now()), nextseq, tilename))
-
             self.planned_tiles[nextseq] = jplan
-            
+            self.upcoming.append(jplan)
             self.obs.date += (exptime + self.nom.overhead) / 86400.
-            
-            P.tilename.append(tilename)
-            P.filter.append(nextband)
-            P.exptime.append(exptime)
-            P.ra.append(jplan['RA'])
-            P.dec.append(jplan['dec'])
-            P.passnumber.append(nextpass)
-            P.type.append('P')
 
-            upcoming.append(jplan)
-    
-        for i,J in enumerate([self.J1,self.J2,self.J3]):
-            passnum = i+1
-            for j in J:
-                tstart = ephem.Date(str(j['approx_datetime']))
-                if tstart < now:
-                    continue
-                P.tilename.append(str(j['object']))
-                filt = str(j['filter'])[0]
-                P.filter.append(filt)
-                P.exptime.append(j['expTime'])
-                P.ra.append(j['RA'])
-                P.dec.append(j['dec'])
-                P.passnumber.append(passnum)
-                P.type.append('%i' % passnum)
-    
-        P.to_np_arrays()
-        fn = 'decbot-plan.fits'
-        tmpfn = fn + '.tmp'
-        P.writeto(tmpfn)
-        os.rename(tmpfn, fn)
-        print('Wrote', fn)
+        self.write_plans()
+        return True
 
+    def write_plans(self):
         # Write upcoming plan to a JSON file
         fn = 'decbot-plan.json'
         tmpfn = fn + '.tmp'
-        jstr = json.dumps(upcoming, sort_keys=True,
+        jstr = json.dumps(self.upcoming, sort_keys=True,
                           indent=4, separators=(',', ': '))
         f = open(tmpfn, 'w')
         f.write(jstr + '\n')
         f.close()
         os.rename(tmpfn, fn)
         print('Wrote', fn)
-        
-        return True
+
+        # Write a FITS table of the exposures we think we've queued,
+        # the ones we have planned, and the future tiles in passes 1,2,3.
+        P = ([(j,'P') for j in self.upcoming] +
+             [(self.planned_tiles[s],'Q') for s in range(self.seqnum)])
+        # Skip ones scheduled for before now
+        now = ephem.now()
+        for i,J in enumerate([self.J1,self.J2,self.J3]):
+            passnum = i+1
+            for j in J:
+                tstart = ephem.Date(str(j['approx_datetime']))
+                if tstart < now:
+                    continue
+                P.append((j,'%i' % passnum))
+
+        J = [j for j,t in P]
+        T = fits_table()
+        T.type = np.array([t for j,t in P])
+        T.tilename = np.array([str(j['object']) for j in J])
+        T.filter = np.array([str(j['filter'])[0] for j in J])
+        T.exptime = np.array([j['expTime'] for j in J])
+        T.ra  = np.array([j['RA'] for j in J])
+        T.dec = np.array([j['dec'] for j in J])
+        T.planpass = np.array([j['planpass'] for j in J])
+        fn = 'decbot-plan.fits'
+        tmpfn = fn + '.tmp'
+        T.writeto(tmpfn)
+        os.rename(tmpfn, fn)
+        print('Wrote', fn)
     
 
 if __name__ == '__main__':
