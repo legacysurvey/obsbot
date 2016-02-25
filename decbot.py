@@ -136,7 +136,8 @@ class Decbot(NewFileWatcher):
 
         # Set up initial planned_tiles
         J = [J1,J2,J3][opt.passnum - 1]
-
+        
+        J = self.tiles_after_now(J)
         self.plan_tiles(J, Nahead=len(J), exptime=opt.exptime)
         self.queuetime = None
 
@@ -295,24 +296,16 @@ class Decbot(NewFileWatcher):
     
         # Choose the next tile from the right JSON tile list
         J = [self.J1,self.J2,self.J3][nextpass-1]
-        now = ephem.now()
-        iplan = None
-        print('UTC now is', str(now))
-        for i,j in enumerate(J):
-            tstart = ephem.Date(str(j['approx_datetime']))
-            if tstart > now:
-                print('Found tile', j['object'], 'which starts at', str(tstart))
-                iplan = i
-                break
-        if iplan is None:
-            print('Could not find a JSON observation in pass', nextpass,
-                  'with approx_datetime after now =', str(now),
-                  '-- latest one', str(tstart))
-            return False
 
+        J = self.tiles_after_now(J)
+        if len(J) == 0:
+            print('Could not find a JSON observation in pass', nextpass,
+                  'with approx_datetime after now =', str(ephem.now()))
+            return False
+        
         # Update the exposure times in plan J based on measured conditions.
         print('Updating exposure times for pass', nextpass)
-        for jplan in J[iplan:]:
+        for jplan in J:
             tilename = str(jplan['object'])
             # Find this tile in the tiles table.
             tile = get_tile_from_name(tilename, self.tiles)
@@ -361,9 +354,20 @@ class Decbot(NewFileWatcher):
             print('Changing exptime from', jplan['expTime'], 'to', exptime)
             jplan['expTime'] = exptime
             
-        self.plan_tiles(J[iplan:])
+        self.plan_tiles(J)
         return True
 
+    def tiles_after_now(self, J):
+        now = ephem.now()
+        keep = []
+        for i,j in enumerate(J):
+            tstart = ephem.Date(str(j['approx_datetime']))
+            if tstart > now:
+                print('Found tile %s which starts at %s' %
+                      (j['object'], str(tstart)))
+                keep.append(j)
+        return keep
+    
     def plan_tiles(self, J, Nahead=10, exptime=None):
         '''
         Nahead: int: How many exposures ahead should we plan?
