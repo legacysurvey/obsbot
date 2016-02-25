@@ -123,13 +123,10 @@ class Decbot(NewFileWatcher):
         self.obs = obs
         self.tiles = tiles
         self.rc = rc
+        self.queueMargin = queueMargin
         
         self.seqnum = 0
-        
         self.planned_tiles = OrderedDict()
-
-        self.queueMargin = queueMargin
-
         self.upcoming = []
         
         # - queue new exposure from planned_tiles when we think the
@@ -139,11 +136,8 @@ class Decbot(NewFileWatcher):
 
         # Set up initial planned_tiles
         J = [J1,J2,J3][opt.passnum - 1]
-        for i,j in enumerate(J):
-            if opt.exptime is not None:
-                j['expTime'] = opt.exptime
-            self.planned_tiles[i] = j
 
+        self.plan_tiles(J, Nahead=len(J), exptime=opt.exptime)
         self.queuetime = None
 
     def queue_initial_exposures(self):
@@ -315,17 +309,74 @@ class Decbot(NewFileWatcher):
                   'with approx_datetime after now =', str(now),
                   '-- latest one', str(tstart))
             return False
-    
-        # Set observing conditions for computing exposure time
-        self.obs.date = now
 
-        # How many exposures ahead should we plan?
-        Nahead = 10
+        # Update the exposure times in plan J based on measured conditions.
+        print('Updating exposure times for pass', nextpass)
+        for jplan in J[iplan:]:
+            tilename = str(jplan['object'])
+            # Find this tile in the tiles table.
+            tile = get_tile_from_name(tilename, self.tiles)
+            ebv = tile.ebv_med
+            nextband = str(jplan['filter'])[0]
+            #print('Selected tile:', tilename, nextband)
+            rastr  = ra2hms (jplan['RA' ])
+            decstr = dec2dms(jplan['dec'])
+            ephemstr = str('%s,f,%s,%s,20' % (tilename, rastr, decstr))
+            etile = ephem.readdb(ephemstr)
+            etile.compute(self.obs)
+            airmass = get_airmass(float(etile.alt))
+            #print('Airmass of planned tile:', airmass)
+    
+            if M['band'] == nextband:
+                nextsky = skybright
+            else:
+                # Guess that the sky is as much brighter than canonical
+                # in the next band as it is in this one!
+                nextsky = ((skybright - nomsky) + self.nom.sky(nextband))
+
+            fid = self.nom.fiducial_exptime(nextband)
+            expfactor = exposure_factor(fid, self.nom,
+                                        airmass, ebv, seeing, nextsky, trans)
+            print('Tile', tilename)
+            print('Exposure factor:', expfactor)
+            exptime = expfactor * fid.exptime
+    
+            ### HACK -- safety factor!
+            #print('Exposure time:', exptime)
+            exptime *= 1.1
+            exptime = int(np.ceil(exptime))
+            #print('Exposure time with safety factor:', exptime)
+
+            exptime = np.clip(exptime, fid.exptime_min, fid.exptime_max)
+            #print('Clipped exptime', exptime)
+            if nextband == 'z':
+                # Compute cap on exposure time to avoid saturation /
+                # loss of dynamic range.
+                t_sat = self.nom.saturation_time(nextband, nextsky)
+                if exptime > t_sat:
+                    exptime = t_sat
+                    print('Reduced exposure time to avoid z-band saturation: %.1f' % exptime)
+            exptime = int(exptime)
+    
+            print('Changing exptime from', jplan['expTime'], 'to', exptime)
+            jplan['expTime'] = exptime
+            
+        self.plan_tiles(J[iplan:])
+        return True
+
+    def plan_tiles(self, J, Nahead=10, exptime=None):
+        '''
+        Nahead: int: How many exposures ahead should we plan?
+        '''
+
+        # Set observing conditions for computing exposure time
+        now = ephem.now()
+        self.obs.date = now
         
         self.upcoming = []
 
         iahead = 0
-        for ii,jplan in enumerate(J[iplan:]):
+        for ii,jplan in enumerate(J):
             if iahead >= Nahead:
                 break
             tilename = str(jplan['object'])
@@ -340,69 +391,25 @@ class Decbot(NewFileWatcher):
                 t = self.planned_tiles[s]
                 if t['object'] == tilename:
                     dup = True
-                    print('Wanted to plan tile %s (pass %i element %i) for exp %i'
-                          % (tilename, nextpass, iplan+ii, nextseq),
+                    print('Wanted to plan tile %s for exp %i '
+                          % (tilename, nextseq),
                           'but it was already planned for exp %i' % s)
                     break
             if dup:
                 continue
     
             iahead += 1
-    
-            # Find this tile in the tiles table.
-            tile = get_tile_from_name(tilename, self.tiles)
-            ebv = tile.ebv_med
-            nextband = str(jplan['filter'])[0]
-            print('Selected tile:', tile.tileid, tilename, nextband)
-            rastr  = ra2hms (jplan['RA' ])
-            decstr = dec2dms(jplan['dec'])
-            ephemstr = str('%s,f,%s,%s,20' % (tilename, rastr, decstr))
-            etile = ephem.readdb(ephemstr)
-            etile.compute(self.obs)
-            airmass = get_airmass(float(etile.alt))
-            print('Airmass of planned tile:', airmass)
-    
-            if M['band'] == nextband:
-                nextsky = skybright
-            else:
-                # Guess that the sky is as much brighter than canonical
-                # in the next band as it is in this one!
-                nextsky = ((skybright - nomsky) + self.nom.sky(nextband))
 
-            fid = self.nom.fiducial_exptime(nextband)
-            expfactor = exposure_factor(fid, self.nom,
-                                        airmass, ebv, seeing, nextsky, trans)
-            print('Exposure factor:', expfactor)
-            exptime = expfactor * fid.exptime
-    
-            ### HACK -- safety factor!
-            print('Exposure time:', exptime)
-            exptime *= 1.1
-            exptime = int(np.ceil(exptime))
-            print('Exposure time with safety factor:', exptime)
-
-            exptime = np.clip(exptime, fid.exptime_min, fid.exptime_max)
-            print('Clipped exptime', exptime)
-            if nextband == 'z':
-                # Compute cap on exposure time to avoid saturation /
-                # loss of dynamic range.
-                t_sat = self.nom.saturation_time(nextband, nextsky)
-                if exptime > t_sat:
-                    exptime = t_sat
-                    print('Reduced exposure time to avoid z-band saturation: %.1f' % exptime)
-            exptime = int(exptime)
-    
-            print('Changing exptime from', jplan['expTime'], 'to', exptime)
-            jplan['expTime'] = exptime
+            if exptime is not None:
+                jplan['expTime'] = exptime
 
             print('%s: updating exposure %i to tile %s' %
                   (str(ephem.now()), nextseq, tilename))
             self.planned_tiles[nextseq] = jplan
             self.upcoming.append(jplan)
-            self.obs.date += (exptime + self.nom.overhead) / 86400.
+            self.obs.date += (jplan['expTime'] + self.nom.overhead) / 86400.
 
-        self.write_plans()
-        return True
+        self.write_plans()            
 
     def write_plans(self):
         # Write upcoming plan to a JSON file
