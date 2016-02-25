@@ -260,13 +260,14 @@ class NewFileWatcher(object):
             # Check timeout
             now = datenow()
             dt = (now - self.lastTimeout).total_seconds()
-            if dt < self.timeout:
-                return False
-            self.timed_out(dt)
-            self.lastTimout = datenow()
+            if dt > self.timeout:
+                self.timed_out(dt)
+                self.lastTimout = datenow()
             if len(self.backlog) == 0:
                 return False
             fn = self.backlog.pop()
+            print('Popping one file from the backlog: %s -- %i remain' %
+                  (fn, len(self.backlog)))
 
         if self.failCounter[fn] >= self.maxFail:
             print('Failed to process file: %s, %i times.  Ignoring.' %

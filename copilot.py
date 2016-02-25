@@ -457,16 +457,14 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
     exptime = phdr.get('EXPTIME')
     expnum = phdr.get('EXPNUM', 0)
 
-    if 'FILTER' in phdr:
-        filt = phdr['FILTER']
-    else: 
-        filt = ''
-    filt = filt.strip()
-    filt = filt.split()[0]
+    filt = phdr.get('FILTER', None)
+    if filt is not None:
+        filt = filt.strip()
+        filt = filt.split()[0]
 
-    airmass = phdr['AIRMASS']
-    ra  = hmsstring2ra (phdr['RA'])
-    dec = dmsstring2dec(phdr['DEC'])
+    airmass = phdr.get('AIRMASS', 0.)
+    ra  = hmsstring2ra (phdr.get('RA', '0'))
+    dec = dmsstring2dec(phdr.get('DEC', '0'))
     
     # Write QA plots to files named by the exposure number
     print('Exposure number:', expnum)
@@ -498,11 +496,11 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         m.camera  = camera_name(phdr)
         m.expnum  = expnum
         m.exptime = exptime
-        m.mjd_obs = phdr['MJD-OBS']
+        m.mjd_obs = phdr.get('MJD-OBS', 0.)
         m.airmass = airmass
         m.rabore  = ra
         m.decbore = dec
-        m.band = phdr['FILTER'][0]
+        m.band = filt
         m.bad_pixcnt = ('PIXCNT1' in phdr)
         m.readtime = phdr.get('READTIME', 0.)
 
@@ -1022,6 +1020,7 @@ class Copilot(NewFileWatcher):
         self.tiles = tiles
         
     def filter_backlog(self, backlog):
+        backlog = self.filter_new_files(backlog)
         return skip_existing_files(
             [os.path.join(self.dir, fn) for fn in backlog], self.rawext)
 
