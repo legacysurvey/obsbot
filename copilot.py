@@ -463,8 +463,8 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         filt = filt.split()[0]
 
     airmass = phdr.get('AIRMASS', 0.)
-    ra  = hmsstring2ra (phdr['RA'])
-    dec = dmsstring2dec(phdr['DEC'])
+    ra  = hmsstring2ra (phdr.get('RA', '0')
+    dec = dmsstring2dec(phdr.get('DEC', '0'))
     
     # Write QA plots to files named by the exposure number
     print('Exposure number:', expnum)
