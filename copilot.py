@@ -462,7 +462,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         filt = filt.strip()
         filt = filt.split()[0]
 
-    airmass = phdr['AIRMASS']
+    airmass = phdr.get('AIRMASS', 0.)
     ra  = hmsstring2ra (phdr['RA'])
     dec = dmsstring2dec(phdr['DEC'])
     
