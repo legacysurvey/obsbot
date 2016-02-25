@@ -496,7 +496,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         m.camera  = camera_name(phdr)
         m.expnum  = expnum
         m.exptime = exptime
-        m.mjd_obs = phdr['MJD-OBS']
+        m.mjd_obs = phdr.get('MJD-OBS', 0.)
         m.airmass = airmass
         m.rabore  = ra
         m.decbore = dec
