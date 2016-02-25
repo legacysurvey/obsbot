@@ -1,8 +1,8 @@
 #! /usr/bin/env python2.7
 '''
 
-This script is meant to be run during DECaLS observing.  It waits for
-new images to appear, measures their sky brightness, seeing, and
+This script is meant to be run during DECaLS/MzLS observing.  It waits
+for new images to appear, measures their sky brightness, seeing, and
 transparency, and advises whether & how to replan.
 
 '''
@@ -19,8 +19,6 @@ import re
 import time
 import json
 import datetime
-from collections import Counter
-from glob import glob
 
 import numpy as np
 
@@ -29,17 +27,12 @@ import ephem
 
 from astrometry.util.starutil_numpy import hmsstring2ra, dmsstring2dec, mjdtodate, datetomjd
 
-from nightlystrategy import ExposureFactor, getParserAndGlobals, setupGlobals
+from measure_raw import measure_raw, get_default_extension, camera_name
 
-from measure_raw import measure_raw, get_nominal_cal, get_default_extension, camera_name
+from obsbot import (exposure_factor, get_tile_from_name, NewFileWatcher,
+                    mjdnow, datenow)
 
 from tractor.sfd import SFDMap
-
-def datenow():
-    return datetime.datetime.utcnow()
-
-def mjdnow():
-    return datetomjd(datenow())
 
 def db_to_fits(mm):
     from astrometry.util.fits import fits_table
@@ -78,7 +71,7 @@ def get_twilight(camera, date):
         obs.elev = 2120.0 # meters
         #print('Assuming KPNO')
 
-    elif cam == 'decam':
+    elif camera == 'decam':
         obs = ephem.Observer()
         obs.lon = '-70.806525'
         obs.lat = '-30.169661'
@@ -109,12 +102,12 @@ def get_twilight(camera, date):
 
     return (sunset, eve12, eve18, morn18, morn12, sunrise)
 
-def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None,
+def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
                       markmjds=[], show_plot=True):
     import pylab as plt
     T = db_to_fits(mm)
     print(len(T), 'exposures')
-    
+
     T.mjd_end = T.mjd_obs + T.exptime / 86400.
 
     #Tall = T
@@ -221,8 +214,7 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None,
     plt.subplot(SP,1,2)
     mx = 20
     for band,Tb in zip(bands, TT):
-        nom = get_nominal_cal(Tb.camera[0], band)
-        zp0,sky0,kx0 = nom
+        sky0 = nom.sky(band)
         plt.plot(Tb.mjd_obs, Tb.sky, 'o', color=ccmap[band])
         plt.axhline(sky0, color=ccmap[band], alpha=0.5)
 
@@ -269,12 +261,15 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None,
     plt.subplot(SP,1,4)
     mx = 300
     for band,Tb in zip(bands, TT):
-        basetime = gvs.base_exptimes[band]
-        lo,hi = gvs.floor_exptimes[band], gvs.ceil_exptimes[band]
+        fid = nom.fiducial_exptime(band)
+
+        basetime = fid.exptime
+        lo,hi = fid.exptime_min, fid.exptime_max
         exptime = basetime * Tb.expfactor
         clipped = np.clip(exptime, lo, hi)
         if band == 'z':
-            clipped = np.minimum(clipped, gvs.t_sat_max)
+            t_sat = nom.saturation_time(band, Tb.sky)
+            clipped = np.minimum(clipped, t_sat)
         Tb.clipped_exptime = clipped
         Tb.depth_factor = Tb.exptime / clipped
         I = np.flatnonzero(exptime > clipped)
@@ -295,13 +290,16 @@ def plot_measurements(mm, plotfn, gvs, mjds=[], mjdrange=None, allobs=None,
 
         dt = dict(g=-0.5,r=+0.5,z=0)[band]
 
-        basetime = gvs.base_exptimes[band]
+        fid = nom.fiducial_exptime(band)
+        basetime = fid.exptime
+        lo,hi = fid.exptime_min, fid.exptime_max
+
         plt.axhline(basetime+dt, color=ccmap[band], alpha=0.2)
-        lo,hi = gvs.floor_exptimes[band], gvs.ceil_exptimes[band]
         plt.axhline(lo+dt, color=ccmap[band], ls='--', alpha=0.5)
         plt.axhline(hi+dt, color=ccmap[band], ls='--', alpha=0.5)
         if band == 'z':
-            plt.axhline(gvs.t_sat_max, color=ccmap[band], ls='--', alpha=0.5)
+            plt.plot(Tb.mjd_obs, t_sat, color=ccmap[band], ls='--', alpha=0.5)
+
     plt.ylim(yl,min(mx, yh))
     plt.ylabel('Target exposure time (s)')
 
@@ -430,25 +428,6 @@ def ephemdate_to_mjd(edate):
     mjd = float(edate) + 15019.5
     return mjd
 
-def get_tile_from_name(name, tiles):
-    # Parse objname like 'MzLS_5623_z'
-    parts = name.split('_')
-    ok = (len(parts) == 3)
-    if ok:
-        band = parts[2]
-        ok = ok and (band in 'grz')
-    if not ok:
-        return None
-    try:
-        tileid = int(parts[1])
-    except:
-        return None
-    # Find this tile in the tiles table.
-    I = np.flatnonzero(tiles.tileid == tileid)
-    assert(len(I) == 1)
-    tile = tiles[I[0]]
-    return tile
-
 def set_tile_fields(ccd, hdr, tiles):
     obj = hdr['OBJECT']
     print('Object name', obj)
@@ -463,8 +442,7 @@ def set_tile_fields(ccd, hdr, tiles):
 # SFD map isn't picklable, use global instead
 gSFD = None
 
-def process_image(fn, ext, gvs, sfd, opt, obs, tiles):
-    portion = opt.portion
+def process_image(fn, ext, nom, sfd, opt, obs, tiles):
     db = opt.db
     print('Reading', fn)
 
@@ -479,7 +457,10 @@ def process_image(fn, ext, gvs, sfd, opt, obs, tiles):
     exptime = phdr.get('EXPTIME')
     expnum = phdr.get('EXPNUM', 0)
 
-    filt = phdr['FILTER']
+    if 'FILTER' in phdr:
+        filt = phdr['FILTER']
+    else: 
+        filt = ''
     filt = filt.strip()
     filt = filt.split()[0]
 
@@ -563,6 +544,7 @@ def process_image(fn, ext, gvs, sfd, opt, obs, tiles):
     M = measure_raw(fn, ps=ps, **kwa)
 
     if opt.doplots:
+        from glob import glob
         # Gather all the QAplots into a single pdf and clean them up.
         qafile = 'qa-%i.pdf' % expnum
         pnglist = sorted(glob('qa-%i-??.png' % expnum))
@@ -588,21 +570,22 @@ def process_image(fn, ext, gvs, sfd, opt, obs, tiles):
 
     if trans > 0:
 
-        gvs.transparency = trans
+        fid = nom.fiducial_exptime(band)
 
-        fakezp = -99
-        expfactor = ExposureFactor(band, airmass, ebv, M['seeing'], fakezp,
-                                   M['skybright'], gvs)
+        expfactor = exposure_factor(fid, nom,
+                                    airmass, ebv, M['seeing'], M['skybright'],
+                                    trans)
         print('Exposure factor:              %6.3f' % expfactor)
-        t_exptime = expfactor * gvs.base_exptimes[band]
+        t_exptime = expfactor * fid.exptime
         print('Target exposure time:         %6.1f' % t_exptime)
-        t_exptime = np.clip(t_exptime, gvs.floor_exptimes[band],
-                          gvs.ceil_exptimes[band])
+        t_exptime = np.clip(t_exptime, fid.exptime_min, fid.exptime_max)
         print('Clipped exposure time:        %6.1f' % t_exptime)
     
-        if band == 'z' and t_exptime > gvs.t_sat_max:
-            t_exptime = gvs.t_sat_max
-            print('Reduced exposure time to avoid z-band saturation: %6.1f', t_exptime)
+        if band == 'z':
+            t_sat = nom.saturation_time(band, M['skybright'])
+            if t_exptime > t_sat:
+                t_exptime = t_sat
+                print('Reduced exposure time to avoid z-band saturation: %.1f' % t_exptime)
 
         print
 
@@ -613,9 +596,9 @@ def process_image(fn, ext, gvs, sfd, opt, obs, tiles):
         # If you were going to re-plan, you would run with these args:
         plandict = dict(seeing=M['seeing'], transparency=trans)
         # Assume the sky is as much brighter than canonical in each band... unlikely
-        dsky = M['skybright'] - gvs.sb_dict[M['band']]
+        dsky = M['skybright'] - nom.sky(M['band'])
         for b in 'grz':
-            plandict['sb'+b] = gvs.sb_dict[b] + dsky
+            plandict['sb'+b] = nom.sky(b) + dsky
         # Note that nightlystrategy.py takes UTC dates.
         start = datenow()
         # Start the strategy 5 minutes from now.
@@ -660,7 +643,8 @@ def process_image(fn, ext, gvs, sfd, opt, obs, tiles):
             passnum = 3
         plandict['pass'] = passnum
     
-        plandict['portion'] = portion
+        ## ??
+        plandict['portion'] = 1.0
         
         print('Replan command:')
         print()
@@ -703,7 +687,7 @@ def process_image(fn, ext, gvs, sfd, opt, obs, tiles):
 def bounce_process_image(X):
     process_image(*X)
 
-def plot_recent(opt, gvs, tiles=None, markmjds=[], **kwargs):
+def plot_recent(opt, nom, tiles=None, markmjds=[], **kwargs):
     import obsdb
 
     if opt.mjdend is None:
@@ -743,7 +727,7 @@ def plot_recent(opt, gvs, tiles=None, markmjds=[], **kwargs):
     markmjds.append((ephemdate_to_mjd(morn12),'g'))
     #print('Morning twi12:', morn12, markmjds[-1])
     
-    plot_measurements(mm, plotfn, gvs, allobs=allobs,
+    plot_measurements(mm, plotfn, nom, allobs=allobs,
                       mjdrange=(mjd_start, mjd_end), markmjds=markmjds,
                       **kwargs)
 
@@ -818,12 +802,18 @@ def main(cmdlineargs=None, get_copilot=False):
     import optparse
     parser = optparse.OptionParser(usage='%prog')
 
+    # Mosaic or Decam?
+    from camera import (nominal_cal, ephem_observer, default_extension,
+                        tile_path)
+    nom = nominal_cal
+    obs = ephem_observer()
+    
     plotfn_default = 'recent.png'
     
-    parser.add_option('--ext', help='Extension to read for computing observing conditions: default "N4" for DECam, "im4" for Mosaic3', default=None)
+    parser.add_option('--ext', default=default_extension,
+                      help='Extension to read for computing observing conditions: default %default')
     parser.add_option('--extnum', type=int, help='Integer extension to read')
     parser.add_option('--rawdata', help='Directory to monitor for new images: default $MOS3_DATA if set, else "rawdata"', default=None)
-    parser.add_option('--portion', help='Portion of the night: default %default', type=float, default='1.0')
 
     parser.add_option('--n-fwhm', default=None, type=int, help='Number of stars on which to measure FWHM')
     
@@ -863,7 +853,7 @@ def main(cmdlineargs=None, get_copilot=False):
 
     parser.add_option('--fix-db', action='store_true')
 
-    parser.add_option('--tiles', default='obstatus/mosaic-tiles_obstatus.fits',
+    parser.add_option('--tiles', default=tile_path,
                       help='Tiles table, default %default')
 
     parser.add_option('--no-show', dest='show', default=True, action='store_false',
@@ -885,7 +875,8 @@ def main(cmdlineargs=None, get_copilot=False):
     rawext = opt.ext
     if opt.extnum is not None:
         rawext = opt.extnum
-
+    assert(rawext is not None)
+        
     from astrometry.util.fits import fits_table
     tiles = fits_table(opt.tiles)
 
@@ -971,15 +962,10 @@ def main(cmdlineargs=None, get_copilot=False):
                 traceback.print_exc()
 
         return 0
-            
-    # Get nightlystrategy data structures; use fake command-line args.
-    # these don't matter at all, since we only use the ExposureFactor() function
-    parser,gvs = getParserAndGlobals()
-    nsopt,nsargs = parser.parse_args('--date 2015-01-01 --pass 1 --portion 1'.split())
-    obs = setupGlobals(nsopt, gvs)
+
 
     if opt.plot:
-        plot_recent(opt, gvs, tiles=tiles, markmjds=markmjds, show_plot=False)
+        plot_recent(opt, nom, tiles=tiles, markmjds=markmjds, show_plot=False)
         return 0
         
     print('Loading SFD maps...')
@@ -999,16 +985,16 @@ def main(cmdlineargs=None, get_copilot=False):
             
         if mp is None:
             for fn in fns:
-                process_image(fn, rawext, gvs, sfd, opt, obs, tiles)
+                process_image(fn, rawext, nom, sfd, opt, obs, tiles)
         else:
             sfd = None
             mp.map(bounce_process_image,
-                   [(fn, rawext, gvs, sfd, opt, obs, tiles) for fn in fns])
-        plot_recent(opt, gvs, tiles=tiles, markmjds=markmjds, show_plot=False)
+                   [(fn, rawext, nom, sfd, opt, obs, tiles) for fn in fns])
+        plot_recent(opt, nom, tiles=tiles, markmjds=markmjds, show_plot=False)
         return 0
     
 
-    copilot = Copilot(imagedir, rawext, opt, gvs, sfd, obs, tiles)
+    copilot = Copilot(imagedir, rawext, opt, nom, sfd, obs, tiles)
 
     # for testability
     if get_copilot:
@@ -1018,147 +1004,56 @@ def main(cmdlineargs=None, get_copilot=False):
     return 0
 
 
-class Copilot(object):
+class Copilot(NewFileWatcher):
     def __init__(self, imagedir, rawext,
-                 opt, gvs, sfd, obs, tiles):
-        self.imagedir = imagedir
+                 opt, nom, sfd, obs, tiles):
         self.rawext = rawext
-
-        # How many times to re-try processing a new image file
-        self.maxFail = 10
-
-        self.sleeptime = 5.
-        # How often to re-plot
-        self.plotTimeout = 60.
+        super(Copilot, self).__init__(imagedir, backlog=True)
 
         # How long before we mark a line on the plot because we
         # haven't seen an image.
         self.longtime = 300.
         
-        # Objects passed through to process_image, plot_recent.
+        # Objects passed through to process_file, plot_recent.
         self.opt = opt
-        self.gvs = gvs
+        self.nom = nom
         self.sfd = sfd
         self.obs = obs
         self.tiles = tiles
         
-        # Set oldimages to the empty set so that we process
-        # backlogged images.
-        self.oldimages = set()
-        backlog = self.get_new_images()
-        # (note to self, need explicit backlog because we skip existing
-        # for the backlogged files, unlike new ones.)
-        self.backlog = skip_existing_files(
-            [os.path.join(imagedir, fn) for fn in backlog], rawext)
+    def filter_backlog(self, backlog):
+        return skip_existing_files(
+            [os.path.join(self.dir, fn) for fn in backlog], self.rawext)
 
-        # ... then reset oldimages to the current file list.
-        self.oldimages = set(os.listdir(imagedir))
+    def filter_new_files(self, fns):
+        return [fn for fn in fns if
+                fn.endswith('.fits.fz') or fn.endswith('.fits')]
 
-        # initialize timers for plot_if_time_elapsed()
-        self.lastPlot = self.lastNewImage = datenow()
+    def try_open_file(self, path):
+        print('Trying to open file: %s, ext: %s' % (path, self.rawext))
+        fitsio.read(path, ext=self.rawext)
 
-        # Keep track of how many times we've failed to process a file...
-        self.failCounter = Counter()
-        
-    def get_new_images(self):
-        images = set(os.listdir(self.imagedir))
-        newimgs = images - self.oldimages
-        newimgs = list(newimgs)
-        newimgs = [fn for fn in newimgs if
-                   fn.endswith('.fits.fz') or fn.endswith('.fits')]
-        return newimgs
-
-    def get_newest_image(self):
-        newimgs = self.get_new_images()
-        if len(newimgs) == 0:
-            return None
-        # Take the one with the latest timestamp.
-        latest = None
-        newestimg = None
-        for fn in newimgs:
-            st = os.stat(os.path.join(self.imagedir, fn))
-            t = st.st_mtime
-            if latest is None or t > latest:
-                newestimg = fn
-                latest = t
-        return newestimg
-
-    def plot_if_time_elapsed(self):
+    def timed_out(self, dt):
         now = datenow()
-        dtp = (now - self.lastPlot).total_seconds()
-        if dtp < self.plotTimeout:
-            return
-        dt  = (now - self.lastNewImage).total_seconds()
+        dt  = (now - self.lastNewFile).total_seconds()
         print('No new images seen for', dt, 'seconds.')
         markmjds = []
         if dt > self.longtime:
-            edate = (self.lastNewImage +
+            edate = (self.lastNewFile +
                      datetime.timedelta(0, self.longtime))
             markmjds.append((datetomjd(edate),'r'))
-        self.timeout_plot(markmjds=markmjds)
-
-    def timeout_plot(self, **kwargs):
-        self.plot_recent(**kwargs)
+        self.plot_recent(markmjds=markmjds)
         
-    def plot_recent(self, markmjds=[]):
-        plot_recent(self.opt, self.gvs, tiles=self.tiles, markmjds=markmjds,
-                    show_plot=self.opt.show)
-        self.lastPlot = datenow()
-            
-    def process_image(self, path):
-        return process_image(path, self.rawext, self.gvs, self.sfd,
+    def process_file(self, path):
+        return process_image(path, self.rawext, self.nom, self.sfd,
                              self.opt, self.obs, self.tiles)
-        
-    def run_one(self):
-        fn = self.get_newest_image()
-        if fn is None:
-            self.plot_if_time_elapsed()
-            if len(self.backlog) == 0:
-                return False
-            fn = self.backlog.pop()
 
-        if self.failCounter[fn] >= self.maxFail:
-            print('Failed to read file: %s, ext: %s, %i times.' %
-                  (fn, self.rawext, self.maxFail) + '  Ignoring.')
-            self.oldimages.add(fn)
-            return False
-            
-        path = os.path.join(self.imagedir, fn)
-        print('Found new file:', path)
-        try:
-            print('Trying to open image: %s, ext: %s' % 
-                  (path, self.rawext))
-            fitsio.read(path, ext=self.rawext)
-        except:
-            print('Failed to open %s: maybe not fully written yet.'
-                  % path)
-            self.failCounter.update([fn])
-            return False
-
-        try:
-            self.process_image(path)
-            self.oldimages.add(fn)
-            self.lastNewImage = datenow()
-        except IOError:
-            print('Failed to read FITS image: %s, ext %s' %
-                  (path, self.rawext))
-            import traceback
-            traceback.print_exc()
-            self.failCounter.update([fn])
-            return False
-
+    def processed_file(self, path):
         self.plot_recent()
-        return True
 
-    def run(self):
-        print('Checking directory for new files:', self.imagedir)
-        sleep = False
-        while True:
-            print
-            if sleep:
-                time.sleep(self.sleeptime)
-            gotone = self.run_one()
-            sleep = not gotone
+    def plot_recent(self, markmjds=[]):
+        plot_recent(self.opt, self.nom, tiles=self.tiles, markmjds=markmjds,
+                    show_plot=self.opt.show)
 
 if __name__ == '__main__':
     import obsdb

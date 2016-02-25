@@ -1,187 +1,313 @@
 from __future__ import print_function
-import sys
-import time
-import json
+
+import os
 import datetime
+from collections import Counter
+import time
 
-import matplotlib
-matplotlib.use('Agg')
+import numpy as np
 
-import ephem
+class NominalExptime(object):
+    def update(self, **kwargs):
+        for k,v in kwargs.items():
+            setattr(self, k, v)
 
-from astrometry.util.plotutils import *
-from astrometry.util.fits import *
+class NominalCalibration(object):
+    '''
+    Overridden or instantiated by Mosaic / DECam nominal calibrations.
 
-from nightlystrategy import (
-    ExposureFactor, getParserAndGlobals, setupGlobals,
-    GetAirmass, StartAndEndTimes, s_to_days, readTilesTable, GetNightlyStrategy,
-    WriteJSON)
-from measure_raw import measure_raw_decam
+    Attributes (must) include:
 
-from RemoteClient import RemoteClient
-
-if False:
-    M = measure_raw_decam('DECam_00488199.fits.fz')
-    sys.exit(0)
-
-if False:
-    rc = RemoteClient()
-    pid = rc.execute('get_propid')
-    print('Got propid:', pid)
-
-ps = PlotSequence('raw')
-
-
-
-parser,gvs = getParserAndGlobals()
-
-parser.add_option('--plan', help='Use the given plan file (JSON) rather than computing a new plan.')
-parser.add_option('--ext', help='Extension to read for computing observing conditions: default %default', default='N4')
-
-opt,args = parser.parse_args()
-
-if opt.date is None:
-    # Figure out the date.  Note that we have to figure out the date
-    # at the START of the night.
-    now = datetime.datetime.now()
-    # Let's make a new day start at 9am, so subtract 9 hours from now
-    nightstart = now - datetime.timedelta(0, 9 * 3600)
-    d = nightstart.date()
-    opt.date = '%04i-%02i-%02i' % (d.year, d.month, d.day)
-    print('Setting date to', opt.date)
-
-# If start time was not specified, set it to NOW.
-default_time = '00:00:00'
-if opt.start_time == default_time and opt.portion is None:
-    # Note that nightlystrategy.py takes UTC dates.
-    now = datetime.datetime.utcnow()
-    d = now.date()
-    opt.start_date = '%04i-%02i-%02i' % (d.year, d.month, d.day)
-    t = now.time()
-    opt.start_time = t.strftime('%H:%M:%S')
-    print('Setting start to %s %s UTC' % (opt.start_date, opt.start_time))
-
-if opt.portion is None:
-    opt.portion = 1
+    - pixscale -- in arcsec/pixel
+    - overhead -- in seconds
     
-obs = setupGlobals(opt, gvs)
+    '''
 
-#
-if opt.plan is None:
-    # the filename written by nightlystrategy.py
-    jsonfn = 'decals_%s_plan.json' % opt.date
+    def zeropoint(self, band, ext=None):
+        pass
 
-    # Generate nightly strategy.
-    tiles,survey_centers = readTilesTable(opt.tiles, gvs)
-    plan = GetNightlyStrategy(obs, opt.date, opt.portion, survey_centers,
-                              opt.passnumber, gvs)
-    WriteJSON(plan, jsonfn)
+    def sky(self, band):
+        pass
 
-else:
-    jsonfn = opt.plan
-    
-J = json.loads(open(jsonfn,'rb').read())
+    def fiducial_exptime(self, band):
+        '''
+        Returns an object with attributes:
 
-tiles = fits_table(opt.tiles)
-
-imagedir = 'rawdata'
-lastimages = set(os.listdir(imagedir))
-
-for j in J:
-    print('Planned tile:', j)
-
-    # Wait for a new image to appear
-    while True:
-        images = set(os.listdir(imagedir))
-        newimgs = images - lastimages
-        newimgs = list(newimgs)
-        newimgs = [fn for fn in newimgs if fn.endswith('.fits.fz')]
-        print('New images:', newimgs)
-        if len(newimgs) == 0:
-            time.sleep(5.)
-            continue
-        lastimages = images
-        break
-
-    fn = os.path.join(imagedir, newimgs[0])
-    for i in range(10):
-        try:
-            fitsio.read(fn, ext=opt.ext)
-        except:
-            print('Failed to open', fn, '-- maybe not fully written yet.')
-            import traceback
-            traceback.print_exc()
-            time.sleep(3)
-            continue
-
-    M = measure_raw_decam(fn, ext=opt.ext, ps=ps)
-    
-    #M = measure_raw_decam('DECam_00488199.fits.fz')
-    #M = {'seeing': 1.4890481099577366, 'airmass': 1.34,
-    #'skybright': 18.383479116033314, 'transparency': 0.94488537276869045,
-    #'band': 'z', 'zp': 26.442847814941093}
-
-    print('Measurements:', M)
-
-    gvs.transparency = M['transparency']
-
-    objname = j['object']
-    # Parse objname like 'DECaLS_5623_z'
-    parts = objname.split('_')
-    assert(len(parts) == 3)
-    assert(parts[0] == 'DECaLS')
-    nextband = parts[2]
-    assert(nextband in 'grz')
-    tilenum = int(parts[1])
-
-    print('Planned tile:', tilenum, nextband)
-
-    # Set current date
-    obs.date = ephem.now()
-
-    present_tile = ephem.readdb(str(objname+','+'f'+','+('%.6f' % j['RA'])+','+
-                                    ('%.6f' % j['dec'])+','+'20'))
-    present_tile.compute(obs)
-    airmass = GetAirmass(float(present_tile.alt))
-    print('Airmass of planned tile:', airmass)
-
-    # Find this tile in the tiles table.
-    tile = tiles[tilenum-1]
-    if tile.tileid != tilenum:
-        I = np.flatnonzero(tile.tileid == tilename)
-        assert(len(I) == 1)
-        tile = tiles[I[0]]
-
-    ebv = tile.ebv_med
-    print('E(b-v) of planned tile:', ebv)
-
-    if M['band'] == nextband:
-        skybright = M['skybright']
-    else:
-        # Guess that the sky is as much brighter than canonical
-        # in the next band as it is in this one!
-        skybright = ((M['skybright'] - gvs.sb_dict[M['band']]) +
-                     gvs.sb_dict[nextband])
-
-    fakezp = -99
-    expfactor = ExposureFactor(nextband, airmass, ebv, M['seeing'], fakezp,
-                               skybright, gvs)
-    print('Exposure factor:', expfactor)
-
-    band = nextband
-    exptime = expfactor * gvs.base_exptimes[band]
-    print('Exptime (un-clipped)', exptime)
-    exptime = np.clip(exptime, gvs.floor_exptimes[band], gvs.ceil_exptimes[band])
-    print('Clipped exptime', exptime)
-    
-    if band == 'z' and exptime > gvs.t_sat_max:
-        exptime = gvs.t_sat_max
-        print('Reduced exposure time to avoid z-band saturation:', exptime)
-
-    print
+        - skybright
+        - k_co
+        - A_co
+        - seeing
+        - exptime, exptime_min, exptime_max
 
         
-# rc = RemoteClient()
-# pid = rc.execute('get_propid')
-# print('Got propid:', pid)
+        '''
+        fid = NominalExptime()
 
+        if band == 'g':
+            fid.update(
+                exptime     =  50.,
+                exptime_max = 125.,
+                exptime_min =  40.,
+                )
+
+        elif band == 'r':
+            fid.update(
+                exptime     =  50.,
+                exptime_max = 125.,
+                exptime_min =  40.,
+                )
+
+        elif band == 'z':
+            fid.update(
+                exptime     = 100.,
+                exptime_max = 250.,
+                exptime_min =  80.,
+                )
+        else:
+            raise ValueError('Unknown band "%s"' % band)
+
+        fid.update(
+            skybright = self.sky(band),
+            seeing = 1.3,
+            )
+
+        # Camera-specific update:
+        fid = self._fiducial_exptime(fid, band)
+        
+        return fid
+
+    def _fiducial_exptime(self, fid, band):
+        return fid
+
+    def saturation_time(self, band, skybright):
+        skyflux = 10. ** ((skybright - self.zeropoint(band)) / -2.5)
+        skyflux *= self.pixscale**2
+        # print('Predicted sky flux per pixel per second: %.1f' %skyflux)
+        t_sat = 30000. / skyflux
+        return t_sat
+
+            
+    
+    
+# From Anna Patej's nightlystrategy / mosaicstrategy
+def exposure_factor(fid, cal,
+                    airmass, ebv, seeing, skybright, transparency):
+    '''
+    Computes a factor by which the exposure time should be scaled
+    relative to nominal.
+
+    *fid*: fiducial exposure time properties
+    *cal*: nominal camera calibration properties
+    *airmass*: airmass, float > 1
+    *ebv*: extinction E(B-V) mags
+    *seeing*: FWHM in arcsec
+    *skybright*: sky brightness
+    *transparency*: sky transparency
+
+    Returns:
+    scaling: exposure time scale factor,
+      scaling = T_new/T_fiducial
+
+
+    '''
+
+    r_half = 0.45 #arcsec
+    ps = cal.pixscale
+
+    def Neff(seeing):
+        # magic 2.35: convert seeing FWHM into sigmas in arcsec.
+        return (4. * np.pi * (seeing / 2.35)**2 +
+                8.91 * r_half**2 +
+                ps**2/12.)
+
+    # Nightlystrategy.py has:
+    # pfact = 1.15
+    # Neff_fid = ((4.0*np.pi*sig_fid**2)**(1.0/pfact)+(8.91*r_half**2)**(1.0/pfact))**pfact
+
+    
+    neff_fid = Neff(fid.seeing)
+    neff     = Neff(seeing)
+
+    # print('exposure_factor:')
+    # print('Transparency:', transparency)
+    # print('airmass:', airmass)
+    # print('ebv:', ebv)
+    # print('seeing:', seeing)
+    # print('sky:', skybright)
+    # print('neff:', neff, 'fid', neff_fid)
+    
+    scaling = (1./transparency**2 *
+               10.**(0.8 * fid.k_co * (airmass - 1.)) *
+               10.**(0.8 * fid.A_co * ebv) *
+               (neff / neff_fid) *
+               10.**(-0.4 * (skybright - fid.skybright)))
+    return scaling
+
+# From Anna Patej's nightlystrategy / mosaicstrategy
+def get_airmass(alt):
+    if (alt < 0.07):
+        alt = 0.07
+    secz = 1.0/np.sin(alt)
+    seczm1 = secz-1.0
+    airm = secz-0.0018167*seczm1-0.002875*seczm1**2-0.0008083*seczm1**3
+    return airm
+
+
+def get_tile_from_name(name, tiles):
+    # Parse objname like 'MzLS_5623_z'
+    parts = name.split('_')
+    ok = (len(parts) == 3)
+    if ok:
+        band = parts[2]
+        ok = ok and (band in 'grz')
+    if not ok:
+        return None
+    try:
+        tileid = int(parts[1])
+    except:
+        return None
+    # Find this tile in the tiles table.
+    I = np.flatnonzero(tiles.tileid == tileid)
+    assert(len(I) == 1)
+    tile = tiles[I[0]]
+    return tile
+
+def datenow():
+    return datetime.datetime.utcnow()
+
+def mjdnow():
+    from astrometry.util.starutil_numpy import datetomjd
+    return datetomjd(datenow())
+
+class NewFileWatcher(object):
+    def __init__(self, dir, backlog=True, only_process_newest=False):
+        self.dir = dir
+        self.only_process_newest = only_process_newest
+
+        # How many times to re-try processing a new file
+        self.maxFail = 10
+
+        self.sleeptime = 5.
+
+        # How often to call the timeout function -- this is the time
+        # since the last new file was seen, OR since the last time the
+        # timeout was called.
+        self.timeout = 60.
+
+        # Get current file list
+        files = set(os.listdir(self.dir))
+
+        if backlog:
+            # (note to self, need explicit backlog because we skip existing
+            # for the backlogged files, unlike new ones.)
+            self.backlog = self.filter_backlog(files)
+            # ... then reset oldfiles to the current file list.
+            self.oldfiles = set(files)
+        else:
+            self.backlog = set()
+            self.oldfiles = set(self.filter_new_files(files))
+            
+        # initialize timeout counter
+        self.lastTimeout = datenow()
+        self.lastNewFile = datenow()
+
+        # Keep track of how many times we've failed to process a file...
+        self.failCounter = Counter()
+
+    def filter_backlog(self, backlog):
+        return self.filter_new_files(backlog)
+
+    def filter_new_files(self, fns):
+        return fns
+
+    def timed_out(self, dt):
+        pass
+    
+    def get_new_files(self):
+        files = set(os.listdir(self.dir))
+        newfiles = list(files - self.oldfiles)
+        newfiles = self.filter_new_files(newfiles)
+        return newfiles
+
+    def get_newest_file(self, newfiles=None):
+        if newfiles is None:
+            newfiles = self.get_new_files()
+        if len(newfiles) == 0:
+            return None
+        # Take the one with the latest timestamp.
+        latest = None
+        newestfile = None
+        for fn in newfiles:
+            st = os.stat(os.path.join(self.dir, fn))
+            t = st.st_mtime
+            if latest is None or t > latest:
+                newestfile = fn
+                latest = t
+        return newestfile
+
+    def try_open_file(self, path):
+        pass
+    
+    def heartbeat(self):
+        pass
+
+    def run_one(self):
+        fns = self.get_new_files()
+        fn = self.get_newest_file(newfiles=fns)
+        if fn is None:
+            if self.timeout is None:
+                return False
+            # Check timeout
+            now = datenow()
+            dt = (now - self.lastTimeout).total_seconds()
+            if dt < self.timeout:
+                return False
+            self.timed_out(dt)
+            self.lastTimout = datenow()
+            if len(self.backlog) == 0:
+                return False
+            fn = self.backlog.pop()
+
+        if self.failCounter[fn] >= self.maxFail:
+            print('Failed to process file: %s, %i times.  Ignoring.' %
+                  (fn, self.maxFail))
+            self.oldfiles.add(fn)
+            return False
+            
+        path = os.path.join(self.dir, fn)
+        print('Found new file:', path)
+        try:
+            self.try_open_file(path)
+        except:
+            print('Failed to open %s: maybe not fully written yet.' % path)
+            self.failCounter.update([fn])
+            return False
+
+        try:
+            self.process_file(path)
+            if self.only_process_newest:
+                self.oldfiles.update(fns)
+            else:
+                self.oldfiles.add(fn)
+            self.processed_file(path)
+            self.lastNewFile = self.lastTimeout = datenow()
+            return True
+            
+        except IOError:
+            print('Failed to read file: %s' % path)
+            import traceback
+            traceback.print_exc()
+            self.failCounter.update([fn])
+            return False
+
+    def run(self):
+        print('Checking directory for new files:', self.dir)
+        sleep = False
+        while True:
+            print
+            if sleep:
+                time.sleep(self.sleeptime)
+            gotone = self.run_one()
+            sleep = not gotone
+            self.heartbeat()
+    
