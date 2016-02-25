@@ -14,7 +14,7 @@ class TestCopilot(TestCase):
         from obsdb.models import MeasuredCCD
         fn = os.path.join(self.testdatadir, 'mos3.68488.im4.fits.fz')
 
-        args = ['--n-fwhm', '10']
+        args = ['--n-fwhm', '10', '--ext', 'im4']
         
         # Check that 'skip_existing_files' works correctly
         rawext = 'im4'
@@ -63,7 +63,10 @@ class TestCopilot(TestCase):
         dirname = tempfile.mkdtemp()
         os.environ['MOS3_DATA'] = dirname
 
-        args = ['--n-fwhm', '10']
+        # add --ext im4 so that at DECam site (where default extension
+        # is different) this still works... is this exposing dumbness
+        # of site-specific extension defaults?
+        args = ['--n-fwhm', '10', '--ext', 'im4']
         copilot = main(cmdlineargs=args, get_copilot=True)
 
         def fake_process_file(self, fn):

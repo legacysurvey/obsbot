@@ -70,6 +70,9 @@ if __name__ == '__main__':
 
     rc = RemoteClient()
     #res = rc.addexposure(exptype='zero')
-    res = rc.addexposure(ra=42, dec=12, exptime=17., filter='g')
+    #res = rc.addexposure(ra=42, dec=12, exptime=17., filter='g')
+
+    res = rc.execute('get_propid')
+
     print('Got:', res)
 
