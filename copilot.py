@@ -457,9 +457,10 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
     exptime = phdr.get('EXPTIME')
     expnum = phdr.get('EXPNUM', 0)
 
-    filt = phdr['FILTER']
-    filt = filt.strip()
-    filt = filt.split()[0]
+    filt = phdr.get('FILTER', None)
+    if filt is not None:
+        filt = filt.strip()
+        filt = filt.split()[0]
 
     airmass = phdr['AIRMASS']
     ra  = hmsstring2ra (phdr['RA'])

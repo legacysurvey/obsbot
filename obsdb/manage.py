@@ -7,6 +7,7 @@ if __name__ == "__main__":
     sys.path.append(basedir)
     
     import obsdb
+    print 'obsdb:', dir(obsdb)
     obsdb.django_setup()
 
     from django.core.management import execute_from_command_line
