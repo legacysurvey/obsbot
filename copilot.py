@@ -500,7 +500,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         m.airmass = airmass
         m.rabore  = ra
         m.decbore = dec
-        m.band = phdr['FILTER'][0]
+        m.band = filt
         m.bad_pixcnt = ('PIXCNT1' in phdr)
         m.readtime = phdr.get('READTIME', 0.)
 
