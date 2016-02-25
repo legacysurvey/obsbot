@@ -8,13 +8,15 @@ class TestCopilot(TestCase):
         self.testdatadir = os.path.join(os.path.dirname(__file__),
                                         'testdata')
 
+        self.mos_args = ['--ext', 'im4', '--tiles', 'obstatus/mosaic-tiles_obstatus.fits']
+        
     def test_cmdline_args(self):
         from copilot import main, skip_existing_files
         
         from obsdb.models import MeasuredCCD
         fn = os.path.join(self.testdatadir, 'mos3.68488.im4.fits.fz')
 
-        args = ['--n-fwhm', '10', '--ext', 'im4']
+        args = self.mos_args + ['--n-fwhm', '10']
         
         # Check that 'skip_existing_files' works correctly
         rawext = 'im4'
@@ -66,7 +68,7 @@ class TestCopilot(TestCase):
         # add --ext im4 so that at DECam site (where default extension
         # is different) this still works... is this exposing dumbness
         # of site-specific extension defaults?
-        args = ['--n-fwhm', '10', '--ext', 'im4']
+        args = self.mos_args + ['--n-fwhm', '10']
         copilot = main(cmdlineargs=args, get_copilot=True)
 
         def fake_process_file(self, fn):
@@ -143,6 +145,35 @@ class TestCopilot(TestCase):
         os.unlink(tmpfn)
         os.rmdir(dirname)
 
+
+    def test_focus(self):
+        from copilot import main, Copilot
+        import tempfile
+        import time
+        
+        # Test reading a new image from $MOS3_DATA
+        dirname = tempfile.mkdtemp()
+        os.environ['MOS3_DATA'] = dirname
+
+        # add --ext im4 so that at DECam site (where default extension
+        # is different) this still works... is this exposing dumbness
+        # of site-specific extension defaults?
+        args = self.mos_args + ['--n-fwhm', '10']
+        copilot = main(cmdlineargs=args, get_copilot=True)
+
+        # Create symlink to focus frame
+        fn = 'mos3.63127.im4.fits.fz'
+        path = os.path.join(self.testdatadir, fn)
+        sym = os.path.join(dirname, fn)
+        os.symlink(path, sym)
+
+        copilot.run_one()
+        
+        # Clean up
+        os.unlink(sym)
+        os.rmdir(dirname)
+
+        
 if __name__ == '__main__':
     unittest.main()
     

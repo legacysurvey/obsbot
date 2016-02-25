@@ -85,6 +85,9 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
             return cimg, trim, trim
 
     def run(self, ps=None, plotfn=None):
+        from astrometry.libkd.spherematch import match_xy
+        from legacyanalysis.ps1cat import ps1cat
+        import photutils
         meas = super(Mosaic3FocusMeas, self).run(ps=ps, focus=True)
         # momentsize=10)
 
@@ -276,6 +279,7 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
             
 
     def fit_general_gaussian(self, img, sig1, xi, yi, fluxi, psf_r=15, ps=None):
+        import tractor
         H,W = img.shape
         ix = int(np.round(xi))
         iy = int(np.round(yi))
