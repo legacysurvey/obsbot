@@ -222,6 +222,9 @@ class NewFileWatcher(object):
 
     def timed_out(self, dt):
         pass
+
+    def processed_file(self, path):
+        pass
     
     def get_new_files(self):
         files = set(os.listdir(self.dir))
