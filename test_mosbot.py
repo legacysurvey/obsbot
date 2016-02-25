@@ -8,12 +8,7 @@ class TestMosbot(unittest.TestCase):
     def setUp(self):
         self.testdatadir = os.path.join(os.path.dirname(__file__),
                                         'testdata')
-
-    def test_new_file(self):
-        from mosbot import main
         import tempfile
-        tempdir = tempfile.mkdtemp()
-        args = ['--script', os.path.join(tempdir, 'tonight.sh')]
 
         fn1 = os.path.join(self.testdatadir, 'pass1.json')
         fn2 = os.path.join(self.testdatadir, 'pass2.json')
@@ -42,8 +37,16 @@ class TestMosbot(unittest.TestCase):
             json.dump(J, f, sort_keys=True, indent=4, separators=(',', ': '))
             f.close()
                 
-        args += [tmpfn1, tmpfn2, tmpfn3]
+        self.jsonfiles = [tmpfn1, tmpfn2, tmpfn3]
 
+        
+    def test_new_file(self):
+        from mosbot import main
+        import tempfile
+
+        tempdir = tempfile.mkdtemp()
+        args = ['--script', os.path.join(tempdir, 'tonight.sh')]
+        args += self.jsonfiles
         mosbot = main(cmdlineargs=args, get_mosbot=True)
 
         # write sequence number
@@ -55,5 +58,23 @@ class TestMosbot(unittest.TestCase):
         mosbot.process_file(fn)
             
 
+    def XXXtest_run(self):
+        from mosbot import main
+
+        import tempfile
+        tempdir = tempfile.mkdtemp()
+        args = ['--script', os.path.join(tempdir, 'tonight.sh')]
+        args += self.jsonfiles
+
+        mosbot = main(cmdlineargs=args, get_mosbot=True)
+
+        # write sequence number
+        f = open(mosbot.seqnumpath, 'w')
+        f.write('10\n')
+        f.close()
+
+        mosbot.run()
+
+        
 if __name__ == '__main__':
     unittest.main()
