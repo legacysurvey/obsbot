@@ -363,8 +363,8 @@ class Decbot(NewFileWatcher):
         for i,j in enumerate(J):
             tstart = ephem.Date(str(j['approx_datetime']))
             if tstart > now:
-                print('Found tile %s which starts at %s' %
-                      (j['object'], str(tstart)))
+                #print('Found tile %s which starts at %s' %
+                #      (j['object'], str(tstart)))
                 keep.append(j)
         return keep
     

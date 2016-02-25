@@ -75,7 +75,8 @@ class TestDecbot(unittest.TestCase):
         args += ['--remote-port',   str(self.server.url.port)]
 
         decbot = main(cmdlineargs=args, get_decbot=True)
-
+        decbot.queue_initial_exposures()
+        
         fn = os.path.join(self.testdatadir, 'decam-00488199-n4.fits.fz')
         decbot.process_file(fn)
 
