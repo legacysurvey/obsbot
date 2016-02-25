@@ -195,7 +195,7 @@ class NewFileWatcher(object):
         self.timeout = 60.
 
         # Get current file list
-        files = set(os.listdir(self.dir))
+        files = self.get_file_list()
 
         if backlog:
             # (note to self, need explicit backlog because we skip existing
@@ -225,9 +225,13 @@ class NewFileWatcher(object):
 
     def processed_file(self, path):
         pass
-    
-    def get_new_files(self):
+
+    def get_file_list(self):
         files = set(os.listdir(self.dir))
+        return [os.path.join(self.dir, fn) for fn in files]
+            
+    def get_new_files(self):
+        files = set(self.get_file_list())
         newfiles = list(files - self.oldfiles)
         newfiles = self.filter_new_files(newfiles)
         return newfiles
@@ -241,7 +245,7 @@ class NewFileWatcher(object):
         latest = None
         newestfile = None
         for fn in newfiles:
-            st = os.stat(os.path.join(self.dir, fn))
+            st = os.stat(fn)
             t = st.st_mtime
             if latest is None or t > latest:
                 newestfile = fn
@@ -278,27 +282,26 @@ class NewFileWatcher(object):
             self.oldfiles.add(fn)
             return False
             
-        path = os.path.join(self.dir, fn)
-        print('Found new file:', path)
+        print('Found new file:', fn)
         try:
-            self.try_open_file(path)
+            self.try_open_file(fn)
         except:
-            print('Failed to open %s: maybe not fully written yet.' % path)
+            print('Failed to open %s: maybe not fully written yet.' % fn)
             self.failCounter.update([fn])
             return False
 
         try:
-            self.process_file(path)
+            self.process_file(fn)
             if self.only_process_newest:
                 self.oldfiles.update(fns)
             else:
                 self.oldfiles.add(fn)
-            self.processed_file(path)
+            self.processed_file(fn)
             self.lastNewFile = self.lastTimeout = datenow()
             return True
             
         except IOError:
-            print('Failed to read file: %s' % path)
+            print('Failed to read file: %s' % fn)
             import traceback
             traceback.print_exc()
             self.failCounter.update([fn])

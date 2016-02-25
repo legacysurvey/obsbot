@@ -33,6 +33,7 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
         return f0 + step * np.arange(nsteps)
     
     def detection_map(self, img, sig1, psfsig, ps):
+        from scipy.ndimage.filters import gaussian_filter
         # Compute detection map
         psfnorm = 1./(2. * np.sqrt(np.pi) * psfsig)
         detsn = gaussian_filter(img / sig1, psfsig) / psfnorm

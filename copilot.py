@@ -512,7 +512,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
             plt.figure(2, figsize=(8,10))
         if ext is None:
             ext = get_default_extension(fn)
-        meas = Mosaic3FocusMeas(fn, ext)
+        meas = Mosaic3FocusMeas(fn, ext, nom)
         focusfn = 'focus.png'
         meas.run(ps=None, plotfn=focusfn)
         print('Wrote', focusfn)
@@ -1021,8 +1021,7 @@ class Copilot(NewFileWatcher):
         
     def filter_backlog(self, backlog):
         backlog = self.filter_new_files(backlog)
-        return skip_existing_files(
-            [os.path.join(self.dir, fn) for fn in backlog], self.rawext)
+        return skip_existing_files(backlog, self.rawext)
 
     def filter_new_files(self, fns):
         return [fn for fn in fns if
