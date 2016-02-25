@@ -1020,6 +1020,7 @@ class Copilot(NewFileWatcher):
         self.tiles = tiles
         
     def filter_backlog(self, backlog):
+        backlog = self.filter_new_files(backlog)
         return skip_existing_files(
             [os.path.join(self.dir, fn) for fn in backlog], self.rawext)
 
