@@ -284,7 +284,7 @@ class NewFileWatcher(object):
             dt = (now - self.lastTimeout).total_seconds()
             if dt > self.timeout:
                 self.timed_out(dt)
-                self.lastTimout = datenow()
+                self.lastTimeout = datenow()
             if len(self.backlog) == 0:
                 return False
             fn = self.backlog.pop()
