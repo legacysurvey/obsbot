@@ -1055,5 +1055,6 @@ class Copilot(NewFileWatcher):
 
 if __name__ == '__main__':
     import obsdb
-    obsdb.django_setup()
+    from camera import database_filename
+    obsdb.django_setup(database_filename=database_filename)
     main()

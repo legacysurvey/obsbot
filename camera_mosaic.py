@@ -2,6 +2,8 @@ from mosaic import *
 
 camera_name = 'mosaic3'
 
+database_filename = camera_name + '.sqlite3'
+
 nominal_cal = MosaicNominalCalibration()
 
 default_extension = 'im4'

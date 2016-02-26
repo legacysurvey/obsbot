@@ -2,6 +2,8 @@ from decam import *
 
 camera_name = 'decam'
 
+database_filename = camera_name + '.sqlite3'
+
 nominal_cal = DecamNominalCalibration()
 
 default_extension = 'N4'

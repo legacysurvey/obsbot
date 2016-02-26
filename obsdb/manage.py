@@ -10,8 +10,10 @@ if __name__ == "__main__":
     from django.conf import settings
     
     import obsdb
-    print 'obsdb:', dir(obsdb)
-    obsdb.django_setup()
+    #print 'obsdb:', dir(obsdb)
+    from camera import database_filename
+    obsdb.django_setup(database_filename=database_filename)
+    #obsdb.django_setup()
 
     from django.core.management import execute_from_command_line
     execute_from_command_line(sys.argv)
