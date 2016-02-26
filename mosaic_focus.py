@@ -352,8 +352,9 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
                     break
         except:
             import traceback
+            print('Error during fitting PSF in a focus frame; not to worry')
             traceback.print_exc()
-            pass
+            print('(The above was just an error during fitting one star in a focus frame; not to worry.)')
                 
         # Don't need to re-fit source params because PSF ampl and mean
         # can fit for flux and position.
