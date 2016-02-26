@@ -106,6 +106,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
                       markmjds=[], show_plot=True):
     import pylab as plt
     T = db_to_fits(mm)
+    T.band = np.core.defchararray.replace(T.band, 'zd', 'z')
     print(len(T), 'exposures')
 
     T.mjd_end = T.mjd_obs + T.exptime / 86400.
