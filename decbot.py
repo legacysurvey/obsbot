@@ -464,6 +464,16 @@ class Decbot(NewFileWatcher):
         os.rename(tmpfn, fn)
         print('Wrote', fn)
 
+        fn = 'decbot-plan-5.json'
+        tmpfn = fn + '.tmp'
+        jstr = json.dumps(self.upcoming[:5], sort_keys=True,
+                          indent=4, separators=(',', ': '))
+        f = open(tmpfn, 'w')
+        f.write(jstr + '\n')
+        f.close()
+        os.rename(tmpfn, fn)
+        print('Wrote', fn)
+        
         # Write a FITS table of the exposures we think we've queued,
         # the ones we have planned, and the future tiles in passes 1,2,3.
         P = ([(self.planned_tiles[s],'Q') for s in range(self.seqnum)] +
