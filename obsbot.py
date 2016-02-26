@@ -258,8 +258,23 @@ class NewFileWatcher(object):
     def heartbeat(self):
         pass
 
+    def seen_files(self, fns):
+        '''
+        The given list of filenames has been seen, ie, will not appear
+        as new files.  This can include files from the backlog as they are
+        processed.
+        '''
+        pass
+
+    def saw_new_files(self, fns):
+        '''We found new files in the directory we're monitoring.
+        Files from the backlog don't get this function called.'''
+        pass
+    
     def run_one(self):
         fns = self.get_new_files()
+        if len(fns):
+            self.saw_new_files(fns)
         fn = self.get_newest_file(newfiles=fns)
         if fn is None:
             if self.timeout is None:
@@ -294,8 +309,10 @@ class NewFileWatcher(object):
             self.process_file(fn)
             if self.only_process_newest:
                 self.oldfiles.update(fns)
+                self.seen_files(fns)
             else:
                 self.oldfiles.add(fn)
+                self.seen_files([fn])
             self.processed_file(fn)
             self.lastNewFile = self.lastTimeout = datenow()
             return True

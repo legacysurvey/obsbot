@@ -1,3 +1,10 @@
+'''
+        # - queue new exposure from planned_tiles when we think the
+        #   current exposure is nearly done; update seqnum
+        # - update planned_tiles as new images come in
+        #   - write out a JSON plan with the upcoming tiles, as a backup.
+'''
+
 from __future__ import print_function
 import sys
 import time
@@ -128,11 +135,11 @@ class Decbot(NewFileWatcher):
         self.seqnum = 0
         self.planned_tiles = OrderedDict()
         self.upcoming = []
+
+        # Read existing files,recording their tile names as vetoes.
+        self.observed_tiles = {}
+        self.new_observed_tiles(self.oldfiles)
         
-        # - queue new exposure from planned_tiles when we think the
-        #   current exposure is nearly done; update seqnum
-        # - update planned_tiles as new images come in
-        #   - write out a JSON plan with the upcoming tiles, as a backup.
 
         # Set up initial planned_tiles
         J = [J1,J2,J3][opt.passnum - 1]
@@ -153,7 +160,26 @@ class Decbot(NewFileWatcher):
         self.queuetime = (datenow() +
                           datetime.timedelta(0, dt))
         self.queuetime = self.queuetime.replace(microsecond = 0)
-        
+
+    def saw_new_files(self, fns):
+        # Update the veto list of tiles we have taken tonight.
+        self.new_observed_tiles(fns)
+
+    def new_observed_tiles(self, fns):
+        ''' Reads the given list of files, looking for "OBJECT" keywords;
+        adds them to observed_tiles.'''
+        for fn in fns:
+            try:
+                phdr = fitsio.read_header(fn)
+                obj = phdr['OBJECT']
+                obj = str(obj).strip()
+                print('Old file', fn, 'observed object', obj)
+                self.observed_tiles[obj] = fn
+            except:
+                import traceback
+                print('Failed to read header of file', fn)
+                traceback.print_exc()
+    
     def heartbeat(self):
         if self.queuetime is None:
             return
@@ -174,6 +200,9 @@ class Decbot(NewFileWatcher):
         self.write_plans()
         
     def queue_exposure(self):
+        if not self.seqnum in self.planned_tiles:
+            print('No more tiles in the plan (seqnum = %i)!' % self.seqnum)
+            return
         j = self.planned_tiles[self.seqnum]
         self.seqnum += 1
         # FIXME -- actually queue j...
@@ -211,7 +240,7 @@ class Decbot(NewFileWatcher):
         expnum = phdr.get('EXPNUM', 0)
     
         obstype = phdr.get('OBSTYPE','').strip()
-        print('obstype:', obstype)
+        print('Obstype:', obstype)
         if obstype in ['zero', 'focus', 'dome flat']:
             print('Skipping obstype =', obstype)
             return False
@@ -231,7 +260,10 @@ class Decbot(NewFileWatcher):
         if filt == 'solid':
             print('Solid (block) filter.')
             return False
-    
+
+        obj = phdr.get('OBJECT', '')
+        print('Object:', obj)
+        
         # Measure the new image
         kwa = {}
         if ext is not None:
@@ -389,6 +421,11 @@ class Decbot(NewFileWatcher):
             print('Considering planning tile %s for exp %i' %
                   (tilename, nextseq))
 
+            if tilename in self.observed_tiles:
+                oldfn = self.observed_tiles[tilename]
+                print('Tile %s was observed in file %s' % (tilename, oldfn))
+                continue
+            
             # Check all planned tiles before this one for a duplicate tile.
             dup = False
             for s in range(nextseq-1, 0, -1):
