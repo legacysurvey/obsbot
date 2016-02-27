@@ -30,6 +30,9 @@ class RemoteClient():
     def stopexposure(self):
         return self.execute('stopexposure')
 
+    def get_n_queued(self):
+        return self.execute('get_nqueue')
+
     def addexposure(self, exptime=10., exptype='object', filter='r',
                     object=None, ra=0., dec=0.):
         import json
@@ -72,7 +75,9 @@ if __name__ == '__main__':
     #res = rc.addexposure(exptype='zero')
     #res = rc.addexposure(ra=42, dec=12, exptime=17., filter='g')
 
-    res = rc.execute('get_propid')
+    res = rc.get_propid()
+    print('Got propid:', res)
 
-    print('Got:', res)
+    res = rc.get_n_queued()
+    print('Got N queued:', res)
 
