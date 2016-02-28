@@ -200,7 +200,23 @@ class RawMeasurer(object):
         skybr = -2.5 * np.log10(sky1/pixsc/pixsc/exptime) + zp0
         print('Sky brightness: %8.3f mag/arcsec^2' % skybr)
         print('Fiducial:       %8.3f mag/arcsec^2' % sky0)
-    
+
+        # Read WCS header and compute boresight
+        wcs = self.get_wcs(hdr)
+        ra_ccd,dec_ccd = wcs.pixelxy2radec((fullW+1)/2., (fullH+1)/2.)
+
+        camera = primhdr.get('INSTRUME','').strip().lower()
+        # -> "decam" / "mosaic3"
+        meas = dict(band=band, airmass=airmass, 
+                    skybright=skybr, rawsky=sky1,
+                    pixscale=pixsc, primhdr=primhdr,
+                    hdr=hdr, wcs=wcs, ra_ccd=ra_ccd, dec_ccd=dec_ccd,
+                    extension=ext, camera=camera)
+        
+        if not np.isfinite(skybr):
+            print('Measured negative sky brightness:', sky1, 'counts')
+            return meas
+        
         img -= sky
 
         self.remove_sky_gradients(img)
@@ -216,10 +232,6 @@ class RawMeasurer(object):
             plt.colorbar()
             ps.savefig()
 
-        # Read WCS header and compute boresight
-        wcs = self.get_wcs(hdr)
-        ra_ccd,dec_ccd = wcs.pixelxy2radec((fullW+1)/2., (fullH+1)/2.)
-
         # Detect stars
         psfsig = self.nominal_fwhm / 2.35
         detsn = self.detection_map(img, sig1, psfsig, ps)
@@ -231,13 +243,8 @@ class RawMeasurer(object):
             print(len(slices), 'sources detected')
         ndetected = len(slices)
 
-        camera = primhdr.get('INSTRUME','').strip().lower()
         # -> "decam" / "mosaic3"
-        meas = dict(band=band, airmass=airmass, 
-                    skybright=skybr, pixscale=pixsc, primhdr=primhdr,
-                    hdr=hdr, wcs=wcs, ra_ccd=ra_ccd, dec_ccd=dec_ccd,
-                    extension=ext, camera=camera, 
-                    ndetected=ndetected)
+        meas.update(ndetected=ndetected)
 
         if ndetected == 0:
             print('NO SOURCES DETECTED')

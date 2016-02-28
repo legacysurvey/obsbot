@@ -524,11 +524,11 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
             plt.show(block=False)
             plt.pause(0.001)
             plt.figure(1)
-        
+
     if skip:
         m.save()
         return None
-        
+
     if opt.doplots:
         from astrometry.util.plotutils import PlotSequence
         ps = PlotSequence('qa-%i' % expnum)
@@ -555,6 +555,12 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         os.system(cmd)
         if not opt.keep_plots:
             [os.remove(png) for png in pnglist]
+
+    if not np.isfinite(M['skybright']):
+        print('Negative sky measured:', M['rawsky'], '.  Bad pixcnt:',
+              m.bad_pixcnt)
+        m.save()
+        return None
 
     # (example results for testig)
     #M = {'seeing': 1.4890481099577366, 'airmass': 1.34,

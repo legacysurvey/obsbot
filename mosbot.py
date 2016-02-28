@@ -242,10 +242,12 @@ class Mosbot(NewFileWatcher):
         print('%s: found new image %s' % (str(ephem.now()), fn))
 
         nopass1path = os.path.join(self.scriptdir, 'nopass1')
+        print('Checking for file "%s"' % nopass1path)
         dopass1 = not os.path.exists(nopass1path)
         if not dopass1:
             print('Not considering Pass 1 because file exists:', nopass1path)
         nopass2path = os.path.join(self.scriptdir, 'nopass2')
+        print('Checking for file "%s"' % nopass2path)
         dopass2 = not os.path.exists(nopass2path)
         if not dopass2:
             print('Not considering Pass 2 because file exists:', nopass2path)
