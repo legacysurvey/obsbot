@@ -7,6 +7,55 @@ import time
 
 import numpy as np
 
+def choose_pass(trans, seeing, skybright, nomsky,
+                forcedir=''):
+
+    brighter = nomsky - skybright
+
+    transcut = 0.9
+    seeingcut = 1.25
+    brightcut = 0.25
+
+    transcut2 = 0.7
+    seeingcut2 = 2.0
+    
+    transok = trans > transcut
+    seeingok = seeing < seeingcut
+    brightok = brighter < brightcut
+
+    transfair = trans > transcut2
+    seeingfair = seeing < seeingcut2
+
+    trans_txt = 'good' if transok else ('fair' if transfair else 'poor')
+    seeing_txt = 'good' if seeingok else ('fair' if seeingfair else 'poor')
+
+    pass1ok = transok and seeingok and brightok
+    pass2ok = (transok and seeingfair) or (seeingok and transfair)
+    
+    print('Transparency: %s       (%6.2f vs %6.2f / %6.2f)' %
+          (trans_txt, trans, transcut, transcut2))
+    print('Seeing      : %s       (%6.2f vs %6.2f / %6.2f)' %
+          (seeing_txt, seeing, seeingcut, seeingcut2))
+    print('Brightness  : %s       (%6.2f vs %6.2f)' %
+          (('pass' if brightok else 'fail'), skybright, nomsky+brightcut))
+    print('Pass 1 = transparency AND seeing AND brightness: %s' % pass1ok)
+    print('Pass 2 = (transparency good and seeing fair) OR (seeing good and transparency fair): %s' % pass2ok)
+    
+    for p in [1,2,3]:
+        if forcedir is None:
+            break
+        path = os.path.join(forcedir, 'forcepass%i' % p)
+        print('Checking for file "%s"' % path)
+        if os.path.exists(path):
+            print('Forcing pass %i because file exists: %s' % (p, path))
+            return p
+
+    if pass1ok:
+        return 1
+    if pass2ok:
+        return 2
+    return 3
+    
 class NominalExptime(object):
     def update(self, **kwargs):
         for k,v in kwargs.items():

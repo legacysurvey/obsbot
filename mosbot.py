@@ -26,7 +26,7 @@ from jnox import (jnox_preamble, jnox_filter, jnox_moveto, jnox_exposure,
                   jnox_readout, jnox_end_exposure, jnox_cmds_for_json,
                   ra2hms, dec2dms)
 from obsbot import (exposure_factor, get_tile_from_name, get_airmass,
-                    NewFileWatcher)
+                    NewFileWatcher, choose_pass)
 
 def main(cmdlineargs=None, get_mosbot=False):
     import optparse
@@ -241,17 +241,6 @@ class Mosbot(NewFileWatcher):
         
         print('%s: found new image %s' % (str(ephem.now()), fn))
 
-        nopass1path = os.path.join(self.scriptdir, 'nopass1')
-        print('Checking for file "%s"' % nopass1path)
-        dopass1 = not os.path.exists(nopass1path)
-        if not dopass1:
-            print('Not considering Pass 1 because file exists:', nopass1path)
-        nopass2path = os.path.join(self.scriptdir, 'nopass2')
-        print('Checking for file "%s"' % nopass2path)
-        dopass2 = not os.path.exists(nopass2path)
-        if not dopass2:
-            print('Not considering Pass 2 because file exists:', nopass2path)
-        
         # Read primary FITS header
         phdr = fitsio.read_header(fn)
         expnum = phdr.get('EXPNUM', 0)
@@ -290,7 +279,7 @@ class Mosbot(NewFileWatcher):
             print('Failed sanity checks in our measurement of', fn, '-- not updating anything')
             # FIXME -- we could fall back to pass 3 here.
             return False
-        
+
         # Choose the pass
         trans  = M['transparency']
         seeing = M['seeing']
@@ -306,39 +295,9 @@ class Mosbot(NewFileWatcher):
         print('Nominal sky : %6.02f' % nomsky)
         print('Sky over nom: %6.02f   (positive means brighter than nom)' %
               brighter)
-    
-        transcut = 0.9
-        seeingcut = 1.25
-        brightcut = 0.25
-        
-        transok = trans > transcut
-        seeingok = seeing < seeingcut
-        brightok = brighter < brightcut
-    
-        pass1ok = transok and seeingok and brightok
-        pass2ok = transok or  seeingok
-        
-        nextpass = 3
-        if pass1ok and dopass1:
-            nextpass = 1
-    
-        elif pass2ok and dopass2:
-            nextpass = 2
-    
-        print('Transparency cut: %s       (%6.2f vs %6.2f)' %
-              (('pass' if transok else 'fail'), trans, transcut))
-        print('Seeing       cut: %s       (%6.2f vs %6.2f)' %
-              (('pass' if seeingok else 'fail'), seeing, seeingcut))
-        print('Brightness   cut: %s       (%6.2f vs %6.2f)' %
-              (('pass' if brightok else 'fail'), skybright, nomsky+brightcut))
-        print('Pass 1 = transparency AND seeing AND brightness: %s' % pass1ok)
-        if pass1ok and not dopass1:
-            print('Pass 1 forbidden by observer!')
-        print('Pass 2 = transparency OR  seeing               : %s' % pass2ok)
-        if pass2ok and not dopass2:
-            print('Pass 2 forbidden by observer!')
-        print('Selected pass:', nextpass)
-    
+
+        nextpass = choose_pass(trans, seeing, skybright, nomsky,
+                               forcedir=self.scriptdir)
         # Choose the next tile from the right JSON tile list Jp
         J = [self.J1,self.J2,self.J3][nextpass-1]
         now = ephem.now()
@@ -373,7 +332,6 @@ class Mosbot(NewFileWatcher):
         P = fits_table()
         P.type = []
         P.tilename = []
-        #P.tileid = []
         P.filter = []
         P.exptime = []
         P.ra = []
@@ -484,7 +442,6 @@ class Mosbot(NewFileWatcher):
                   (str(ephem.now()), nextseq, tilename))
     
             P.tilename.append(tilename)
-            #P.tileid.append(tile.tileid)
             P.filter.append(nextband)
             P.exptime.append(exptime)
             P.ra.append(jplan['RA'])
