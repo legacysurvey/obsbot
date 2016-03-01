@@ -51,17 +51,28 @@ def db_to_fits(mm):
             T.set(field, np.array([getattr(m, field) for m in mm]))
     return T
 
+class Duck(object):
+    pass
+
 def get_twilight(camera, date):
     '''
-    Returns tuple,
+    Returns an object with attributes:
     
-    (sunset, -12 eve, -18 eve, -18 morn, -12 morn, sunrise)
+    * sunset
+    * "eve10": -10 degree evening
+    * "eve12": -12 degree evening
+    * "eve18": -18 degree evening
+    * "morn18": -18 degree morning
+    * "morn12": -12 degree morning
+    * "morn10": -10 degree morning
+    * sunrise
 
     for the given camera ("mosaic3" or "decam"), following the night
     whose sunset starts BEFORE the given date.
 
     date: an ephem.Date object (in UTC)
     '''
+    t = Duck()
     ## From nightlystrategy / mosaicstrategy
     R_earth = 6378.1e3 # in meters
     if camera == 'mosaic3':
@@ -87,20 +98,24 @@ def get_twilight(camera, date):
 
     obs.date = date
     sun = ephem.Sun()
-    sunset = obs.previous_setting(sun)
-    obs.date = sunset
-    sunrise = obs.next_rising(sun)
+    t.sunset = obs.previous_setting(sun)
+    obs.date = t.sunset
+    t.sunrise = obs.next_rising(sun)
 
-    obs.date = sunset
+    obs.date = t.sunset
     obs.horizon = -ephem.degrees('18:00:00.0')
-    eve18 = obs.next_setting(sun)
-    morn18 = obs.next_rising(sun)
+    t.eve18 = obs.next_setting(sun)
+    t.morn18 = obs.next_rising(sun)
 
     obs.horizon = -ephem.degrees('12:00:00.0')
-    eve12 = obs.next_setting(sun)
-    morn12 = obs.next_rising(sun)
+    t.eve12 = obs.next_setting(sun)
+    t.morn12 = obs.next_rising(sun)
 
-    return (sunset, eve12, eve18, morn18, morn12, sunrise)
+    obs.horizon = -ephem.degrees('10:00:00.0')
+    t.eve10 = obs.next_setting(sun)
+    t.morn10 = obs.next_rising(sun)
+    
+    return t
 
 def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
                       markmjds=[], show_plot=True):
@@ -698,6 +713,24 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
 def bounce_process_image(X):
     process_image(*X)
 
+    
+def mark_twilight(camera, date):
+    twi = get_twilight(camera, date)
+    mark = []
+    mark.append((ephemdate_to_mjd(twi.eve18), 'b'))
+    #print('Evening twi18:', eve18, markmjds[-1])
+    mark.append((ephemdate_to_mjd(twi.morn18), 'b'))
+    #print('Morning twi18:', morn18, markmjds[-1])
+    gb = (0., 0.6, 0.6)
+    mark.append((ephemdate_to_mjd(twi.eve12), gb))
+    #print('Evening twi12:', eve12, markmjds[-1])
+    mark.append((ephemdate_to_mjd(twi.morn12), gb))
+    #print('Morning twi12:', morn12, markmjds[-1])
+    orange = (1., 0.6, 0)
+    mark.append((ephemdate_to_mjd(twi.eve10), 'g'))
+    mark.append((ephemdate_to_mjd(twi.morn10),'g'))
+    return mark
+    
 def plot_recent(opt, nom, tiles=None, markmjds=[], **kwargs):
     import obsdb
 
@@ -726,17 +759,7 @@ def plot_recent(opt, nom, tiles=None, markmjds=[], **kwargs):
 
     plotfn = opt.plot_filename
 
-    (sunset, eve12, eve18, morn18, morn12, sunrise) = get_twilight(
-        camera, ephem.Date(mjdtodate(mjd_end)))
-
-    markmjds.append((ephemdate_to_mjd(eve18),'b'))
-    #print('Evening twi18:', eve18, markmjds[-1])
-    markmjds.append((ephemdate_to_mjd(morn18),'b'))
-    #print('Morning twi18:', morn18, markmjds[-1])
-    markmjds.append((ephemdate_to_mjd(eve12),'g'))
-    #print('Evening twi12:', eve12, markmjds[-1])
-    markmjds.append((ephemdate_to_mjd(morn12),'g'))
-    #print('Morning twi12:', morn12, markmjds[-1])
+    markmjds.extend(mark_twilight(camera, ephem.Date(mjdtodate(mjd_end))))
     
     plot_measurements(mm, plotfn, nom, allobs=allobs,
                       mjdrange=(mjd_start, mjd_end), markmjds=markmjds,
@@ -915,24 +938,14 @@ def main(cmdlineargs=None, get_copilot=False):
         else:
             sdate = ephem.Date(datenow())
         
-        (sunset, eve12, eve18, morn18, morn12, sunrise) = get_twilight(
-            cam, sdate)
+        twi = get_twilight(cam, sdate)
         if opt.mjdstart is None:
-            opt.mjdstart = ephemdate_to_mjd(sunset)
-            print('Set mjd start to sunset:', sunset, opt.mjdstart)
+            opt.mjdstart = ephemdate_to_mjd(twi.sunset)
+            print('Set mjd start to sunset:', twi.sunset, opt.mjdstart)
         if opt.mjdend is None:
-            opt.mjdend = ephemdate_to_mjd(sunrise)
-            print('Set mjd end to sunrise', sunrise, opt.mjdend)
-
-        markmjds.append((ephemdate_to_mjd(eve18),'b'))
-        print('Evening twi18:', eve18, markmjds[-1])
-        markmjds.append((ephemdate_to_mjd(morn18),'b'))
-        print('Morning twi18:', morn18, markmjds[-1])
-        markmjds.append((ephemdate_to_mjd(eve12),'g'))
-        print('Evening twi12:', eve12, markmjds[-1])
-        markmjds.append((ephemdate_to_mjd(morn12),'g'))
-        print('Morning twi12:', morn12, markmjds[-1])
-            
+            opt.mjdend = ephemdate_to_mjd(twi.sunrise)
+            print('Set mjd end to sunrise', twi.sunrise, opt.mjdend)
+        markmjds.extend(mark_twilight(cam, sdate))
         
     if opt.plot_filename is None:
         opt.plot_filename = plotfn_default
