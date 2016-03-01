@@ -149,8 +149,9 @@ class Decbot(NewFileWatcher):
             dd = unixtime_to_ephem_date(st.st_mtime)
             if dd > sunset:
                 fns.append(fn)
+        print('Checking %i of %i existing files with timestamps after sunset' %
+              (len(fns), len(self.oldfiles)))
         self.new_observed_tiles(fns)
-        
 
         # Set up initial planned_tiles
         J = [J1,J2,J3][opt.passnum - 1]
