@@ -9,9 +9,12 @@ class TestQueue(Pyro.core.ObjBase):
     def __init__(self):
         super(TestQueue, self).__init__()
         self.commands = []
+        self.exposures = []
     def execute(self, command):
-        print('Executing:', command)
         self.commands.append(command)
+        print(type(command))
+        if command.startswith('command=addexposure'):
+            self.exposures.append(command)
 
 import threading
 class TestServer(object):
@@ -82,10 +85,10 @@ class TestDecbot(unittest.TestCase):
 
         #self.assertEqual(len(decbot.planned_tiles), 2)
         self.assertEqual(decbot.seqnum, 2)
-        self.assertEqual(len(self.server.queue.commands), 2)
+        self.assertEqual(len(self.server.queue.exposures), 2)
 
     def test_queuetime(self):
-        self.server.queue.commands = []
+        self.server.queue.exposures = []
 
         from decbot import main
         args = self.jsonfiles
@@ -102,7 +105,7 @@ class TestDecbot(unittest.TestCase):
         
         self.assertEqual(decbot.seqnum, 2)
         #self.assertEqual(len(decbot.planned_tiles), 2)
-        self.assertEqual(len(self.server.queue.commands), 2)
+        self.assertEqual(len(self.server.queue.exposures), 2)
         
         now = datetime.datetime.utcnow()
         dt = (decbot.queuetime - now).total_seconds()
@@ -116,7 +119,7 @@ class TestDecbot(unittest.TestCase):
         decbot.heartbeat()
 
         self.assertEqual(decbot.seqnum, 2)
-        self.assertEqual(len(self.server.queue.commands), 2)
+        self.assertEqual(len(self.server.queue.exposures), 2)
 
         time.sleep(4)
 
@@ -124,7 +127,7 @@ class TestDecbot(unittest.TestCase):
         decbot.heartbeat()
 
         self.assertEqual(decbot.seqnum, 3)
-        self.assertEqual(len(self.server.queue.commands), 3)
+        self.assertEqual(len(self.server.queue.exposures), 3)
         
         # Now the queue time should be... exp 2 + overhead 1 - margin 2 = 1
             

@@ -257,17 +257,26 @@ class Decbot(NewFileWatcher):
             return
         print('Time to queue an exposure!')
         e = self.queue_exposure()
+        if e is None:
+            return
         # schedule next one
         dt = e['expTime'] + self.nom.overhead - self.queueMargin
         self.queuetime = now + datetime.timedelta(0, dt)
         self.queuetime = self.queuetime.replace(microsecond = 0)
-
         self.write_plans()
         
     def queue_exposure(self):
         if not self.seqnum in self.planned_tiles:
             print('No more tiles in the plan (seqnum = %i)!' % self.seqnum)
-            return
+            return None
+
+        if self.rc is not None:
+            nq = self.rc.get_n_queued()
+            print('Number of exposures in the queue:', nq)
+            if nq > 1:
+                print('Too many exposures in the queue already:', nq)
+                return None
+        
         j = self.planned_tiles[self.seqnum]
         self.seqnum += 1
 
