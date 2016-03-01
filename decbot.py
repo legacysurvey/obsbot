@@ -399,8 +399,8 @@ class Decbot(NewFileWatcher):
             fid = self.nom.fiducial_exptime(nextband)
             expfactor = exposure_factor(fid, self.nom,
                                         airmass, ebv, seeing, nextsky, trans)
-            print('Tile', tilename)
-            print('Exposure factor:', expfactor)
+            #print('Tile', tilename)
+            #print('Exposure factor:', expfactor)
             exptime = expfactor * fid.exptime
     
             ### HACK -- safety factor!
@@ -420,7 +420,7 @@ class Decbot(NewFileWatcher):
                     print('Reduced exposure time to avoid z-band saturation: %.1f' % exptime)
             exptime = int(exptime)
     
-            print('Changing exptime from', jplan['expTime'], 'to', exptime)
+            #print('Changing exptime from', jplan['expTime'], 'to', exptime)
             jplan['expTime'] = exptime
             
         self.plan_tiles(J)

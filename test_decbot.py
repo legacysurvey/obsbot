@@ -10,11 +10,16 @@ class TestQueue(Pyro.core.ObjBase):
         super(TestQueue, self).__init__()
         self.commands = []
         self.exposures = []
+        self.nqueue = 0
     def execute(self, command):
         self.commands.append(command)
-        print(type(command))
+        print('Command: "%s"' % command)
         if command.startswith('command=addexposure'):
             self.exposures.append(command)
+            return 'SUCCESS'
+        elif command.startswith('command=get_nqueue'):
+            print('Returning:', self.nqueue)
+            return self.nqueue
 
 import threading
 class TestServer(object):
@@ -139,5 +144,56 @@ class TestDecbot(unittest.TestCase):
         self.assertGreater(dt, 0)
         self.assertLess(dt, 1)
 
+
+    def test_nqueue(self):
+        self.server.queue.exposures = []
+        self.server.queue.nqueue = 0
+        
+        from decbot import main
+        args = self.jsonfiles
+        args += ['--remote-server', self.server.url.address]
+        args += ['--remote-port',   str(self.server.url.port)]
+        args += ['--exptime', '2']
+        
+        print('Creating Decbot...')
+        decbot = main(cmdlineargs=args, get_decbot=True)
+
+        decbot.nom.overhead = 1.
+        decbot.queueMargin = 2.
+        decbot.queue_initial_exposures()
+        
+        self.assertEqual(decbot.seqnum, 2)
+        self.assertEqual(len(self.server.queue.exposures), 2)
+        
+        now = datetime.datetime.utcnow()
+        dt = (decbot.queuetime - now).total_seconds()
+        print('Time until queuetime:', dt)
+
+        # Should be 4, minus execution time
+        self.assertGreater(dt, 3)
+        self.assertLess(dt, 4)
+
+        # Should do nothing
+        decbot.heartbeat()
+
+        self.assertEqual(decbot.seqnum, 2)
+        self.assertEqual(len(self.server.queue.exposures), 2)
+
+        time.sleep(4)
+
+        # It should now queue an exposure, EXCEPT queue is too full, so should do nothing
+        self.server.queue.nqueue = 2
+        decbot.heartbeat()
+        
+        self.assertEqual(decbot.seqnum, 2)
+        self.assertEqual(len(self.server.queue.exposures), 2)
+
+        # NOW it should queue exposure.
+        self.server.queue.nqueue = 0
+        decbot.heartbeat()
+
+        self.assertEqual(decbot.seqnum, 3)
+        self.assertEqual(len(self.server.queue.exposures), 3)
+        
 if __name__ == '__main__':
     unittest.main()
