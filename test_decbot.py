@@ -134,15 +134,15 @@ class TestDecbot(unittest.TestCase):
         self.assertEqual(decbot.seqnum, 3)
         self.assertEqual(len(self.server.queue.exposures), 3)
         
-        # Now the queue time should be... exp 2 + overhead 1 - margin 2 = 1
+        # Now the queue time should be... margin 1 + exp 2 + overhead 1 - margin 2 = 3
             
         now = datetime.datetime.utcnow()
         dt = (decbot.queuetime - now).total_seconds()
         print('Time until queuetime:', dt)
 
-        # Should be 1, minus execution time
-        self.assertGreater(dt, 0)
-        self.assertLess(dt, 1)
+        # Should be 3. minus execution time
+        self.assertGreater(dt, 2)
+        self.assertLess(dt, 3)
 
 
     def test_nqueue(self):

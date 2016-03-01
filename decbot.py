@@ -259,10 +259,23 @@ class Decbot(NewFileWatcher):
         e = self.queue_exposure()
         if e is None:
             return
-        # schedule next one
-        dt = e['expTime'] + self.nom.overhead - self.queueMargin
-        self.queuetime = now + datetime.timedelta(0, dt)
+        # schedule next one.
+        # dt = e['expTime'] + self.nom.overhead - self.queueMargin
+        # self.queuetime = now + datetime.timedelta(0, dt)
+        # self.queuetime = self.queuetime.replace(microsecond = 0)
+
+        # We think we have ~ self.queueMargin seconds before the current
+        # exposure ends.  We just queued another exposure, which should end
+        # another exptime+overhead seconds after that.  We want a queueMargin
+        # on that, which would be:
+        #   ~now + self.queueMargin + exptime+overhead - queueMargin
+        # or actually
+        #   self.queuetime + queueMargin + exptime+overhead - queueMargin
+        #  = self.queuetime + exptime + overhead
+        dt = e['expTime'] + self.nom.overhead
+        self.queuetime += datetime.timedelta(0, dt)
         self.queuetime = self.queuetime.replace(microsecond = 0)
+
         self.write_plans()
         
     def queue_exposure(self):
