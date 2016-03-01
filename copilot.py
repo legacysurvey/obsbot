@@ -468,6 +468,10 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
     airmass = phdr.get('AIRMASS', 0.)
     ra  = hmsstring2ra (phdr.get('RA', '0'))
     dec = dmsstring2dec(phdr.get('DEC', '0'))
+
+    # DECam rawdata/DECam_00521494.fits.fz -- "NaN"
+    if isinstance(airmass, str):
+        airmass = 0.
     
     # Write QA plots to files named by the exposure number
     print('Exposure number:', expnum)
