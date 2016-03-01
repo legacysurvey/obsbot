@@ -126,9 +126,9 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
 
     T.mjd_end = T.mjd_obs + T.exptime / 86400.
 
-    #Tall = T
     Tnonobject = T[T.obstype != 'object']
     print(len(Tnonobject), 'exposures are not OBJECTs')
+    print('Obs types:', np.unique(T.obstype))
     T = T[T.obstype == 'object']
     print(len(T), 'OBJECT exposures')
 
@@ -335,11 +335,16 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     plt.axhline(1.1, color='k', ls='--', alpha=0.5)
 
     F = Tnonobject[Tnonobject.obstype == 'focus']
-    print(len(F), 'focus frames')
+    Z = Tnonobject[Tnonobject.obstype == 'zero']
+    print(len(F), 'focus frames,', len(Z), 'zero frames')
     if len(F):
         plt.plot(F.mjd_obs, 0.9 + np.zeros(len(F)), 'ko')
         for f in F:
             plt.text(f.mjd_obs, 0.88, 'F', ha='center', va='top')
+    if len(Z):
+        plt.plot(Z.mjd_obs, 0.9 + np.zeros(len(Z)), 'o', mec='k', mfc='none')
+        for f in Z:
+            plt.text(f.mjd_obs, 0.81, 'Z', ha='center', va='top')
     
     if len(T) > 50:
         ii = [np.argmin(T.expnum + (T.expnum == 0)*1000000),
@@ -838,7 +843,7 @@ def main(cmdlineargs=None, get_copilot=False):
 
     # Mosaic or Decam?
     from camera import (nominal_cal, ephem_observer, default_extension,
-                        tile_path)
+                        tile_path, camera_name)
     nom = nominal_cal
     obs = ephem_observer()
     
@@ -865,7 +870,8 @@ def main(cmdlineargs=None, get_copilot=False):
 
     parser.add_option('--nightplot', '--night', action='store_true',
                       help="Plot tonight's data and quit")
-
+    parser.add_option('--ago', type=int, help='Plot N nights ago; with --night')
+    
     parser.add_option('--qa-plots', dest='doplots', default=False,
                       action='store_true', help='Create QA plots')
 
@@ -928,24 +934,22 @@ def main(cmdlineargs=None, get_copilot=False):
         if opt.plot_filename is None:
             opt.plot_filename = 'night.png'
 
-        # Are we at Tololo or Kitt Peak?  Look for latest image.
-        o = obsdb.MeasuredCCD.objects.all().order_by('-mjd_obs')
-        cam = o[0].camera
-        print('Camera:', cam)
-
         if opt.mjdstart is not None:
             sdate = ephem.Date(mjdtodate(opt.mjdend))
         else:
             sdate = ephem.Date(datenow())
-        
-        twi = get_twilight(cam, sdate)
+
+        if opt.ago:
+            sdate -= opt.ago
+            
+        twi = get_twilight(camera_name, sdate)
         if opt.mjdstart is None:
             opt.mjdstart = ephemdate_to_mjd(twi.sunset)
             print('Set mjd start to sunset:', twi.sunset, opt.mjdstart)
         if opt.mjdend is None:
             opt.mjdend = ephemdate_to_mjd(twi.sunrise)
             print('Set mjd end to sunrise', twi.sunrise, opt.mjdend)
-        markmjds.extend(mark_twilight(cam, sdate))
+        markmjds.extend(mark_twilight(camera_name, sdate))
         
     if opt.plot_filename is None:
         opt.plot_filename = plotfn_default
