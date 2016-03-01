@@ -198,7 +198,9 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     mx = 2.
     plt.subplot(SP,1,1)
     for band,Tb in zip(bands, TT):
-        plt.plot(Tb.mjd_obs, Tb.seeing, 'o', color=ccmap[band])
+        I = np.flatnonzero(Tb.seeing > 0)
+        if len(I):
+            plt.plot(Tb.mjd_obs[I], Tb.seeing[I], 'o', color=ccmap[band])
 
         I = np.flatnonzero(Tb.seeing > mx)
         if len(I):
@@ -231,9 +233,10 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     mx = 20
     for band,Tb in zip(bands, TT):
         sky0 = nom.sky(band)
-        plt.plot(Tb.mjd_obs, Tb.sky, 'o', color=ccmap[band])
+        I = np.flatnonzero(Tb.sky > 0)
+        if len(I):
+            plt.plot(Tb.mjd_obs[I], Tb.sky[I], 'o', color=ccmap[band])
         plt.axhline(sky0, color=ccmap[band], alpha=0.5)
-
         I = np.flatnonzero(Tb.sky > mx)
         if len(I):
             plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
@@ -246,7 +249,6 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     for t in T:
         if t.passnumber > 0:
             plt.text(t.mjd_obs, min(mx, t.sky) - 0.03*(yh-yl),
-                     #yl+0.1*(yh-yl),
                      '%i' % t.passnumber, ha='center', va='top')
     
     plt.ylim(yl,yh)
@@ -256,11 +258,13 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     mx = 1.2
     mn = 0.5
     for band,Tb in zip(bands, TT):
-        plt.plot(Tb.mjd_obs, Tb.transparency, 'o', color=ccmap[band])
+        I = np.flatnonzero(Tb.transparency > 0)
+        if len(I):
+            plt.plot(Tb.mjd_obs[I], Tb.transparency[I], 'o', color=ccmap[band])
         I = np.flatnonzero(Tb.transparency > mx)
         if len(I):
             plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
-        I = np.flatnonzero(Tb.transparency < mn)
+        I = np.flatnonzero((Tb.transparency < mn) * (Tb.transparency > 0))
         if len(I):
             plt.plot(Tb.mjd_obs[I], [mn]*len(I), 'v', **limitstyle(band))
 
@@ -285,7 +289,8 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         clipped = np.clip(exptime, lo, hi)
         if band == 'z':
             t_sat = nom.saturation_time(band, Tb.sky)
-            clipped = np.minimum(clipped, t_sat)
+            bad = (Tb.sky == 0)
+            clipped = np.minimum(clipped, t_sat + bad*1000000)
         Tb.clipped_exptime = clipped
         Tb.depth_factor = Tb.exptime / clipped
         I = np.flatnonzero(exptime > clipped)
@@ -296,14 +301,15 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         if len(I):
             plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
 
-        I = np.flatnonzero(exptime < clipped)
+        I = np.flatnonzero((exptime < clipped) * (exptime > 0))
         if len(I):
             plt.plot(Tb.mjd_obs[I], exptime[I], '^', **limitstyle(band))
         plt.plot(Tb.mjd_obs, clipped, 'o', color=ccmap[band])
-        plt.plot(Tb.mjd_obs, Tb.exptime, 'o', mec='k', mfc='none')
+        I = np.flatnonzero(Tb.exptime > 0)
+        if len(I):
+            plt.plot(Tb.mjd_obs[I], Tb.exptime[I], 'o', mec='k', mfc='none')
     yl,yh = plt.ylim()
     for band,Tb in zip(bands, TT):
-
         dt = dict(g=-0.5,r=+0.5,z=0)[band]
 
         fid = nom.fiducial_exptime(band)
@@ -314,7 +320,10 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         plt.axhline(lo+dt, color=ccmap[band], ls='--', alpha=0.5)
         plt.axhline(hi+dt, color=ccmap[band], ls='--', alpha=0.5)
         if band == 'z':
-            plt.plot(Tb.mjd_obs, t_sat, color=ccmap[band], ls='--', alpha=0.5)
+            I = np.flatnonzero(Tb.sky > 0)
+            if len(I):
+                plt.plot(Tb.mjd_obs[I], t_sat[I], color=ccmap[band],
+                         ls='--', alpha=0.5)
 
     plt.ylim(yl,min(mx, yh))
     plt.ylabel('Target exposure time (s)')
