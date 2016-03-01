@@ -185,8 +185,11 @@ def unixtime_to_ephem_date(unixtime):
     # 'unixepoch' here is that date in ephem.Date format.
     unixepoch = 25567.5
     # ephem.Date counts in days, hence the 86400.
-    d = ephem.Date(unixepoch + unixtime / 86400.)
-    return d
+    return ephem.Date(unixepoch + unixtime / 86400.)
+
+def ephem_date_to_mjd(edate):
+    from astrometry.util.starutil_numpy import datetomjd
+    return datetomjd(edate.datetime())
 
 class NewFileWatcher(object):
     def __init__(self, dir, backlog=True, only_process_newest=False):

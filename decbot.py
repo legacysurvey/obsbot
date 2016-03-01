@@ -23,8 +23,10 @@ from astrometry.util.starutil_numpy import  ra2hmsstring as  ra2hms
 from astrometry.util.starutil_numpy import dec2dmsstring as dec2dms
 
 from measure_raw import measure_raw
-from obsbot import (exposure_factor, get_tile_from_name, get_airmass,
-                    NewFileWatcher, datenow, unixtime_to_ephem_date)
+from obsbot import (
+    exposure_factor, get_tile_from_name, get_airmass,
+    NewFileWatcher, datenow, unixtime_to_ephem_date,
+    ephem_date_to_mjd)
 
 def main(cmdlineargs=None, get_decbot=False):
     import optparse
@@ -47,6 +49,10 @@ def main(cmdlineargs=None, get_decbot=False):
                       default=True, action='store_false',
                       help='Do not cut tiles that were supposed to be observed in the past')
 
+    parser.add_option('--no-queue', dest='do_queue', default=True,
+                      action='store_false',
+                      help='Do not actually queue exposures.')
+    
     parser.add_option('--remote-server', default=None,
                       help='Hostname of CommandServer for queue control')
     parser.add_option('--remote-port', default=None, type=int,
@@ -100,16 +106,29 @@ def main(cmdlineargs=None, get_decbot=False):
     if opt.rawdata is None:
         opt.rawdata = os.environ.get('DECAM_DATA', 'rawdata')
 
-    kw = dict()
-    if opt.remote_server is not None:
-        kw['cs_host'] = opt.remote_server
-    if opt.remote_port is not None:
-        kw['cs_port'] = opt.remote_port
-    from RemoteClient import RemoteClient
-    print('Creating RemoteClient connection with args:', kw)
-    rc = RemoteClient(**kw)
-        
-    decbot = Decbot(J1, J2, J3, opt, nominal_cal, obs, tiles, rc)
+    if opt.do_queue:
+        kw = dict()
+        if opt.remote_server is not None:
+            kw['cs_host'] = opt.remote_server
+        if opt.remote_port is not None:
+            kw['cs_port'] = opt.remote_port
+        from RemoteClient import RemoteClient
+        print('Creating RemoteClient connection with args:', kw)
+        rc = RemoteClient(**kw)
+    else:
+        rc = None
+
+    # Try loading copilot's database
+    try:
+        import obsdb
+        from camera import database_filename
+        obsdb.django_setup(database_filename=database_filename)
+        copilot_db = obsdb.MeasuredCCD.objects
+    except:
+        copilot_db = None
+    
+    decbot = Decbot(J1, J2, J3, opt, nominal_cal, obs, tiles, rc,
+                    copilot_db=copilot_db)
     if get_decbot:
         return decbot
     decbot.queue_initial_exposures()
@@ -118,7 +137,7 @@ def main(cmdlineargs=None, get_decbot=False):
 
 class Decbot(NewFileWatcher):
     def __init__(self, J1, J2, J3, opt, nom, obs, tiles, rc,
-                 queueMargin=45.):
+                 queueMargin=45., copilot_db=None,):
         super(Decbot, self).__init__(opt.rawdata, backlog=False,
                                      only_process_newest=True)
         self.timeout = None
@@ -130,8 +149,8 @@ class Decbot(NewFileWatcher):
         self.obs = obs
         self.tiles = tiles
         self.rc = rc
+        self.copilot_db = copilot_db
         self.queueMargin = queueMargin
-        
         self.seqnum = 0
         self.planned_tiles = OrderedDict()
         self.upcoming = []
@@ -151,6 +170,40 @@ class Decbot(NewFileWatcher):
                 fns.append(fn)
         print('Checking %i of %i existing files with timestamps after sunset' %
               (len(fns), len(self.oldfiles)))
+
+        if copilot_db is not None:
+            # Further filter existing files...
+            try:
+                # Grab all copilot database entries from tonight
+                sunset_mjd = ephem_date_to_mjd(sunset)
+                ccds = copilot_db.filter(mjd_obs__gte=sunset_mjd)
+                ccds = ccds.values_list('filename', 'object')
+                # Build a map from filename (no directory path) -> obj name
+                dbobjs = {}
+                for fn,obj in ccds:
+                    if len(obj) == 0:
+                        continue
+                    fn = str(fn).strip()
+                    fn = os.path.basename(fn)
+                    dbobjs[fn] = str(obj)
+                print('Found', len(dbobjs), 'entries in the copilot database')
+                # Go through existing files looking for database entries.
+                keepfns = []
+                for path in fns:
+                    # check just the filename part, not the full path
+                    fn = os.path.basename(path)
+                    if fn in dbobjs:
+                        obj = dbobjs[fn]
+                        print('Found filename', fn, 'in copilot database: tile', obj)
+                        self.observed_tiles[obj] = path
+                    else:
+                        keepfns.append(path)
+                # Check all the ones not in the db
+                fns = keepfns
+            except:
+                import traceback
+                traceback.print_exc()
+            
         self.new_observed_tiles(fns)
 
         # Set up initial planned_tiles
@@ -217,16 +270,18 @@ class Decbot(NewFileWatcher):
             return
         j = self.planned_tiles[self.seqnum]
         self.seqnum += 1
-        # FIXME -- actually queue j...
-        print('Queuing exposure:', j)
 
-        self.rc.addexposure(
-            filter=j['filter'],
-            ra=j['RA'],
-            dec=j['dec'],
-            object=j['object'],
-            exptime=j['expTime'],
-            )
+        if self.rc is None:
+            print('Not actually queuing exposure (--no-queue):', j)
+        else:
+            print('Queuing exposure:', j)
+            self.rc.addexposure(
+                filter=j['filter'],
+                ra=j['RA'],
+                dec=j['dec'],
+                object=j['object'],
+                exptime=j['expTime'],
+                )
         
         return j
     
