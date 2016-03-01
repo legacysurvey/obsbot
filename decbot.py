@@ -24,7 +24,7 @@ from astrometry.util.starutil_numpy import dec2dmsstring as dec2dms
 
 from measure_raw import measure_raw
 from obsbot import (exposure_factor, get_tile_from_name, get_airmass,
-                    NewFileWatcher, datenow)
+                    NewFileWatcher, datenow, unixtime_to_ephem_date)
 
 def main(cmdlineargs=None, get_decbot=False):
     import optparse
@@ -138,7 +138,18 @@ class Decbot(NewFileWatcher):
 
         # Read existing files,recording their tile names as vetoes.
         self.observed_tiles = {}
-        self.new_observed_tiles(self.oldfiles)
+
+        # Only check files timestamped since sunset; starting up was taking
+        # too long since all files from a run go into one monster directory.
+        sun = ephem.Sun()
+        sunset = obs.previous_setting(sun)
+        fns = []
+        for fn in self.oldfiles:
+            st = os.stat(fn)
+            dd = unixtime_to_ephem_date(st.st_mtime)
+            if dd > sunset:
+                fns.append(fn)
+        self.new_observed_tiles(fns)
         
 
         # Set up initial planned_tiles

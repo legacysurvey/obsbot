@@ -179,6 +179,15 @@ def mjdnow():
     from astrometry.util.starutil_numpy import datetomjd
     return datetomjd(datenow())
 
+def unixtime_to_ephem_date(unixtime):
+    import ephem
+    # Unix time is seconds since 1970/1/1 00:00:00, UT.
+    # 'unixepoch' here is that date in ephem.Date format.
+    unixepoch = 25567.5
+    # ephem.Date counts in days, hence the 86400.
+    d = ephem.Date(unixepoch + unixtime / 86400.)
+    return d
+
 class NewFileWatcher(object):
     def __init__(self, dir, backlog=True, only_process_newest=False):
         self.dir = dir
