@@ -47,6 +47,10 @@ def main(cmdlineargs=None, get_decbot=False):
                       default=True, action='store_false',
                       help='Do not cut tiles that were supposed to be observed in the past')
 
+    parser.add_option('--no-queue', dest='do_queue', default=True,
+                      action='store_false',
+                      help='Do not actually queue exposures.')
+    
     parser.add_option('--remote-server', default=None,
                       help='Hostname of CommandServer for queue control')
     parser.add_option('--remote-port', default=None, type=int,
@@ -100,15 +104,18 @@ def main(cmdlineargs=None, get_decbot=False):
     if opt.rawdata is None:
         opt.rawdata = os.environ.get('DECAM_DATA', 'rawdata')
 
-    kw = dict()
-    if opt.remote_server is not None:
-        kw['cs_host'] = opt.remote_server
-    if opt.remote_port is not None:
-        kw['cs_port'] = opt.remote_port
-    from RemoteClient import RemoteClient
-    print('Creating RemoteClient connection with args:', kw)
-    rc = RemoteClient(**kw)
-        
+    if opt.do_queue:
+        kw = dict()
+        if opt.remote_server is not None:
+            kw['cs_host'] = opt.remote_server
+        if opt.remote_port is not None:
+            kw['cs_port'] = opt.remote_port
+        from RemoteClient import RemoteClient
+        print('Creating RemoteClient connection with args:', kw)
+        rc = RemoteClient(**kw)
+    else:
+        rc = None
+
     decbot = Decbot(J1, J2, J3, opt, nominal_cal, obs, tiles, rc)
     if get_decbot:
         return decbot
@@ -150,7 +157,6 @@ class Decbot(NewFileWatcher):
             if dd > sunset:
                 fns.append(fn)
         self.new_observed_tiles(fns)
-        
 
         # Set up initial planned_tiles
         J = [J1,J2,J3][opt.passnum - 1]
@@ -216,16 +222,18 @@ class Decbot(NewFileWatcher):
             return
         j = self.planned_tiles[self.seqnum]
         self.seqnum += 1
-        # FIXME -- actually queue j...
-        print('Queuing exposure:', j)
 
-        self.rc.addexposure(
-            filter=j['filter'],
-            ra=j['RA'],
-            dec=j['dec'],
-            object=j['object'],
-            exptime=j['expTime'],
-            )
+        if self.rc is None:
+            print('Not actually queuing exposure (--no-queue):', j)
+        else:
+            print('Queuing exposure:', j)
+            self.rc.addexposure(
+                filter=j['filter'],
+                ra=j['RA'],
+                dec=j['dec'],
+                object=j['object'],
+                exptime=j['expTime'],
+                )
         
         return j
     
