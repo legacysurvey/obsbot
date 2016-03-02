@@ -31,7 +31,9 @@ class RemoteClient():
         return self.execute('stopexposure')
 
     def get_n_queued(self):
-        return self.execute('get_nqueue')
+        n = self.execute('get_nqueue')
+        print('get_n_queued: got', n, type(n))
+        return int(n)
 
     def clear_queue(self):
         return self.execute('clear_queue')
