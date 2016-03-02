@@ -219,7 +219,11 @@ class Decbot(NewFileWatcher):
         e1 = self.queue_exposure()
 
         # When should we queue the next exposure?
-        dt = e0['expTime'] + e1['expTime'] + 2 * self.nom.overhead
+        dt = 2 * self.nom.overhead
+        if e0 is not None:
+            dt += e0['expTime']
+        if e1 is not None:
+            dt += e1['expTime']
         # margin
         dt -= self.queueMargin
         self.queuetime = (datenow() +
