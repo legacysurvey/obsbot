@@ -105,6 +105,9 @@ class Mosbot(NewFileWatcher):
     def __init__(self, J1, J2, J3, opt, nom, obs, tiles):
         super(Mosbot, self).__init__(opt.rawdata, backlog=False,
                                      only_process_newest=True)
+        # How many exposures ahead should we write?
+        self.Nahead = 10
+    
         self.timeout = None
         self.J1 = J1
         self.J2 = J2
@@ -132,7 +135,10 @@ class Mosbot(NewFileWatcher):
             J = [J1,J2,J3][opt.passnum - 1]
             self.write_initial_script(J, opt.passnum, opt.exptime,
                                       opt.scriptfn, self.seqnumfn)
-
+            self.n_exposures = len(J)
+        else:
+            self.n_exposures = 0
+            
     def filter_new_files(self, fns):
         return [fn for fn in fns if
                 fn.endswith('.fits.fz') or fn.endswith('.fits')]
@@ -190,6 +196,9 @@ class Mosbot(NewFileWatcher):
                 os.chmod(path, chmod)
                 print('Wrote', path)
                 script.append('. %s' % fn)
+                script.append('if [ -f %s ]; then\n  . read.sh; rm %s; exit 0;\nfi' %
+                              (quitfile,quitfile))
+                
 
             script.append('\n### Exposure %i ###\n' % seq)
             script.append('echo "%i" > %s' % (seq, seqnumfn))
@@ -236,9 +245,6 @@ class Mosbot(NewFileWatcher):
     def process_file(self, fn):
         ext = self.opt.ext
 
-        expscriptpat  = os.path.join(self.scriptdir, self.expscriptpattern)
-        slewscriptpat = os.path.join(self.scriptdir, self.slewscriptpattern)
-        
         print('%s: found new image %s' % (str(ephem.now()), fn))
 
         # Read primary FITS header
@@ -280,6 +286,15 @@ class Mosbot(NewFileWatcher):
             # FIXME -- we could fall back to pass 3 here.
             return False
 
+        print('M:', M)
+        
+        return self.update_for_image(M)
+
+
+    def update_for_image(self, M):
+        expscriptpat  = os.path.join(self.scriptdir, self.expscriptpattern)
+        slewscriptpat = os.path.join(self.scriptdir, self.slewscriptpattern)
+        
         # Choose the pass
         trans  = M['transparency']
         seeing = M['seeing']
@@ -323,9 +338,6 @@ class Mosbot(NewFileWatcher):
         seqnum = int(s)
         print('%s: sequence number: %i' % (str(ephem.now()), seqnum))
         
-        # How many exposures ahead should we write?
-        Nahead = 10
-    
         # Set observing conditions for computing exposure time
         self.obs.date = now
     
@@ -340,11 +352,15 @@ class Mosbot(NewFileWatcher):
         
         iahead = 0
         for ii,jplan in enumerate(J[iplan:]):
-            if iahead >= Nahead:
+            if iahead >= self.Nahead:
                 break
             tilename = str(jplan['object'])
             nextseq = seqnum + 1 + iahead
-    
+
+            if self.n_exposures > 0 and nextseq > self.n_exposures:
+                print('Planned tile is beyond the exposure number in tonight.sh -- RESTART MOSBOT')
+                return False
+            
             print('Considering planning tile %s for exp %i' % (tilename, nextseq))
             
             # Check all planned tiles before this one for a duplicate tile.
@@ -448,7 +464,28 @@ class Mosbot(NewFileWatcher):
             P.dec.append(jplan['dec'])
             P.passnumber.append(nextpass)
             P.type.append('P')
-    
+
+        if iahead < self.Nahead:
+            # We ran out of tiles.
+            # Overwrite the default planned exposures with blanks to avoid
+            # running the defaults (eg, at end of night).
+            seqstart = seqnum + 1 + iahead
+            seqend = self.n_exposures - 1
+            print('Overwriting remaining exposure scripts (%i to %i inclusive) with blanks.' % (seqstart, seqend))
+            for nextseq in range(seqstart, seqend+1):
+                print('Blanking out exposure %i' % nextseq)
+                fn = self.expscriptpattern % nextseq
+                path = os.path.join(self.scriptdir, fn)
+                f = open(path, 'w')
+                f.write('\n')
+                f.close()
+                fn = self.slewscriptpattern % nextseq
+                path = os.path.join(self.scriptdir, fn)
+                f = open(path, 'w')
+                f.write('\n')
+                f.close()
+
+            
         for i,J in enumerate([self.J1,self.J2,self.J3]):
             passnum = i+1
             for j in J:
