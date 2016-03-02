@@ -3,24 +3,48 @@ import unittest
 import os
 import datetime
 import time
+# module is named 'queue' in python3
+from Queue import Queue, Empty
+import json
 
 import Pyro.core
+
 class TestQueue(Pyro.core.ObjBase):
+
     def __init__(self):
         super(TestQueue, self).__init__()
-        self.commands = []
-        self.exposures = []
-        self.nqueue = 0
+        self.overhead = 30.
+        self.reset()
+
     def execute(self, command):
         self.commands.append(command)
-        print('Command: "%s"' % command)
         if command.startswith('command=addexposure'):
-            self.exposures.append(command)
+            # command=addexposure, params = {"filter": "z", "dec": 19.202,
+            # "RA": 114.479, "expType": "object", "object": "DECaLS_23342_z",
+            # "expTime": 118}
+            params = command.replace('command=addexposure, params = ', '')
+            params = json.loads(params)
+            print('Exposure:', params)
+            self.exposures.put(params)
+            print('Queue now has', self.exposures.qsize(), 'entries')
             return 'SUCCESS'
         elif command.startswith('command=get_nqueue'):
-            print('Returning:', self.nqueue)
-            return self.nqueue
+            sz = self.exposures.qsize()
+            print('get_nqueue() ->', sz)
+            return sz
+        else:
+            print('Command: "%s"' % command)
 
+    def pop(self):
+        try:
+            return self.exposures.get_nowait()
+        except Empty:
+            return None
+
+    def reset(self):
+        self.commands = []
+        self.exposures = Queue()
+        
 import threading
 class TestServer(object):
     def __init__(self):
@@ -88,112 +112,39 @@ class TestDecbot(unittest.TestCase):
         fn = os.path.join(self.testdatadir, 'decam-00488199-n4.fits.fz')
         decbot.process_file(fn)
 
-        #self.assertEqual(len(decbot.planned_tiles), 2)
         self.assertEqual(decbot.seqnum, 2)
         self.assertEqual(len(self.server.queue.exposures), 2)
-
-    def test_queuetime(self):
-        self.server.queue.exposures = []
-
-        from decbot import main
-        args = self.jsonfiles
-        args += ['--remote-server', self.server.url.address]
-        args += ['--remote-port',   str(self.server.url.port)]
-        args += ['--exptime', '2']
-        
-        print('Creating Decbot...')
-        decbot = main(cmdlineargs=args, get_decbot=True)
-
-        decbot.nom.overhead = 1.
-        decbot.queueMargin = 2.
-        decbot.queue_initial_exposures()
-        
-        self.assertEqual(decbot.seqnum, 2)
-        #self.assertEqual(len(decbot.planned_tiles), 2)
-        self.assertEqual(len(self.server.queue.exposures), 2)
-        
-        now = datetime.datetime.utcnow()
-        dt = (decbot.queuetime - now).total_seconds()
-        print('Time until queuetime:', dt)
-
-        # Should be 4, minus execution time
-        self.assertGreater(dt, 3)
-        self.assertLess(dt, 4)
-
-        # Should do nothing
-        decbot.heartbeat()
-
-        self.assertEqual(decbot.seqnum, 2)
-        self.assertEqual(len(self.server.queue.exposures), 2)
-
-        time.sleep(4)
-
-        # Should queue exposure
-        decbot.heartbeat()
-
-        self.assertEqual(decbot.seqnum, 3)
-        self.assertEqual(len(self.server.queue.exposures), 3)
-        
-        # Now the queue time should be... margin 1 + exp 2 + overhead 1 - margin 2 = 3
-            
-        now = datetime.datetime.utcnow()
-        dt = (decbot.queuetime - now).total_seconds()
-        print('Time until queuetime:', dt)
-
-        # Should be 3. minus execution time
-        self.assertGreater(dt, 2)
-        self.assertLess(dt, 3)
-
 
     def test_nqueue(self):
-        self.server.queue.exposures = []
-        self.server.queue.nqueue = 0
+        self.server.queue.reset()
         
         from decbot import main
         args = self.jsonfiles
         args += ['--remote-server', self.server.url.address]
         args += ['--remote-port',   str(self.server.url.port)]
-        args += ['--exptime', '2']
         
         print('Creating Decbot...')
         decbot = main(cmdlineargs=args, get_decbot=True)
 
-        decbot.nom.overhead = 1.
-        decbot.queueMargin = 2.
         decbot.queue_initial_exposures()
         
         self.assertEqual(decbot.seqnum, 2)
         self.assertEqual(len(self.server.queue.exposures), 2)
         
-        now = datetime.datetime.utcnow()
-        dt = (decbot.queuetime - now).total_seconds()
-        print('Time until queuetime:', dt)
-
-        # Should be 4, minus execution time
-        self.assertGreater(dt, 3)
-        self.assertLess(dt, 4)
-
         # Should do nothing
         decbot.heartbeat()
 
         self.assertEqual(decbot.seqnum, 2)
         self.assertEqual(len(self.server.queue.exposures), 2)
 
-        time.sleep(4)
-
-        # It should now queue an exposure, EXCEPT queue is too full, so should do nothing
-        self.server.queue.nqueue = 2
-        decbot.heartbeat()
-        
-        self.assertEqual(decbot.seqnum, 2)
-        self.assertEqual(len(self.server.queue.exposures), 2)
+        self.server.queue.pop()
+        self.assertEqual(len(self.server.queue.exposures), 1)
 
         # NOW it should queue exposure.
-        self.server.queue.nqueue = 0
         decbot.heartbeat()
 
         self.assertEqual(decbot.seqnum, 3)
-        self.assertEqual(len(self.server.queue.exposures), 3)
-        
+        self.assertEqual(len(self.server.queue.exposures), 2)
+
 if __name__ == '__main__':
     unittest.main()

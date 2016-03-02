@@ -32,7 +32,6 @@ class RemoteClient():
 
     def get_n_queued(self):
         n = self.execute('get_nqueue')
-        print('get_n_queued: got', n, type(n))
         return int(n)
 
     def clear_queue(self):

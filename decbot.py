@@ -45,6 +45,9 @@ def main(cmdlineargs=None, get_decbot=False):
     parser.add_option('--exptime', type=int, default=None,
                       help='Set default exposure time, default whatever is in the JSON files, usually 80 sec')
 
+    parser.add_option('--nqueued', type=int, default=2,
+                      help='Set maximum number of exposures in the queue; default %default')
+    
     parser.add_option('--no-cut-past', dest='cut_before_now',
                       default=True, action='store_false',
                       help='Do not cut tiles that were supposed to be observed in the past')
@@ -52,7 +55,6 @@ def main(cmdlineargs=None, get_decbot=False):
     parser.add_option('--no-queue', dest='do_queue', default=True,
                       action='store_false',
                       help='Do not actually queue exposures.')
-    
     parser.add_option('--remote-server', default=None,
                       help='Hostname of CommandServer for queue control')
     parser.add_option('--remote-port', default=None, type=int,
@@ -128,7 +130,7 @@ def main(cmdlineargs=None, get_decbot=False):
         copilot_db = None
     
     decbot = Decbot(J1, J2, J3, opt, nominal_cal, obs, tiles, rc,
-                    copilot_db=copilot_db)
+                    copilot_db=copilot_db, nqueued=opt.nqueued)
     if get_decbot:
         return decbot
     decbot.queue_initial_exposures()
@@ -137,10 +139,12 @@ def main(cmdlineargs=None, get_decbot=False):
 
 class Decbot(NewFileWatcher):
     def __init__(self, J1, J2, J3, opt, nom, obs, tiles, rc,
-                 queueMargin=45., copilot_db=None,):
+                 nqueued=2,
+                 copilot_db=None,):
         super(Decbot, self).__init__(opt.rawdata, backlog=False,
                                      only_process_newest=True)
         self.timeout = None
+        self.nqueued = nqueued
         self.J1 = J1
         self.J2 = J2
         self.J3 = J3
@@ -150,7 +154,6 @@ class Decbot(NewFileWatcher):
         self.tiles = tiles
         self.rc = rc
         self.copilot_db = copilot_db
-        self.queueMargin = queueMargin
         self.seqnum = 0
         self.planned_tiles = OrderedDict()
         self.upcoming = []
@@ -208,27 +211,14 @@ class Decbot(NewFileWatcher):
 
         # Set up initial planned_tiles
         J = [J1,J2,J3][opt.passnum - 1]
-        
+
         J = self.tiles_after_now(J)
         self.plan_tiles(J, Nahead=len(J), exptime=opt.exptime)
-        self.queuetime = None
 
     def queue_initial_exposures(self):
-        # Queue two exposures to start
-        e0 = self.queue_exposure()
-        e1 = self.queue_exposure()
-
-        # When should we queue the next exposure?
-        dt = 2 * self.nom.overhead
-        if e0 is not None:
-            dt += e0['expTime']
-        if e1 is not None:
-            dt += e1['expTime']
-        # margin
-        dt -= self.queueMargin
-        self.queuetime = (datenow() +
-                          datetime.timedelta(0, dt))
-        self.queuetime = self.queuetime.replace(microsecond = 0)
+        # Queue exposures to start
+        for i in range(self.nqueued):
+            self.heartbeat()
 
     def saw_new_files(self, fns):
         # Update the veto list of tiles we have taken tonight.
@@ -250,36 +240,20 @@ class Decbot(NewFileWatcher):
                 traceback.print_exc()
     
     def heartbeat(self):
-        if self.queuetime is None:
+        if self.rc is None:
             return
-        ## Is it time to queue a new exposure?
-        now = datenow().replace(microsecond=0)
-        print('Heartbeat.  Now is', now.isoformat(),
-              'queue time is', self.queuetime.isoformat(),
-              'dt %i' % (int((self.queuetime - now).total_seconds())))
-        if now < self.queuetime:
+        # Poll the queue to see if we can queue another one.
+        nq = self.rc.get_n_queued()
+        now = datenow().replace(microsecond=0).isoformat()
+        if nq >= self.nqueued:
+            print('%s: %i exposures in the queue, waiting until fewer than %i.' % (now, nq, self.nqueued))
             return
-        print('Time to queue an exposure!')
+        else:
+            print('%s: %i exposures in the queue, time to queue one.' % (now, nq))
+
         e = self.queue_exposure()
         if e is None:
             return
-        # schedule next one.
-        # dt = e['expTime'] + self.nom.overhead - self.queueMargin
-        # self.queuetime = now + datetime.timedelta(0, dt)
-        # self.queuetime = self.queuetime.replace(microsecond = 0)
-
-        # We think we have ~ self.queueMargin seconds before the current
-        # exposure ends.  We just queued another exposure, which should end
-        # another exptime+overhead seconds after that.  We want a queueMargin
-        # on that, which would be:
-        #   ~now + self.queueMargin + exptime+overhead - queueMargin
-        # or actually
-        #   self.queuetime + queueMargin + exptime+overhead - queueMargin
-        #  = self.queuetime + exptime + overhead
-        dt = e['expTime'] + self.nom.overhead
-        self.queuetime += datetime.timedelta(0, dt)
-        self.queuetime = self.queuetime.replace(microsecond = 0)
-
         self.write_plans()
         
     def queue_exposure(self):
@@ -287,13 +261,6 @@ class Decbot(NewFileWatcher):
             print('No more tiles in the plan (seqnum = %i)!' % self.seqnum)
             return None
 
-        if self.rc is not None:
-            nq = self.rc.get_n_queued()
-            print('Number of exposures in the queue:', nq)
-            if nq > 5:
-                print('Too many exposures in the queue already:', nq)
-                return None
-        
         j = self.planned_tiles[self.seqnum]
         self.seqnum += 1
 
