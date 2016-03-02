@@ -290,7 +290,7 @@ class Decbot(NewFileWatcher):
         if self.rc is not None:
             nq = self.rc.get_n_queued()
             print('Number of exposures in the queue:', nq)
-            if nq > 1:
+            if nq > 5:
                 print('Too many exposures in the queue already:', nq)
                 return None
         
