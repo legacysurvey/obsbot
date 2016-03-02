@@ -230,29 +230,32 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     plt.axis(ax)
 
     plt.subplot(SP,1,2)
-    mx = 20
+
+    T.dsky = np.zeros(len(T), np.float32)
+    mx = 2.0
     for band,Tb in zip(bands, TT):
         sky0 = nom.sky(band)
+        T.dsky[T.band == band] = Tb.sky - sky0
         I = np.flatnonzero(Tb.sky > 0)
         if len(I):
-            plt.plot(Tb.mjd_obs[I], Tb.sky[I], 'o', color=ccmap[band])
-        plt.axhline(sky0, color=ccmap[band], alpha=0.5)
-        I = np.flatnonzero(Tb.sky > mx)
+            plt.plot(Tb.mjd_obs[I], Tb.sky[I] - sky0, 'o', color=ccmap[band])
+        I = np.flatnonzero((Tb.sky - sky0) > mx)
         if len(I):
             plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
     yl,yh = plt.ylim()
     yh = min(yh,mx)
-
+    plt.axhline(0, color='k', alpha=0.5)
+    
     plt.text(latest.mjd_obs, yl+0.01*(yh-yl),
              '%.2f' % latest.sky, ha='center')
-
+    
     for t in T:
         if t.passnumber > 0:
-            plt.text(t.mjd_obs, min(mx, t.sky) - 0.03*(yh-yl),
+            plt.text(t.mjd_obs, min(mx, t.dsky) - 0.03*(yh-yl),
                      '%i' % t.passnumber, ha='center', va='top')
     
     plt.ylim(yl,yh)
-    plt.ylabel('Sky (mag)')
+    plt.ylabel('Sky - nominal (mag)')
 
     plt.subplot(SP,1,3)
     mx = 1.2
