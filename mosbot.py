@@ -287,8 +287,6 @@ class Mosbot(NewFileWatcher):
             # FIXME -- we could fall back to pass 3 here.
             return False
 
-        print('M:', M)
-        
         return self.update_for_image(M)
 
 

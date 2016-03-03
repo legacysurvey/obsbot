@@ -502,6 +502,15 @@ class RawMeasurer(object):
         sx = shiftx + shiftx2
         sy = shifty + shifty2
         print('Astrometric shift (%.0f, %.0f) pixels' % (sx,sy))
+
+        if True:
+            r0,d0 = stars.ra[I[0]], stars.dec[I[0]]
+            print('Pan-STARRS RA,Dec:', r0,d0)
+            ok,px0,py0 = wcs.radec2pixelxy(r0, d0)
+            print('Header WCS -> x,y:', px0-1, py0-1)
+            mx0,my0 = fullx[J[0]], fully[J[0]]
+            print('VS Matched star x,y:', mx0, my0)
+
         
         if self.debug and ps is not None:
             plt.clf()
