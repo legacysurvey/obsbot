@@ -8,7 +8,7 @@ class TestCopilot(TestCase):
         self.testdatadir = os.path.join(os.path.dirname(__file__),
                                         'testdata')
 
-        self.mos_args = ['--ext', 'im4', '--tiles', 'obstatus/mosaic-tiles_obstatus.fits']
+        self.mos_args = ['--ext', 'im4', '--tiles', 'obstatus/mosaic-tiles_obstatus.fits', '--no-show']
         
     def test_cmdline_args(self):
         from copilot import main, skip_existing_files
@@ -155,9 +155,6 @@ class TestCopilot(TestCase):
         dirname = tempfile.mkdtemp()
         os.environ['MOS3_DATA'] = dirname
 
-        # add --ext im4 so that at DECam site (where default extension
-        # is different) this still works... is this exposing dumbness
-        # of site-specific extension defaults?
         args = self.mos_args + ['--n-fwhm', '10']
         copilot = main(cmdlineargs=args, get_copilot=True)
 
@@ -173,6 +170,39 @@ class TestCopilot(TestCase):
         os.unlink(sym)
         os.rmdir(dirname)
 
+    def test_longtime(self):
+        from copilot import main, Copilot
+        from astrometry.util.fits import fits_table
+        from astrometry.util.starutil_numpy import mjdtodate
+        from obsdb.models import MeasuredCCD
+        from obsbot import mjdnow
+        import tempfile
+        
+        dirname = tempfile.mkdtemp()
+        os.environ['MOS3_DATA'] = dirname
+        
+        args = self.mos_args + ['--n-fwhm', '10']
+        args += ['--plot-filename', 'longtime.png']
+        copilot = main(cmdlineargs=args, get_copilot=True)
+        #copilot.exp
+
+        T = fits_table(os.path.join(self.testdatadir, 'mosaic-db.fits'))
+
+        # Move all the exposures' times so that the latest one is now-longtime
+        mjdoffset = (mjdnow() - (copilot.longtime + 5.)/86400.) - max(T.mjd_obs)
+        T.mjd_obs += mjdoffset
+        
+        for t in T:
+            m,created = MeasuredCCD.objects.get_or_create(
+                filename=t.filename, extension=t.extension)
+            for c in T.get_columns():
+                setattr(m, c, t.get(c))
+            m.object = m.object.strip()
+            m.obstype = m.obstype.strip()
+            m.save()
+
+        copilot.lastNewFile = mjdtodate(max(T.mjd_obs))
+        copilot.plot_recent()
         
 if __name__ == '__main__':
     unittest.main()

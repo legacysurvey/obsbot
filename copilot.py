@@ -326,7 +326,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
             I = np.flatnonzero(Tb.sky > 0)
             if len(I):
                 plt.plot(Tb.mjd_obs[I], t_sat[I], color=ccmap[band],
-                         ls='--', alpha=0.5)
+                         ls='-', alpha=0.5)
 
     plt.ylim(yl,min(mx, yh))
     plt.ylabel('Target exposure time (s)')
@@ -436,8 +436,16 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         for sp in range(1, SP+1):
             plt.subplot(SP,1,sp)
             ax = plt.axis()
-            for mjd,c in markmjds:
+            for mark in markmjds:
+                if len(mark) == 2:
+                    mjd,c = mark
+                if len(mark) == 3:
+                    # So far, this is only used for MISSING IMAGE text.
+                    mjd,c,txt = mark
+                    plt.text(mjd, (ax[2]+ax[3])/2, txt, rotation=90,
+                             va='center', ha='right')
                 plt.axvline(mjd, color=c, alpha=0.5, lw=2)
+
             plt.axis(ax)
 
     if show_plot:
@@ -1060,6 +1068,9 @@ class Copilot(NewFileWatcher):
         self.sfd = sfd
         self.obs = obs
         self.tiles = tiles
+
+        # Record of exposure times we've seen
+        self.exptimes = []
         
     def filter_backlog(self, backlog):
         backlog = self.filter_new_files(backlog)
@@ -1074,24 +1085,31 @@ class Copilot(NewFileWatcher):
         fitsio.read(path, ext=self.rawext)
 
     def timed_out(self, dt):
-        now = datenow()
-        dt  = (now - self.lastNewFile).total_seconds()
-        print('No new images seen for', dt, 'seconds.')
-        markmjds = []
-        if dt > self.longtime:
-            edate = (self.lastNewFile +
-                     datetime.timedelta(0, self.longtime))
-            markmjds.append((datetomjd(edate),'r'))
-        self.plot_recent(markmjds=markmjds)
-        
-    def process_file(self, path):
-        return process_image(path, self.rawext, self.nom, self.sfd,
-                             self.opt, self.obs, self.tiles)
+        self.plot_recent()
 
+    def process_file(self, path):
+        R = process_image(path, self.rawext, self.nom, self.sfd,
+                          self.opt, self.obs, self.tiles)
+        if R is None:
+            return
+        (M,p,enum) = R
+        exptime = M['exptime']
+        self.exptimes.append(exptime)
+        # Update the length of time we think we should wait for new exposures
+        # based on previous few, plus some margin
+        self.longtime = np.median(self.exptimes[-5:]) + 30.
+        
     def processed_file(self, path):
         self.plot_recent()
 
     def plot_recent(self, markmjds=[]):
+        now = datenow()
+        dt  = (now - self.lastNewFile).total_seconds()
+        print('No new images seen for', dt, 'seconds.')
+        if dt > self.longtime:
+            edate = self.lastNewFile + datetime.timedelta(0, self.longtime)
+            markmjds.append((datetomjd(edate), 'r', 'MISSING IMAGE!'))
+        
         plot_recent(self.opt, self.nom, tiles=self.tiles, markmjds=markmjds,
                     show_plot=self.opt.show)
 
