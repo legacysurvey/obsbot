@@ -196,7 +196,8 @@ class Mosbot(NewFileWatcher):
                 os.chmod(path, chmod)
                 print('Wrote', path)
                 script.append('. %s' % fn)
-                script.append('if [ -f %s ]; then\n  . read.sh; rm %s; exit 0;\nfi' %
+                # Another check for 'quit' file; no need to run "read.sh" here.
+                script.append('if [ -f %s ]; then\n  rm %s; exit 0;\nfi' %
                               (quitfile,quitfile))
                 
 
