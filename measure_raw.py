@@ -510,7 +510,6 @@ class RawMeasurer(object):
             print('Header WCS -> x,y:', px0-1, py0-1)
             mx0,my0 = fullx[J[0]], fully[J[0]]
             print('VS Matched star x,y:', mx0, my0)
-
         
         if self.debug and ps is not None:
             plt.clf()

@@ -28,6 +28,14 @@ class DecamNominalCalibration(NominalCalibration):
     def sky(self, band):
         return self.sky0[band]
 
+    def cdmatrix(self, ext):
+        # listhead DECam_00488199.fits.fz | grep 'EXTNAME\|CD._.'
+        science = (-1.824E-07,    7.2853E-05, -7.284990E-05,   -1.8218E-07)
+        focus   = (       0.0, -7.5E-05, 7.5E-05,       0.0)
+        if ext in ['FS1', 'FS2', 'FS3', 'FS4', 'FN1', 'FN2', 'FN3', 'FN4']:
+            return focus
+        return science
+
     def _fiducial_exptime(self, fid, band):
         if band == 'g':
             fid.update(

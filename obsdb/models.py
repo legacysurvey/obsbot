@@ -1,10 +1,6 @@
 from django.db import models
 import numpy as np
 
-#class MeasuredCCDManager(models.Manager):
-#    def object_frames(self):
-
-        
 class MeasuredCCD(models.Model):
     camera = models.CharField(
         max_length=32,
@@ -43,6 +39,12 @@ class MeasuredCCD(models.Model):
     dx = models.FloatField(default=0)
     dy = models.FloatField(default=0)
 
+    # WCS
+    # cd1_1 = models.FloatField(default=0)
+    # cd1_2 = models.FloatField(default=0)
+    # cd2_1 = models.FloatField(default=0)
+    # cd2_2 = models.FloatField(default=0)
+    
     # number of stars matched to Pan-STARRS1
     nmatched = models.IntegerField(default=-1)
 

@@ -339,50 +339,63 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     plt.ylabel('Exposure time (s)')
 
     plt.subplot(SP,1,5)
-    mn,mx = 0.6, 1.4
-    for band,Tb in zip(bands, TT):
-        plt.plot(Tb.mjd_obs, Tb.depth_factor, 'o', color=ccmap[band])
-        # lower and upper limits
-        I = np.flatnonzero(Tb.depth_factor < mn)
-        if len(I):
-            plt.plot(Tb.mjd_obs[I], [mn]*len(I), 'v', **limitstyle(band))
-        I = np.flatnonzero(Tb.depth_factor > mx)
-        if len(I):
-            plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
-    plt.axhline(1.0, color='k', alpha=0.5)
-    plt.axhline(0.9, color='k', ls='--', alpha=0.5)
-    plt.axhline(1.1, color='k', ls='--', alpha=0.5)
 
+    CDs = dict([(ext, nom.cdmatrix(ext)) for ext in np.unique(T.extension)])
+    CD = np.array([CDs[ext] for ext in T.extension])
+    print('CD', CD.shape)
+    ### Are these the right way around?
+    dra  = (CD[:,0] * T.dx + CD[:,1] * T.dy) * 3600.
+    ddec = (CD[:,2] * T.dx + CD[:,3] * T.dy) * 3600.
+    
+    pr = plt.plot(T.mjd_obs, dra,  'bo')
+    pd = plt.plot(T.mjd_obs, ddec, 'go')
+    pr = plt.plot(T.mjd_obs, dra,  'b-', alpha=0.5)
+    pd = plt.plot(T.mjd_obs, ddec, 'g-', alpha=0.5)
+    #plt.legend((pr[0], pd[0]), ('RA', 'Dec'))
+    yl,yh = plt.ylim()
+    mx = max(np.abs(yl), np.abs(yh))
+    plt.axhline(0.0, color='k', alpha=0.5)
+    plt.axhline(10., color='k', alpha=0.25)
+    plt.ylim(-mx, mx * 1.8)
+
+    # i = np.argmax(T.mjd_obs)
+    # plt.text(T.mjd_obs[i], dra[i], '  RA', ha='left', va='center')
+    # plt.text(T.mjd_obs[i], ddec[i], '  Dec', ha='left', va='center')
+    
     F = Tnonobject[Tnonobject.obstype == 'focus']
     Z = Tnonobject[Tnonobject.obstype == 'zero']
     print(len(F), 'focus frames,', len(Z), 'zero frames')
     if len(F):
-        plt.plot(F.mjd_obs, 0.9 + np.zeros(len(F)), 'ko')
+        plt.plot(F.mjd_obs, np.zeros(len(F)), 'ro')
         for f in F:
-            plt.text(f.mjd_obs, 0.88, 'F', ha='center', va='top')
+            plt.text(f.mjd_obs, 0., 'F', ha='center', va='top')
     if len(Z):
-        plt.plot(Z.mjd_obs, 0.9 + np.zeros(len(Z)), 'o', mec='k', mfc='none')
+        plt.plot(Z.mjd_obs, np.zeros(len(Z)), 'mo')
         for f in Z:
-            plt.text(f.mjd_obs, 0.81, 'Z', ha='center', va='top')
-    
+            plt.text(f.mjd_obs, 0., 'Z', ha='center', va='top')
+
     if len(T) > 50:
         ii = [np.argmin(T.expnum + (T.expnum == 0)*1000000),
               np.argmax(T.expnum)]
     else:
         ii = range(len(T))
+
+    txty = mx*1.8
     for i in ii:
         if T.expnum[i] == 0:
             continue
-        plt.text(T.mjd_obs[i], mx, '%i ' % T.expnum[i],
+        plt.text(T.mjd_obs[i], txty, '%i ' % T.expnum[i],
                  rotation=90, va='top', ha='center')
         if len(T) <= 50:
             # Mark focus frames too
             for i in range(len(F)):
-                plt.text(F.mjd_obs[i], mx, '%i ' % F.expnum[i],
+                plt.text(F.mjd_obs[i], txty, '%i ' % F.expnum[i],
                          rotation=90, va='top', ha='center')
-
-    plt.ylim(mn,mx)
-    plt.ylabel('Depth factor')
+            for i in range(len(Z)):
+                plt.text(Z.mjd_obs[i], txty, '%i ' % Z.expnum[i],
+                         rotation=90, va='top', ha='center')
+    
+    plt.ylabel('dRA (blu), dDec (grn)')
     
     plt.xlabel('MJD')
     

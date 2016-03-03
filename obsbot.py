@@ -78,6 +78,9 @@ class NominalCalibration(object):
     def sky(self, band):
         pass
 
+    def cdmatrix(self, ext):
+        pass
+    
     def fiducial_exptime(self, band):
         '''
         Returns an object with attributes:
