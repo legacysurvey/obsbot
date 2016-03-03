@@ -87,6 +87,33 @@ class TestMosbot(unittest.TestCase):
             'transparency': 0.94911683705518535, 'seeing': 0.9776841626480679,
             'dx': 9.0965935687085278, 'nmatched': 199})
 
+
+    def test_large_slew(self):
+        from mosbot import main
+        import tempfile
+
+        tempdir = tempfile.mkdtemp()
+        args = ['--script', os.path.join(tempdir, 'tonight.sh')]
+        args += self.jsonfiles
+        mosbot = main(cmdlineargs=args, get_mosbot=True)
+        mosbot.J1[0]['RA'] = 0
+        mosbot.J1[0]['dec'] = -90
+        
+        # write sequence number
+        f = open(mosbot.seqnumpath, 'w')
+        f.write('5\n')
+        f.close()
+        
+        fn = os.path.join(self.testdatadir, 'mos3.68488.im4.fits.fz')
+        #mosbot.process_file(fn)
+        mosbot.update_for_image({
+            'airmass': 1.019,
+            'skybright': 19.372964228396995,
+            'transparency': 0.94911683705518535,
+            'seeing': 0.9776841626480679,
+            'band': 'z'})
+
+        
     def XXXtest_run(self):
         from mosbot import main
 

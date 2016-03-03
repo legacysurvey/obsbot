@@ -318,7 +318,6 @@ class Mosbot(NewFileWatcher):
         J = [self.J1,self.J2,self.J3][nextpass-1]
         now = ephem.now()
         iplan = None
-        print('UTC now is', str(now))
         for i,j in enumerate(J):
             tstart = ephem.Date(str(j['approx_datetime']))
             if tstart > now:
@@ -332,7 +331,8 @@ class Mosbot(NewFileWatcher):
             return False
     
         # Read the current sequence number
-        print('%s: reading sequence number' % (str(ephem.now())))
+        print('%s: reading sequence number from %s' %
+              (str(ephem.now()), self.seqnumpath))
         f = open(self.seqnumpath, 'r')
         s = f.read()
         f.close()
@@ -367,8 +367,7 @@ class Mosbot(NewFileWatcher):
             # Check all planned tiles before this one for a duplicate tile.
             dup = False
             for s in range(nextseq-1, 0, -1):
-                t = self.planned_tiles[s]
-                if t == tilename:
+                if tilename == self.planned_tiles[s]:
                     dup = True
                     print('Wanted to plan tile %s (pass %i element %i) for exp %i'
                           % (tilename, nextpass, iplan+ii, nextseq),
@@ -379,11 +378,37 @@ class Mosbot(NewFileWatcher):
     
             self.planned_tiles[nextseq] = tilename
             iahead += 1
-    
+
+            largeslew = False
+            if iahead == 1:
+                from astrometry.util.starutil_numpy import degrees_between
+                # Check for large slew
+                prevname = self.planned_tiles[nextseq - 1]
+                Jall = self.J1 + self.J2 + self.J3
+                I, = np.nonzero([str(j['object']) == prevname for j in Jall])
+                if len(I) == 0:
+                    print('Could not find previous tile "%s"' % prevname)
+                else:
+                    jprev = Jall[I[0]]
+                    slew = degrees_between(jprev['RA'], jprev['dec'],
+                                           jplan['RA'], jplan['dec'])
+                    print('Slew: %.1f degrees' % slew)
+                    largeslew = (slew > 10)
+                if largeslew:
+                    print()
+                    print()
+                    print('Large slew from current exposure to next: ' +
+                          'RA,Dec %.1f, %.1f to %.1f, %.1f ==> %.1f degrees' %
+                          (jprev['RA'], jprev['dec'], jplan['RA'],
+                           jplan['dec'], slew))
+                    print()
+                    print()
+                    os.system('tput bel; sleep 0.2; ' * 5)
+
+                
             # Find this tile in the tiles table.
             tile = get_tile_from_name(tilename, self.tiles)
             ebv = tile.ebv_med
-    
             nextband = str(jplan['filter'])[0]
     
             print('Selected tile:', tile.tileid, nextband)
