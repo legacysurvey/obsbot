@@ -1,6 +1,7 @@
 import unittest
 from django.test import TestCase
 import os
+import datetime
 
 class TestCopilot(TestCase):
 
@@ -203,6 +204,21 @@ class TestCopilot(TestCase):
 
         copilot.lastNewFile = mjdtodate(max(T.mjd_obs))
         copilot.plot_recent()
+
+        # Change the mjd_obs times so that it's *not* longtime.
+        copilot.opt.plot_filename = 'longtime2.png'
+        
+        # T.mjd_obs += 10./86400.
+        # for t in T:
+        #     m,created = MeasuredCCD.objects.get_or_create(
+        #         filename=t.filename, extension=t.extension)
+        #     m.mjd_obs = t.mjd_obs
+        #     m.save()
+        copilot.lastNewFile += datetime.timedelta(0, 10.)
+        copilot.plot_recent()
+
+        print('Longtime:', copilot.longtime)
+        
         
 if __name__ == '__main__':
     unittest.main()

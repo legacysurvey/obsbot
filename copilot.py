@@ -1123,10 +1123,12 @@ class Copilot(NewFileWatcher):
         self.lastNewFile = datenow()
         self.plot_recent()
 
-    def plot_recent(self, markmjds=[]):
+    def plot_recent(self, markmjds=None):
         now = datenow()
         dt  = (now - self.lastNewFile).total_seconds()
         print('No new images seen for', dt, 'seconds.')
+        if markmjds is None:
+            markmjds = []
         if dt > self.longtime:
             edate = self.lastNewFile + datetime.timedelta(0, self.longtime)
             markmjds.append((datetomjd(edate), 'r', 'MISSING IMAGE!'))
