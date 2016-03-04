@@ -207,13 +207,6 @@ class TestCopilot(TestCase):
 
         # Change the mjd_obs times so that it's *not* longtime.
         copilot.opt.plot_filename = 'longtime2.png'
-        
-        # T.mjd_obs += 10./86400.
-        # for t in T:
-        #     m,created = MeasuredCCD.objects.get_or_create(
-        #         filename=t.filename, extension=t.extension)
-        #     m.mjd_obs = t.mjd_obs
-        #     m.save()
         copilot.lastNewFile += datetime.timedelta(0, 10.)
         copilot.plot_recent()
 

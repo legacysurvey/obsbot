@@ -73,7 +73,7 @@ class MosaicNominalCalibration(NominalCalibration):
 
         elif band == 'z':
             fid.update(
-                k_co = 0.06,
+                k_co = 0.10,
                 A_co = 1.263,
                 )
         else:
