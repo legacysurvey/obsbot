@@ -382,6 +382,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     yl,yh = plt.ylim()
 
     mx = np.percentile(np.abs(np.append(dra, ddec)), 95)
+    mx *= 1.2
     
     plt.axhline(0.0, color='k', alpha=0.5)
     plt.axhline(+10., color='k', alpha=0.2)
@@ -416,7 +417,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
             continue
         plt.text(Tx.mjd_obs[i], txty, '%i ' % Tx.expnum[i],
                  rotation=90, va='center', ha='center',
-                 bbox=dict(facecolor='white', alpha=0.8))
+                 bbox=dict(facecolor='white', alpha=0.8, edgecolor='none'))
         if len(Tx) <= 50:
             # Mark focus frames too
             for i in range(len(F)):
