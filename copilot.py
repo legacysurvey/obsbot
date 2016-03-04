@@ -365,24 +365,29 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
 
     plt.subplot(SP,1,5)
 
-    CDs = dict([(ext, nom.cdmatrix(ext)) for ext in np.unique(T.extension)])
-    CD = np.array([CDs[ext] for ext in T.extension])
-    print('CD', CD.shape)
-    ### Are these the right way around?
-    dra  = (CD[:,0] * T.dx + CD[:,1] * T.dy) * 3600.
-    ddec = (CD[:,2] * T.dx + CD[:,3] * T.dy) * 3600.
+    I = np.argsort(T.mjd_obs)
+    Tx = T[I]
     
-    pr = plt.plot(T.mjd_obs, dra,  'bo')
-    pd = plt.plot(T.mjd_obs, ddec, 'go')
-    pr = plt.plot(T.mjd_obs, dra,  'b-', alpha=0.5)
-    pd = plt.plot(T.mjd_obs, ddec, 'g-', alpha=0.5)
+    CDs = dict([(ext, nom.cdmatrix(ext)) for ext in np.unique(Tx.extension)])
+    CD = np.array([CDs[ext] for ext in Tx.extension])
+    ### Are these the right way around?
+    dra  = (CD[:,0] * Tx.dx + CD[:,1] * Tx.dy) * 3600.
+    ddec = (CD[:,2] * Tx.dx + CD[:,3] * Tx.dy) * 3600.
+
+    pr = plt.plot(Tx.mjd_obs, dra,  'bo')
+    pd = plt.plot(Tx.mjd_obs, ddec, 'go')
+    pr = plt.plot(Tx.mjd_obs, dra,  'b-', alpha=0.5)
+    pd = plt.plot(Tx.mjd_obs, ddec, 'g-', alpha=0.5)
     #plt.legend((pr[0], pd[0]), ('RA', 'Dec'))
     yl,yh = plt.ylim()
-    mx = max(np.abs(yl), np.abs(yh))
-    plt.axhline(0.0, color='k', alpha=0.5)
-    plt.axhline(10., color='k', alpha=0.25)
-    plt.ylim(-mx, mx * 1.8)
 
+    mx = np.percentile(np.abs(np.append(dra, ddec)), 95)
+    
+    plt.axhline(0.0, color='k', alpha=0.5)
+    plt.axhline(+10., color='k', alpha=0.2)
+    plt.axhline(-10., color='k', alpha=0.2)
+    plt.ylim(-mx,mx)
+    
     # i = np.argmax(T.mjd_obs)
     # plt.text(T.mjd_obs[i], dra[i], '  RA', ha='left', va='center')
     # plt.text(T.mjd_obs[i], ddec[i], '  Dec', ha='left', va='center')
@@ -399,19 +404,20 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         for f in Z:
             plt.text(f.mjd_obs, 0., 'Z', ha='center', va='top')
 
-    if len(T) > 50:
-        ii = [np.argmin(T.expnum + (T.expnum == 0)*1000000),
-              np.argmax(T.expnum)]
+    if len(Tx) > 50:
+        ii = [np.argmin(Tx.expnum + (Tx.expnum == 0)*1000000),
+              np.argmax(Tx.expnum)]
     else:
-        ii = range(len(T))
+        ii = range(len(Tx))
 
-    txty = mx*1.8
+    txty = mx
     for i in ii:
-        if T.expnum[i] == 0:
+        if Tx.expnum[i] == 0:
             continue
-        plt.text(T.mjd_obs[i], txty, '%i ' % T.expnum[i],
-                 rotation=90, va='top', ha='center')
-        if len(T) <= 50:
+        plt.text(Tx.mjd_obs[i], txty, '%i ' % Tx.expnum[i],
+                 rotation=90, va='center', ha='center',
+                 bbox=dict(facecolor='white', alpha=0.8))
+        if len(Tx) <= 50:
             # Mark focus frames too
             for i in range(len(F)):
                 plt.text(F.mjd_obs[i], txty, '%i ' % F.expnum[i],
