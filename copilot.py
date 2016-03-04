@@ -235,27 +235,52 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
 
     T.dsky = np.zeros(len(T), np.float32)
     mx = 2.0
+    minsky = 0
     for band,Tb in zip(bands, TT):
         sky0 = nom.sky(band)
         T.dsky[T.band == band] = Tb.sky - sky0
         I = np.flatnonzero(Tb.sky > 0)
         if len(I):
             plt.plot(Tb.mjd_obs[I], Tb.sky[I] - sky0, 'o', color=ccmap[band])
+            minsky = min(minsky, min(Tb.sky[I] - sky0))
         I = np.flatnonzero((Tb.sky - sky0) > mx)
         if len(I):
             plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
     yl,yh = plt.ylim()
     yh = min(yh,mx)
+    yl = minsky - 0.03 * (yh-yl)
+    
     plt.axhline(0, color='k', alpha=0.5)
     
     plt.text(latest.mjd_obs, yl+0.01*(yh-yl),
              '%.2f' % latest.sky, ha='center')
     
-    for t in T:
-        if t.passnumber > 0:
-            plt.text(t.mjd_obs, min(mx, t.dsky) - 0.03*(yh-yl),
-                     '%i' % t.passnumber, ha='center', va='top')
+    # Plot strings of pass 1,2,3
+    I = np.argsort(T.mjd_obs)
+    TJ = T[I]
+    TJ.cut(TJ.passnumber > 0)
+    i = 0
+    while i < len(TJ):
+        t = TJ[i]
+        p0 = t.passnumber
+        # print('Start: exposure', i, 'has pass', p0)
+        j = 0
+        for j,tj in enumerate(TJ[i+1:]):
+            # print('  j=%i: pass %i' % (j+i+1, tj.passnumber))
+            if tj.passnumber != p0:
+                break
+        j += i+1
+        print('Exposures from [%i,%i) have pass %i' % (i, j, p0))
+        tend = TJ[j-1]
+        
+        y = yl + 0.1 * (yh-yl)
+        if j > i+1:
+            plt.plot([t.mjd_obs, tend.mjd_obs], [y, y], 'b-', lw=2, alpha=0.5)
+        plt.text((t.mjd_obs + tend.mjd_obs)/2., y, '%i' % p0,
+                 ha='center', va='top')
+        i = j
 
+        
     plt.axhline(-0.25, color='k', alpha=0.25)
             
     plt.ylim(yl,yh)
@@ -984,11 +1009,13 @@ def main(cmdlineargs=None, get_copilot=False):
             
         twi = get_twilight(camera_name, sdate)
         if opt.mjdstart is None:
-            opt.mjdstart = ephemdate_to_mjd(twi.sunset)
-            print('Set mjd start to sunset:', twi.sunset, opt.mjdstart)
+            opt.mjdstart = ephemdate_to_mjd(
+                twi.eve10 - np.abs(twi.eve12-twi.eve10))
+            print('Set MJD start to', opt.mjdstart)
         if opt.mjdend is None:
-            opt.mjdend = ephemdate_to_mjd(twi.sunrise)
-            print('Set mjd end to sunrise', twi.sunrise, opt.mjdend)
+            opt.mjdend = ephemdate_to_mjd(
+                twi.morn10 + np.abs(twi.morn10-twi.morn12))
+            print('Set MJD end to', opt.mjdend)
         markmjds.extend(mark_twilight(camera_name, sdate))
         
     if opt.plot_filename is None:
