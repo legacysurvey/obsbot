@@ -263,14 +263,12 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     while i < len(TJ):
         t = TJ[i]
         p0 = t.passnumber
-        # print('Start: exposure', i, 'has pass', p0)
         j = 0
         for j,tj in enumerate(TJ[i+1:]):
-            # print('  j=%i: pass %i' % (j+i+1, tj.passnumber))
             if tj.passnumber != p0:
                 break
         j += i+1
-        print('Exposures from [%i,%i) have pass %i' % (i, j, p0))
+        #print('Exposures from [%i,%i) have pass %i' % (i, j, p0))
         tend = TJ[j-1]
         
         y = yl + 0.1 * (yh-yl)
@@ -500,6 +498,14 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
 
             plt.axis(ax)
 
+    Tcount = T[(T.passnumber > 0) * (T.bad_pixcnt == False) *
+               (T.nmatched > 10)]
+    for band in np.unique(Tcount.band):
+        for passnum in [1,2,3]:
+            N = np.sum((Tcount.band == band) * (Tcount.passnumber == passnum))
+            print('Band %s: total of %i pass %i tiles' % (band, N, passnum))
+        
+    
     if show_plot:
         plt.draw()
         plt.show(block=False)
