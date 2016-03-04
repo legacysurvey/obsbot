@@ -1120,6 +1120,7 @@ class Copilot(NewFileWatcher):
         self.longtime = np.median(self.exptimes[-5:]) + 30.
         
     def processed_file(self, path):
+        self.lastNewFile = datenow()
         self.plot_recent()
 
     def plot_recent(self, markmjds=[]):
