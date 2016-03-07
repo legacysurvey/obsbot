@@ -1157,7 +1157,7 @@ class Copilot(NewFileWatcher):
         self.exptimes.append(exptime)
         # Update the length of time we think we should wait for new exposures
         # based on previous few, plus some margin
-        self.longtime = np.median(self.exptimes[-5:]) + 60.
+        self.longtime = np.max(self.exptimes[-5:]) + 60.
         
     def processed_file(self, path):
         self.lastNewFile = datenow()
