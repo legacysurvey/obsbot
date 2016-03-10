@@ -963,6 +963,11 @@ def main(cmdlineargs=None, get_copilot=False):
     parser.add_option('--mjdend', type=float, default=None,
                       help='MJD (UTC) at which to end plot (default: now, which is %.3f)' % now)
 
+    parser.add_option('--datestart', default=None,
+                      help='UTC date at which to start plot; eg "2016/02/03 12:35"')
+    parser.add_option('--dateend', default=None,
+                      help='UTC date at which to end plot')
+    
     parser.add_option('--skip', action='store_true',
                       help='Skip images that already exist in the database')
 
@@ -1004,6 +1009,11 @@ def main(cmdlineargs=None, get_copilot=False):
     import pylab as plt
     plt.figure(figsize=(8,10))
 
+    if opt.datestart is not None:
+        opt.mjdstart = ephemdate_to_mjd(ephem.Date(opt.datestart))
+    if opt.dateend is not None:
+        opt.mjdend = ephemdate_to_mjd(ephem.Date(opt.dateend))
+    
     markmjds = []
 
     if opt.nightplot:
