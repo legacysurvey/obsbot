@@ -597,6 +597,15 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
             ext = get_default_extension(fn)
         m,created = obsdb.MeasuredCCD.objects.get_or_create(
             filename=fn, extension=ext)
+
+        if skip:
+            # Also try searching by expnum and ext.
+            m2 = obsdb.MeasuredCCD.objects.filter(
+                expnum=expnum, extension=ext)
+            if m2.count() > 0:
+                print('Expnum and extension already exists in db.')
+                return None
+        
         m.obstype = obstype
         m.camera  = camera_name(phdr)
         m.expnum  = expnum
