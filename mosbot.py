@@ -159,7 +159,7 @@ class Mosbot(NewFileWatcher):
         # Delete 'quit' file if it exists.
         quitfn = os.path.join(self.scriptdir, quitfile)
         if os.path.exists(quitfn):
-            print('Removing file', % quitfn)
+            print('Removing file', quitfn)
             os.remove(quitfn)
         
         # Write "read.sh" for quitting gracefully without slew
