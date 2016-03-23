@@ -246,7 +246,9 @@ class RawMeasurer(object):
         if ndetected == 0:
             print('NO SOURCES DETECTED')
             return meas
-        
+
+        # Measure moments, etc around detected stars.
+        # These measurements don't seem to be very good!
         xx,yy = [],[]
         fx,fy = [],[]
         mx2,my2,mxy = [],[],[]
@@ -331,57 +333,7 @@ class RawMeasurer(object):
             plt.axis(ax)
             ps.savefig()
 
-            # show centroids too
-            # plt.plot(xx, yy, 'go', mec='g', mfc='none', ms=8)
-            # plt.axis(ax)
-            # ps.savefig()
-            
-        # if ps is not None:
-        #     plt.clf()
-        #     plt.subplot(2,1,1)
-        #     mx = np.percentile(np.append(mx2,my2), 99)
-        #     ha = dict(histtype='step', range=(0,mx), bins=50)
-        #     plt.hist(mx2, color='b', label='mx2', **ha)
-        #     plt.hist(my2, color='r', label='my2', **ha)
-        #     plt.hist(mxy, color='g', label='mxy', **ha)
-        #     plt.legend()
-        #     plt.xlim(0,mx)
-        #     plt.subplot(2,1,2)
-        #     mx = np.percentile(np.append(wmx2,wmy2), 99)
-        #     ha = dict(histtype='step', range=(0,mx), bins=50, lw=3, alpha=0.3)
-        #     plt.hist(wmx2, color='b', label='wx2', **ha)
-        #     plt.hist(wmy2, color='r', label='wy2', **ha)
-        #     plt.hist(wmxy, color='g', label='wxy', **ha)
-        #     plt.legend()
-        #     plt.xlim(0,mx)
-        #     plt.suptitle('Source moments')
-        #     ps.savefig()
-        # 
-        #     #mx = np.percentile(np.abs(np.append(mxy,wmxy)), 99)
-        #     plt.clf()
-        #     plt.subplot(2,1,1)
-        #     ha = dict(histtype='step', range=(0,1), bins=50)
-        #     plt.hist(ell, color='g', label='ell', **ha)
-        #     plt.hist(well, color='g', lw=3, alpha=0.3, label='windowed ell', **ha)
-        #     plt.legend()
-        #     plt.subplot(2,1,2)
-        #     ha = dict(histtype='step', range=(-90,90), bins=50)
-        #     plt.hist(theta, color='g', label='theta', **ha)
-        #     plt.hist(wtheta, color='g', lw=3, alpha=0.3,
-        #              label='windowed theta', **ha)
-        #     plt.xlim(-90,90)
-        #     plt.legend()
-        #     plt.suptitle('Source ellipticities & angles')
-        #     ps.savefig()
-            
-        # Cut down to stars whose centroids are within 1 pixel of their peaks...
-        #keep = (np.hypot(fx - xx, fy - yy) < 2)
-        #print(sum(keep), 'of', len(keep), 'stars have centroids within 2 of peaks')
-        #print('mean dx', np.mean(fx-xx), 'dy', np.mean(fy-yy), 'pixels')
-        #assert(float(sum(keep)) / len(keep) > 0.9)
-        #fx = fx[keep]
-        #fy = fy[keep]
-
+        # Aperture photometry
         apxy = np.vstack((fx, fy)).T
         ap = []
         aprad_pix = self.aprad / pixsc
@@ -415,7 +367,6 @@ class RawMeasurer(object):
         apflux2 = apflux2[good]
         fx = fx[good]
         fy = fy[good]
-
 
         
         # Read in the PS1 catalog, and keep those within 0.25 deg of CCD center
@@ -593,6 +544,7 @@ class RawMeasurer(object):
             plt.ylabel('DECam ap flux (no sky sub)')
             ps.savefig()
 
+        # "apmag2" is the annular sky-subtracted flux
         apmag2 = -2.5 * np.log10(apflux2) + zp0 + 2.5 * np.log10(exptime)
         apmag  = -2.5 * np.log10(apflux ) + zp0 + 2.5 * np.log10(exptime)
     
@@ -635,7 +587,11 @@ class RawMeasurer(object):
         dmag2,dsig2 = sensible_sigmaclip(dm, nsigma=2.5)
         #print('Sky-sub mag offset', dmag2)
         #print('Scatter', dsig2)
-    
+
+        # Median, sky-sub
+        goodpix,lo,hi = sigmaclip(dm, low=3, high=3)
+        dmagmedsky = np.median(goodpix)
+
         if ps is not None:
             plt.clf()
             plt.plot(ps1mag, apmag[J] + dmag - ps1mag, 'b.', label='No sky sub')
@@ -651,10 +607,17 @@ class RawMeasurer(object):
         zp_obs = zp0 + dmag
         transparency = 10.**(-0.4 * (zp0 - zp_obs - kx * (airmass - 1.)))
         meas.update(zp=zp_obs, transparency=transparency)
-    
+
         print('Zeropoint %6.3f' % zp_obs)
         print('Fiducial  %6.3f' % zp0)
         print('Transparency: %.3f' % transparency)
+
+        # Also return the zeropoints using the sky-subtracted mags,
+        # and using median rather than clipped mean.
+        meas.update(zp_skysub = zp0 + dmag2,
+                    zp_med = zp_med,
+                    zp_med_skysub = zp0 + dmagmedsky)
+        
 
         # print('Using sky-subtracted values:')
         # zp_sky = zp0 + dmag2
