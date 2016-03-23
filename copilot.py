@@ -274,6 +274,10 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         y = yl + 0.1 * (yh-yl)
         if j > i+1:
             plt.plot([t.mjd_obs, tend.mjd_obs], [y, y], 'b-', lw=2, alpha=0.5)
+            plt.plot([t.mjd_obs, t.mjd_obs], [y - 0.05*(yh-yl), y + 0.05*(yh-yl)],
+                     'b-', lw=2, alpha=0.5)
+            plt.plot([tend.mjd_obs, tend.mjd_obs], [y - 0.05*(yh-yl), y + 0.05*(yh-yl)],
+                     'b-', lw=2, alpha=0.5)
         plt.text((t.mjd_obs + tend.mjd_obs)/2., y, '%i' % p0,
                  ha='center', va='top')
         i = j
@@ -597,6 +601,15 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
             ext = get_default_extension(fn)
         m,created = obsdb.MeasuredCCD.objects.get_or_create(
             filename=fn, extension=ext)
+
+        if skip:
+            # Also try searching by expnum and ext.
+            m2 = obsdb.MeasuredCCD.objects.filter(
+                expnum=expnum, extension=ext)
+            if m2.count() > 0:
+                print('Expnum and extension already exists in db.')
+                return None
+        
         m.obstype = obstype
         m.camera  = camera_name(phdr)
         m.expnum  = expnum
@@ -834,7 +847,8 @@ def plot_recent(opt, nom, tiles=None, markmjds=[], **kwargs):
                                           mjd_obs__lte=mjd_end)
 
     if not len(mm):
-        print('No measurements in MJD range', mjd_start, mjd_end)
+        print('No measurements in MJD range', mjd_start, mjd_end, '=> date range',
+              mjdtodate(mjd_start), mjdtodate(mjd_end), 'UTC')
         return
 
     camera = mm[0].camera
