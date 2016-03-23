@@ -50,6 +50,11 @@ def choose_pass(trans, seeing, skybright, nomsky,
             print('Forcing pass %i because file exists: %s' % (p, path))
             return p
 
+    path = os.path.join(forcedir, 'nopass1')
+    if os.path.exists(path):
+        print('File %s exists; not allowing pass 1' % path)
+        pass1ok = False
+        
     if pass1ok:
         return 1
     if pass2ok:

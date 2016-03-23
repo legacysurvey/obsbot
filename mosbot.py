@@ -155,7 +155,13 @@ class Mosbot(NewFileWatcher):
             datecmd = 'date -u +"%Y-%m-%d %H:%M:%S"'
             #return 'echo "mosbot $(%s): %s"' % (datecmd, s)
             return 'echo "$(%s): %s" >> mosbot.log' % (datecmd, s)
-    
+
+        # Delete 'quit' file if it exists.
+        quitfn = os.path.join(self.scriptdir, quitfile)
+        if os.path.exists(quitfn):
+            print('Removing file', quitfn)
+            os.remove(quitfn)
+        
         # Write "read.sh" for quitting gracefully without slew
         path = os.path.join(self.scriptdir, 'read.sh')
         f = open(path, 'w')
@@ -177,8 +183,7 @@ class Mosbot(NewFileWatcher):
         # Write top-level script and shell scripts for default plan.
         for i,j in enumerate(J):
 
-            # We make the sequence numbers start at 1, just to make things
-            # difficult for ourselves.
+            # The sequence number start at 1
             seq = i + 1
             
             if seq > 1:
