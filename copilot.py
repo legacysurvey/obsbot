@@ -424,7 +424,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
             for i in range(len(Z)):
                 plt.text(Z.mjd_obs[i], txty, '%i ' % Z.expnum[i],
                          rotation=90, va='top', ha='center')
-    
+
     plt.ylabel('dRA (blu), dDec (grn)')
     
     plt.xlabel('MJD')

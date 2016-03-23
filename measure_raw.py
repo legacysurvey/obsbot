@@ -242,10 +242,7 @@ class RawMeasurer(object):
             slices = self.detect_sources(detsn, 10., ps)
             print(len(slices), 'sources detected')
         ndetected = len(slices)
-
-        # -> "decam" / "mosaic3"
         meas.update(ndetected=ndetected)
-
         if ndetected == 0:
             print('NO SOURCES DETECTED')
             return meas
@@ -317,7 +314,6 @@ class RawMeasurer(object):
         wa = np.sqrt((wmx2 + wmy2) / 2. + ws)
         wb = np.sqrt((wmx2 + wmy2) / 2. - ws)
         well = 1. - wb/wa
-
             
         fx = np.array(fx)
         fy = np.array(fy)
