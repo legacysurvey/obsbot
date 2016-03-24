@@ -450,6 +450,26 @@ class RawMeasurer(object):
         sy = shifty + shifty2
         print('Astrometric shift (%.0f, %.0f) pixels' % (sx,sy))
 
+        #from astromalign.astrom_common import Alignment
+
+        # Find affine transformation
+        cx = fullW/2
+        cy = fullH/2
+
+        A = np.zeros((len(J), 3))
+        A[:,0] = 1.
+        A[:,1] = (fullx[J] + sx) - cx
+        A[:,2] = (fully[J] + sy) - cy
+
+        R = np.linalg.lstsq(A, px[I] - cx)
+        resx = R[0]
+        print('Affine transformation for X:', resx)
+        R = np.linalg.lstsq(A, py[I] - cy)
+        resy = R[0]
+        print('Affine transformation for Y:', resy)
+
+        meas.update(affine = [cx, cy] + list(resx) + list(resy))
+        
         if True:
             r0,d0 = stars.ra[I[0]], stars.dec[I[0]]
             print('Pan-STARRS RA,Dec:', r0,d0)
@@ -471,6 +491,25 @@ class RawMeasurer(object):
             plt.axis(ax)
             ps.savefig()
 
+        if ps is not None:
+            afx = (fullx[J] + sx) - cx
+            afy = (fully[J] + sy) - cy
+            affx = cx + (resx[0] + resx[1] * afx + resx[2] * afy)
+            affy = cy + (resy[0] + resy[1] * afx + resy[2] * afy)
+            affdx = px[I] - affx
+            affdy = py[I] - affy
+            plt.clf()
+            plothist(affdx, affdy, range=((-radius2,radius2),(-radius2,radius2)))
+            plt.xlabel('dx (pixels)')
+            plt.ylabel('dy (pixels)')
+            plt.title('Offsets to PS1 stars after Affine correction')
+            ax = plt.axis()
+            plt.axhline(0, color='b')
+            plt.axvline(0, color='b')
+            #plt.plot(shiftx, shifty, 'o', mec='m', mfc='none', ms=15, mew=3)
+            plt.axis(ax)
+            ps.savefig()
+        
         if ps is not None:
             mn,mx = np.percentile(img.ravel(), [50,99])
             kwa2 = dict(vmin=mn, vmax=mx, cmap='gray')

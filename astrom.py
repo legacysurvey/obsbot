@@ -51,7 +51,7 @@ print(len(T), 'im16')
 #print('Expnums:', ', '.join(['%i' % e for e in T.expnum]))
 
 
-cofn = 'copilot.fits'
+cofn = 'copilot2.fits'
 if not os.path.exists(cofn):
     expnum_map = {}
     fns = glob('/project/projectdirs/cosmo/staging/mosaicz/MZLS_Raw/20160320/*ori.fits.fz')
@@ -64,7 +64,7 @@ if not os.path.exists(cofn):
         print('File', fn, 'is expnum', expnum)
         
     MM = []
-    for i,t in enumerate(T):
+    for i,t in enumerate(T[:2]):
         #extstring = t.extname
         fn = expnum_map[t.expnum]
     
@@ -75,7 +75,7 @@ if not os.path.exists(cofn):
             M = fits_table()
             for k in ['airmass', 'extension', 'pixscale', 'nmatched', 'ra_ccd', 'dec_ccd',
                       'band', 'zp', 'rawsky', 'ndetected', 'skybright', 'dy', 'transparency',
-                      'seeing', 'dx', 'exptime', 'zp_skysub', 'zp_med', 'zp_med_skysub']:
+                      'seeing', 'dx', 'exptime', 'zp_skysub', 'zp_med', 'zp_med_skysub', 'affine']:
                 M.set(k, np.array([meas[k]]))
             M.filename = np.array([fn])
             M.extname = np.array([extstring])
