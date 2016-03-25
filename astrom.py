@@ -50,8 +50,10 @@ print(len(T), 'im16')
 #print(' '.join(T.filename))
 #print('Expnums:', ', '.join(['%i' % e for e in T.expnum]))
 
+T = T[:10]
 
-cofn = 'copilot2.fits'
+#cofn = 'copilot2.fits'
+cofn = 'copilot3.fits'
 if not os.path.exists(cofn):
     expnum_map = {}
     fns = glob('/project/projectdirs/cosmo/staging/mosaicz/MZLS_Raw/20160320/*ori.fits.fz')
@@ -64,7 +66,7 @@ if not os.path.exists(cofn):
         print('File', fn, 'is expnum', expnum)
         
     MM = []
-    for i,t in enumerate(T[:2]):
+    for i,t in enumerate(T):
         #extstring = t.extname
         fn = expnum_map[t.expnum]
     
@@ -79,7 +81,7 @@ if not os.path.exists(cofn):
                 M.set(k, np.array([meas[k]]))
             M.filename = np.array([fn])
             M.extname = np.array([extstring])
-            phdr = M['primhdr']
+            phdr = meas['primhdr']
             M.expnum = np.array([phdr['EXPNUM']])
             MM.append(M)
     M = merge_tables(MM)
