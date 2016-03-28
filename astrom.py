@@ -95,7 +95,6 @@ nom = nominal_cal
 C.extension = np.array([ext.strip() for ext in C.extension])
 CDs = dict([(ext, nom.cdmatrix(ext)) for ext in np.unique(C.extension)])
 C.cd = np.array([CDs[ext] for ext in C.extension])
-### Are these the right way around?
 C.dra  = (C.cd[:,0] * C.dx + C.cd[:,1] * C.dy) * 3600.
 C.ddec = (C.cd[:,2] * C.dx + C.cd[:,3] * C.dy) * 3600.
 
@@ -192,7 +191,7 @@ plt.title('Zeropoints -- 2016-03-20')
 plt.savefig('zpt3.png')
 
 
-sys.exit(0)
+#sys.exit(0)
 
 plt.clf()
 # plt.subplot(1,2,1)
@@ -241,14 +240,32 @@ plt.xlabel('expnum')
 plt.savefig('difft.png')
 
 
-
 # Now, look at each copilot extension vs im16.
 from astrometry.util.plotutils import PlotSequence
 ps = PlotSequence('astrom')
 
-Cref = C[C.extension == 'im16']
+C.affdx = C.affine[:,2]
+C.affdy = C.affine[:,5]
+
+refext = 'im16'
+Cref = C[C.extension == refext]
 print(len(Cref), 'im16 exposures')
 ref_expnum = dict([(expnum,i) for i,expnum in enumerate(Cref.expnum)])
+
+
+plt.clf()
+p1 = plt.plot(C.expnum, C.affine[:,3] - 1, 'b.')
+p2 = plt.plot(C.expnum, C.affine[:,4], 'r.')
+plt.plot(Cref.expnum, Cref.affine[:,4], 'k-')
+p3 = plt.plot(C.expnum, C.affine[:,6], 'c.')
+p4 = plt.plot(C.expnum, C.affine[:,7] - 1, 'm.')
+plt.xlabel('Exposure number')
+plt.ylabel('Affine transformation element')
+plt.legend((p1[0],p2[0],p3[0],p4[0]),
+           ('dX/dx - 1', 'dX/dy', 'dY/dx', 'dY/dy-1'), 'upper right')
+plt.title('Mosaic astrometry -- 2016-03-20')
+ps.savefig()
+
 
 CICR = []
 for ext in range(1, 16):
@@ -258,9 +275,42 @@ for ext in range(1, 16):
 
     CICR.append((ext,Ci,Cr))
     
+    # Take the offset between the reference chip CRPIX and this chip's CRPIX
+    # and push that through the affine rotation matrix.
+    # listhead mos3.68488.fits | grep '\(CRPIX\|EXTNAME\)'
+    crpixes = dict(
+        im1  = (-2161,  4209),
+        im2  = (-  99,  4209),
+        im3  = (-2161,  2191),
+        im4  = (-  99,  2191),
+        im5  = ( 2153,  4211),
+        im6  = ( 4215,  4211),
+        im7  = ( 2153,  2193),
+        im8  = ( 4215,  2193),
+        im9  = (-  89, -2106),
+        im10 = (-2151, -2106),
+        im11 = (-  89, -  88),
+        im12 = (-2151, -  88),
+        im13 = ( 4222, -2099),
+        im14 = ( 2160, -2099),
+        im15 = ( 4222, -  81),
+        im16 = ( 2160, -  81))
+
+    # Assume the affine rotation elements are due to a whole-camera rigid rotation.
+    # Push this through the difference in CRPIX values (ie, distance from boresight)
+    # through that rotation matrix to convert an offset in imX to an offset in im16.
+    (refcrx, refcry) = crpixes[refext]
+    (crx,    cry)    = crpixes['im%i' % ext]
+    dcrx = refcrx - crx
+    dcry = refcry - cry
+    dcx = Ci.affine[:, 3] * dcrx + Ci.affine[:,4] * dcry - dcrx
+    dcy = Ci.affine[:, 6] * dcrx + Ci.affine[:,7] * dcry - dcry
+    print('Scatter:', np.std(Cr.dx - (Ci.dx - dcx)), np.std(Cr.dy - (Ci.dy - dcy)))
+
+
     drai = np.median(Cr.dra - Ci.dra)
     ddeci = np.median(Cr.ddec - Ci.ddec)
-    
+
     plt.clf()
     plt.plot(Cr.dra, Ci.dra, 'b.')
     plt.plot(Cr.ddec, Ci.ddec, 'r.')
@@ -270,10 +320,81 @@ for ext in range(1, 16):
     p2 = plt.plot(xx, xx - ddeci, 'r-', alpha=0.2)
     plt.axis(ax)
     plt.legend([p1[0],p2[0]], ['dRA','dDec'], 'upper left')
-    plt.xlabel('im16')
+    plt.xlabel(refext)
     plt.ylabel('im%i' % ext)
-    plt.title('Mosaic3: Copilot offsets')
+    plt.title('Mosaic3: Copilot offsets (arcsec)')
     ps.savefig()
+
+    
+    plt.clf()
+    plt.plot(Cr.dx, Ci.dx, 'b.')
+    plt.plot(Cr.dy, Ci.dy, 'r.')
+
+    plt.plot(Cr.dx, Ci.dx - dcx, 'c.')
+    plt.plot(Cr.dy, Ci.dy - dcy, 'm.')
+
+    dxi = np.median(Cr.dx - Ci.dx)
+    dyi = np.median(Cr.dy - Ci.dy)
+
+    ax = plt.axis()
+    xx = np.array([-100,100])
+    p1 = plt.plot(xx, xx - dxi, 'b-', alpha=0.2)
+    p2 = plt.plot(xx, xx - dyi, 'r-', alpha=0.2)
+    plt.axis(ax)
+    plt.legend([p1[0],p2[0]], ['dx','dy'], 'upper left')
+    plt.xlabel(refext)
+    plt.ylabel('im%i' % ext)
+    plt.title('Mosaic3: Copilot offsets (pixels)')
+    ps.savefig()
+
+
+    cdx = Ci.dx - dcx
+    cdy = Ci.dy - dcy
+    
+    cdra  = (Ci.cd[:,0] * cdx + Ci.cd[:,1] * cdy) * 3600.
+    cddec = (Ci.cd[:,2] * cdx + Ci.cd[:,3] * cdy) * 3600.
+
+    plt.clf()
+    plt.plot(Cr.dra,  cdra, 'b.')
+    plt.plot(Cr.ddec, cddec, 'r.')
+    ax = plt.axis()
+    xx = np.array([-20,20])
+    p1 = plt.plot(xx, xx - np.median(Cr.dra - cdra), 'b-', alpha=0.2)
+    p2 = plt.plot(xx, xx - np.median(Cr.ddec - cddec), 'r-', alpha=0.2)
+    plt.axis(ax)
+    plt.legend([p1[0],p2[0]], ['dRA','dDec'], 'upper left')
+    plt.xlabel(refext)
+    plt.ylabel('im%i' % ext)
+    plt.title('Mosaic3: Copilot offsets w/ rotation (arcsec)')
+    ps.savefig()
+
+    plt.clf()
+    plt.plot(Cr.dra,  cdra - Cr.dra, 'b.')
+    plt.plot(Cr.ddec, cddec- Cr.ddec, 'r.')
+    plt.axhline(0, color='k', alpha=0.1)
+    plt.legend([p1[0],p2[0]], ['dRA','dDec'], 'upper left')
+    plt.xlabel(refext)
+    plt.ylabel('im%i - %s' % (ext, refext))
+    plt.title('Mosaic3: Copilot offsets w/ rotation (arcsec)')
+    ps.savefig()
+
+    # 
+    # plt.clf()
+    # plt.plot(Cr.affdx, Ci.affdx, 'b.')
+    # plt.plot(Cr.affdy, Ci.affdy, 'r.')
+    # ax = plt.axis()
+    # xx = np.array([-100,100])
+    # p1 = plt.plot(xx, xx - np.median(Cr.affdx - Ci.affdx), 'b-', alpha=0.2)
+    # p2 = plt.plot(xx, xx - np.median(Cr.affdy - Ci.affdy), 'r-', alpha=0.2)
+    # plt.axis(ax)
+    # plt.legend([p1[0],p2[0]], ['dx','dy'], 'upper left')
+    # plt.xlabel(refext)
+    # plt.ylabel('im%i' % ext)
+    # plt.title('Mosaic3: Copilot offsets (affine; pixels)')
+    # ps.savefig()
+
+    
+sys.exit(0)    
     
 for ext,Ci,Cr in CICR:
     dxi = np.median(Cr.dx - Ci.dx)
@@ -306,7 +427,7 @@ for ext,Ci,Cr in CICR:
     plt.plot(xx, xx - dyi, 'r-', alpha=0.2)
     plt.legend([p1[0],p2[0]], ['dx','dy'], 'upper left')
     plt.axis(ax)
-    plt.xlabel('im16')
+    plt.xlabel(refext)
     plt.ylabel('im%i' % ext)
     plt.title('Mosaic3: Copilot offsets')
     ps.savefig()
