@@ -50,10 +50,10 @@ print(len(T), 'im16')
 #print(' '.join(T.filename))
 #print('Expnums:', ', '.join(['%i' % e for e in T.expnum]))
 
-T = T[:10]
+#T = T[:10]
 
-#cofn = 'copilot2.fits'
-cofn = 'copilot3.fits'
+cofn = 'copilot2.fits'
+#cofn = 'copilot3.fits'
 if not os.path.exists(cofn):
     expnum_map = {}
     fns = glob('/project/projectdirs/cosmo/staging/mosaicz/MZLS_Raw/20160320/*ori.fits.fz')
@@ -128,7 +128,71 @@ for i in range(len(T)):
 TC.to_np_arrays()
 T.add_columns_from(TC)
 
+T.about()
+
 import pylab as plt
+
+plt.clf()
+p1 = plt.plot(T.zpt, T.zp, 'b.')
+p2 = plt.plot(T.zpt, T.zp_med, 'g.')
+p3 = plt.plot(T.zpt, T.zp_skysub, 'r.')
+p4 = plt.plot(T.zpt, T.zp_med_skysub, 'm.')
+plt.legend([p1[0],p2[0],p3[0],p4[0]], ['Current', 'Median', 'Sky', 'Med,Sky'],
+           'upper left')
+plt.xlabel('Mosstat Zeropoint')
+plt.ylabel('Copilot Zeropoint')
+plt.savefig('zpt.png')
+
+plt.clf()
+p1 = plt.plot(T.zpt, 0.0 + T.zp, 'b.')
+p2 = plt.plot(T.zpt, 0.2 + T.zp_med, 'g.')
+p3 = plt.plot(T.zpt, 0.4 + T.zp_skysub, 'r.')
+p4 = plt.plot(T.zpt, 0.6 + T.zp_med_skysub, 'm.')
+plt.legend([p1[0],p2[0],p3[0],p4[0]], ['Current', 'Median', 'Sky', 'Med,Sky'],
+           'upper left')
+plt.xlabel('Mosstat Zeropoint')
+plt.ylabel('Copilot Zeropoint')
+plt.savefig('zpt1.png')
+
+
+plt.clf()
+p1 = plt.plot(T.zpt, T.zp - T.zpt, 'b.')
+p2 = plt.plot(T.zpt, T.zp_med - T.zpt, 'g.')
+p3 = plt.plot(T.zpt, T.zp_skysub - T.zpt, 'r.')
+p4 = plt.plot(T.zpt, T.zp_med_skysub - T.zpt, 'm.')
+plt.legend([p1[0],p2[0],p3[0],p4[0]], ['Current', 'Median', 'Sky', 'Med,Sky'],
+           'lower left')
+plt.xlabel('Mosstat Zeropoint')
+plt.ylabel('Copilot Zeropoint - Mosstat Zeropoint')
+plt.savefig('zpt2.png')
+
+
+plt.clf()
+p1 = plt.plot(T.zpt, 0.6 + T.zp - T.zpt, 'b.')
+p2 = plt.plot(T.zpt, 0.4 + T.zp_med - T.zpt, 'g.')
+p3 = plt.plot(T.zpt, 0.2 + T.zp_skysub - T.zpt, 'r.')
+p4 = plt.plot(T.zpt, 0.0 + T.zp_med_skysub - T.zpt, 'm.')
+plt.axhline(0.0, color='k', alpha=0.1)
+plt.axhline(0.2, color='k', alpha=0.1)
+plt.axhline(0.4, color='k', alpha=0.1)
+plt.axhline(0.6, color='k', alpha=0.1)
+plt.legend([p1[0],p2[0],p3[0],p4[0]], [
+    'Current (%.0f +- %.0f)' % (1000. * np.mean(T.zp - T.zpt),
+                                1000. * np.std(T.zp - T.zpt)),
+    'Median  (%.0f +- %.0f)' % (1000. * np.mean(T.zp_med - T.zpt),
+                                1000. * np.std(T.zp_med - T.zpt)),
+    'Sky (%.0f +- %.0f)' % (1000. * np.mean(T.zp_skysub - T.zpt),
+                            1000. * np.std(T.zp_skysub - T.zpt)),
+    'Med,Sky (%.0f +- %.0f)' % (1000. * np.mean(T.zp_med_skysub - T.zpt),
+                                1000. * np.std(T.zp_med_skysub - T.zpt)),],
+           'lower left')
+plt.xlabel('Mosstat Zeropoint')
+plt.ylabel('Copilot Zeropoint - Mosstat Zeropoint')
+plt.title('Zeropoints -- 2016-03-20')
+plt.savefig('zpt3.png')
+
+
+sys.exit(0)
 
 plt.clf()
 # plt.subplot(1,2,1)
