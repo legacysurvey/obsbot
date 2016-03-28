@@ -642,8 +642,10 @@ class RawMeasurer(object):
             plt.axhline(0, color='k', alpha=0.25)
             plt.title('Zeropoint')
             ps.savefig()
-    
-        zp_obs = zp0 + dmag
+
+        zp_mean = zp0 + dmag
+
+        zp_obs = zp_med_skysub
         transparency = 10.**(-0.4 * (zp0 - zp_obs - kx * (airmass - 1.)))
         meas.update(zp=zp_obs, transparency=transparency)
 
@@ -653,7 +655,8 @@ class RawMeasurer(object):
 
         # Also return the zeropoints using the sky-subtracted mags,
         # and using median rather than clipped mean.
-        meas.update(zp_skysub = zp0 + dmag2,
+        meas.update(zp_mean = zp_mean,
+                    zp_skysub = zp0 + dmag2,
                     zp_med = zp_med,
                     zp_med_skysub = zp0 + dmagmedsky)
         
