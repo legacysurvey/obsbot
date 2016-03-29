@@ -407,7 +407,10 @@ if __name__ == '__main__':
     
     ps = PlotSequence(opt.plot_prefix)
 
+    from camera_mosaic import nominal_cal
+    nom = nominal_cal
+
     for fn in args:
-        meas = Mosaic3FocusMeas(fn, opt.ext)
+        meas = Mosaic3FocusMeas(fn, opt.ext, nom)
         meas.run(ps)
         
