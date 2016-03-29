@@ -645,7 +645,7 @@ class RawMeasurer(object):
 
         zp_mean = zp0 + dmag
 
-        zp_obs = zp_med_skysub
+        zp_obs = zp0 + dmagmedsky
         transparency = 10.**(-0.4 * (zp0 - zp_obs - kx * (airmass - 1.)))
         meas.update(zp=zp_obs, transparency=transparency)
 
