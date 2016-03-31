@@ -179,7 +179,7 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
         FF = []
 
         # Fit XX and YY covariances as a quadratic function of focus.
-        names = ('PSF CXX', 'PSF CYY')
+        names = ('PSF X fwhm (arcsec)', 'PSF Y fwhm (arcsec)')
         fitvals = []
         for name,Y in zip(names, [allcxx, allcyy]):
             X,I = np.unique(allfocus, return_inverse=True)
@@ -228,7 +228,12 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
         
         if plotfn is not None:
             plt.clf()
-            
+
+        seeings = []
+
+        def pixvar2seeing(var):
+            return np.sqrt(var) * 2.35 * self.pixscale
+        
         for i,(name,Y,(X,Ymn,Ysig, s, xx, qq, fbest)) in enumerate(zip(
                 names, (allcxx, allcyy), fitvals)):
 
@@ -236,18 +241,24 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
                 plt.subplot(3,1, 1+i)
             else:
                 plt.clf()
-            plt.plot(allfocus, Y, 'b.', alpha=0.25)
-            plt.errorbar(X, Ymn, yerr=Ysig, fmt='o', color='g')
+
+            if i in [0,1]:
+                seeings.append(s[0])
+                plt.errorbar(X, pixvar2seeing(Ymn), yerr=pixvar2seeing(Ysig),
+                             fmt='o', color='g')
+                plt.plot(allfocus, pixvar2seeing(Y), 'b.', alpha=0.25)
             ax = plt.axis()
-            plt.plot(xx, qq, 'b-', alpha=0.5)
+            if i in [0,1]:
+                plt.plot(xx, pixvar2seeing(qq), 'b-', alpha=0.5)
             plt.axis(ax)
-            plt.ylim(0, 25)
+            plt.ylim(0.5, 2.5)
             plt.xlabel('Focus shift (um)')
             plt.ylabel(name)
             if plotfn is not None:
                 plt.text(ax[0] + 0.9*(ax[1]-ax[0]), 20,
-                         'Focus: %.1f' % fbest,
-                         ha='right', va='top', fontsize=12)
+                         'Focus: %.0f' % fbest,
+                         ha='right', va='top', fontsize=12,
+                         bbox=dict(facecolor='white', alpha=0.8, edgecolor='none'))
             else:
                 plt.title('Focus: %.1f' % fbest)
             plt.axvline(fbest, color='b')
@@ -269,8 +280,17 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
             plt.axvline(f, color='b', alpha=0.5)
         plt.axvline(fmean, color='b')
 
+        # In pixel variance...
+        meanseeing = np.mean(seeings)
+        meanseeing = pixvar2seeing(meanseeing)
+        
         if plotfn is not None:
-            plt.suptitle('Focus expnum = %i' % self.primhdr.get('EXPNUM', 0))
+            plt.subplot(3,1,1)
+            plt.xlabel('')
+            plt.subplot(3,1,2)
+            plt.xlabel('')
+            plt.suptitle('Focus (expnum = %i): Focus %.0f, Seeing %.1f' %
+                         (self.primhdr.get('EXPNUM', 0), fmean, meanseeing))
             plt.savefig(plotfn)
         else:
             ps.savefig()

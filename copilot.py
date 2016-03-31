@@ -622,12 +622,14 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         m.bad_pixcnt = ('PIXCNT1' in phdr)
         m.readtime = phdr.get('READTIME', 0.)
 
+    print('Camera: "%s"' % m.camera)
     if opt.focus and obstype == 'focus' and m.camera == 'mosaic3':
         from mosaic_focus import Mosaic3FocusMeas
         show_plot = opt.show
         if show_plot:
             import pylab as plt
             plt.figure(2, figsize=(8,10))
+            plt.subplots_adjust(top=0.95)
         if ext is None:
             ext = get_default_extension(fn)
         meas = Mosaic3FocusMeas(fn, ext, nom)
