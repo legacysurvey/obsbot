@@ -29,12 +29,15 @@ class TestQueue(Pyro.core.ObjBase):
             print('Queue now has', self.exposures.qsize(), 'entries')
             return 'SUCCESS'
         elif command.startswith('command=get_nqueue'):
-            sz = self.exposures.qsize()
+            sz = self.nqueued()
             print('get_nqueue() ->', sz)
             return sz
         else:
             print('Command: "%s"' % command)
 
+    def nqueued(self):
+        return self.exposures.qsize()
+            
     def pop(self):
         try:
             return self.exposures.get_nowait()
@@ -60,6 +63,9 @@ class TestServer(object):
     def __call__(self):
         print('TestServer Running at URL', self.url)
         self.daemon.requestLoop()
+
+    def nqueued(self):
+        return self.queue.nqueued()
         
 class TestDecbot(unittest.TestCase):
 
@@ -113,7 +119,7 @@ class TestDecbot(unittest.TestCase):
         decbot.process_file(fn)
 
         self.assertEqual(decbot.seqnum, 2)
-        self.assertEqual(len(self.server.queue.exposures), 2)
+        self.assertEqual(self.server.nqueued(), 2)
 
     def test_nqueue(self):
         self.server.queue.reset()
@@ -129,22 +135,22 @@ class TestDecbot(unittest.TestCase):
         decbot.queue_initial_exposures()
         
         self.assertEqual(decbot.seqnum, 2)
-        self.assertEqual(len(self.server.queue.exposures), 2)
+        self.assertEqual(self.server.nqueued(), 2)
         
         # Should do nothing
         decbot.heartbeat()
 
         self.assertEqual(decbot.seqnum, 2)
-        self.assertEqual(len(self.server.queue.exposures), 2)
+        self.assertEqual(self.server.nqueued(), 2)
 
         self.server.queue.pop()
-        self.assertEqual(len(self.server.queue.exposures), 1)
+        self.assertEqual(self.server.nqueued(), 1)
 
         # NOW it should queue exposure.
         decbot.heartbeat()
 
         self.assertEqual(decbot.seqnum, 3)
-        self.assertEqual(len(self.server.queue.exposures), 2)
+        self.assertEqual(self.server.nqueued(), 2)
 
 if __name__ == '__main__':
     unittest.main()
