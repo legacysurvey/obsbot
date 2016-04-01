@@ -560,13 +560,31 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
 
             plt.axis(ax)
 
-    Tcount = T[(T.passnumber > 0) * (T.bad_pixcnt == False) *
-               (T.nmatched > 10)]
-    for band in np.unique(Tcount.band):
+    #Tcount = T[(T.passnumber > 0) * (T.bad_pixcnt == False) *
+    #           (T.nmatched > 10)]
+
+    #number of images with depth factor < 0.3 + number of images with seeing > 2"
+    
+    #for band in np.unique(Tcount.band):
+    
+    for band,Tb in zip(bands, TT):
         for passnum in [1,2,3]:
-            N = np.sum((Tcount.band == band) * (Tcount.passnumber == passnum))
-            print('Band %s: total of %i pass %i tiles' % (band, N, passnum))
-        
+
+            Tcount = Tb[(Tb.passnumber == passnum) * (Tb.bad_pixcnt == False) *
+                        (Tb.nmatched > 10)]
+            N = len(Tcount)
+            print('\nBand %s, pass %i: total of %i tiles' % (band, passnum, N))
+            if N > 0:
+                depth_thresh = 0.3
+                seeing_thresh = 2.0
+                shallow = (Tcount.depth_factor < depth_thresh)
+                blurry = (Tcount.seeing > seeing_thresh)
+                if np.sum(shallow):
+                    print('  %i have low depth_factor < %g' % (np.sum(shallow), depth_thresh))
+                if np.sum(blurry):
+                    print('  %i have large seeing > %g' % (np.sum(blurry), seeing_thresh))
+                Ngood = np.sum(np.logical_not(shallow) * np.logical_not(blurry))
+                print('Band %s, pass %i: total of %i good tiles' % (band, passnum, Ngood))
     
     if show_plot:
         plt.draw()
