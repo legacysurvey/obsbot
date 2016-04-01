@@ -275,30 +275,13 @@ for ext in range(1, 16):
 
     CICR.append((ext,Ci,Cr))
     
-    # Take the offset between the reference chip CRPIX and this chip's CRPIX
-    # and push that through the affine rotation matrix.
-    # listhead mos3.68488.fits | grep '\(CRPIX\|EXTNAME\)'
-    crpixes = dict(
-        im1  = (-2161,  4209),
-        im2  = (-  99,  4209),
-        im3  = (-2161,  2191),
-        im4  = (-  99,  2191),
-        im5  = ( 2153,  4211),
-        im6  = ( 4215,  4211),
-        im7  = ( 2153,  2193),
-        im8  = ( 4215,  2193),
-        im9  = (-  89, -2106),
-        im10 = (-2151, -2106),
-        im11 = (-  89, -  88),
-        im12 = (-2151, -  88),
-        im13 = ( 4222, -2099),
-        im14 = ( 2160, -2099),
-        im15 = ( 4222, -  81),
-        im16 = ( 2160, -  81))
+    # Take the offset between the reference chip CRPIX and this chip's
+    # CRPIX and push that through the affine rotation matrix.
 
-    # Assume the affine rotation elements are due to a whole-camera rigid rotation.
-    # Push this through the difference in CRPIX values (ie, distance from boresight)
-    # through that rotation matrix to convert an offset in imX to an offset in im16.
+    # Assume the affine rotation elements are due to a whole-camera
+    # rigid rotation.  Push this through the difference in CRPIX
+    # values (ie, distance from boresight) through that rotation
+    # matrix to convert an offset in imX to an offset in im16.
     (refcrx, refcry) = crpixes[refext]
     (crx,    cry)    = crpixes['im%i' % ext]
     dcrx = refcrx - crx

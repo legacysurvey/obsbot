@@ -27,6 +27,27 @@ class MosaicNominalCalibration(NominalCalibration):
             r = 20.91,
             z = 18.46,
             )
+
+    def crpix(self, ext):
+        # listhead mos3.68488.fits | grep '\(CRPIX\|EXTNAME\)'
+        crpixes = dict(
+            im1  = (-2161,  4209),
+            im2  = (-  99,  4209),
+            im3  = (-2161,  2191),
+            im4  = (-  99,  2191),
+            im5  = ( 2153,  4211),
+            im6  = ( 4215,  4211),
+            im7  = ( 2153,  2193),
+            im8  = ( 4215,  2193),
+            im9  = (-  89, -2106),
+            im10 = (-2151, -2106),
+            im11 = (-  89, -  88),
+            im12 = (-2151, -  88),
+            im13 = ( 4222, -2099),
+            im14 = ( 2160, -2099),
+            im15 = ( 4222, -  81),
+            im16 = ( 2160, -  81))
+        return crpixes[ext]
         
     def zeropoint(self, band, ext=None):
         if ext is not None:

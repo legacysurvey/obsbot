@@ -55,5 +55,14 @@ class MeasuredCCD(models.Model):
     # MOSAIC bad pixel count flag set?
     bad_pixcnt = models.BooleanField(default=False)
 
-    # MOSAIC -- read time = some other previous image
+    # MOSAIC -- read time
     readtime = models.FloatField(default=0)
+
+    affine_dx = models.FloatField(default=0)
+    affine_dxx = models.FloatField(default=0)
+    affine_dxy = models.FloatField(default=0)
+    affine_dy = models.FloatField(default=0)
+    affine_dyx = models.FloatField(default=0)
+    affine_dyy = models.FloatField(default=0)
+    affine_x0 = models.FloatField(default=0)
+    affine_y0 = models.FloatField(default=0)

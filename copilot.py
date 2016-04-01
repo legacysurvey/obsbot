@@ -43,7 +43,10 @@ def db_to_fits(mm):
                   'sky', 'expfactor', 'camera', 'dx', 'dy', 'nmatched',
                   'md5sum', 'bad_pixcnt', 'readtime',
                   'obstype',
-                  'object', 'tileid', 'passnumber', 'tileebv']:
+                  'object', 'tileid', 'passnumber', 'tileebv',
+                  'affine_x0', 'affine_y0',
+                  'affine_dx', 'affine_dxx', 'affine_dxy',
+                  'affine_dy', 'affine_dyx', 'affine_dyy',]:
         g = getattr(mm[0], field)
         if isinstance(g, basestring):
             T.set(field, np.array([str(getattr(m, field)) for m in mm]))
@@ -372,14 +375,60 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     
     CDs = dict([(ext, nom.cdmatrix(ext)) for ext in np.unique(Tx.extension)])
     CD = np.array([CDs[ext] for ext in Tx.extension])
-    ### Are these the right way around?
     dra  = (CD[:,0] * Tx.dx + CD[:,1] * Tx.dy) * 3600.
     ddec = (CD[:,2] * Tx.dx + CD[:,3] * Tx.dy) * 3600.
 
-    pr = plt.plot(Tx.mjd_obs, dra,  'bo')
-    pd = plt.plot(Tx.mjd_obs, ddec, 'go')
-    pr = plt.plot(Tx.mjd_obs, dra,  'b-', alpha=0.5)
-    pd = plt.plot(Tx.mjd_obs, ddec, 'g-', alpha=0.5)
+    refdra,refddec = None,None
+    print('Camera', Tx.camera[0])
+    if Tx.camera[0].strip() == 'mosaic3':
+        # Convert into offsets that match Mosstat ie, offsets in im16,
+        # plus magical offset of mosstat-copilot on im16.
+
+        # Assume the affine rotation elements are due to a
+        # whole-camera rigid rotation.  Push this through the
+        # difference in CRPIX values (ie, distance from boresight)
+        # through that rotation matrix to convert an offset in imX to
+        # an offset in im16.
+        crx, cry = Tx.affine_x0, Tx.affine_y0
+
+        # Only show im16 values if ALL the exposures have affine measurements
+        if np.all(crx > 0):
+            refext = 'im16'
+            (refcrx, refcry) = nom.crpix[refext]
+            # Distance between im16 and this chip
+            dcrx = refcrx - crx
+            dcry = refcry - cry
+            # Apply rotation
+            dcx = Tx.affine_dxx * dcrx + Tx.affine_dxy * dcry - dcrx
+            dcy = Tx.affine_dyx * dcrx + Tx.affine_dyy * dcry - dcry
+            # Predicted pixel shift in im16
+            cdx = Tx.dx - dcx
+            cdy = Tx.dy - dcy
+            # Convert to dRA, dDec in im16
+            dra  = (CD[:,0] * cdx + CD[:,1] * cdy) * 3600.
+            ddec = (CD[:,2] * cdx + CD[:,3] * cdy) * 3600.
+            # Apply remaining mosstat - copilot offset
+            refdra  = dra  + -5.4
+            refddec = ddec +  3.4
+    
+
+    if refdra is not None:
+        # 
+        plt.plot(Tx.mjd_obs, dra,  'bo', alpha=0.2)
+        plt.plot(Tx.mjd_obs, ddec, 'go', alpha=0.2)
+        pr = plt.plot(Tx.mjd_obs, dra,  'b-', alpha=0.1)
+        pd = plt.plot(Tx.mjd_obs, ddec, 'g-', alpha=0.1)
+
+        plt.plot(Tx.mjd_obs, refdra,  'bo')
+        plt.plot(Tx.mjd_obs, refddec, 'go')
+        pr = plt.plot(Tx.mjd_obs, refdra,  'b-', alpha=0.5)
+        pd = plt.plot(Tx.mjd_obs, refddec, 'g-', alpha=0.5)
+        
+    else:
+        plt.plot(Tx.mjd_obs, dra,  'bo')
+        plt.plot(Tx.mjd_obs, ddec, 'go')
+        pr = plt.plot(Tx.mjd_obs, dra,  'b-', alpha=0.5)
+        pd = plt.plot(Tx.mjd_obs, ddec, 'g-', alpha=0.5)
     #plt.legend((pr[0], pd[0]), ('RA', 'Dec'))
     yl,yh = plt.ylim()
 
@@ -796,6 +845,17 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
     m.dy = M.get('dy', 0)
     m.nmatched = M.get('nmatched',0)
 
+    aff = M.get('affine', None)
+    if aff is not None:
+        m.affine_x0 = aff[0]
+        m.affine_y0 = aff[1]
+        m.affine_dx = aff[2]
+        m.affine_dxx = aff[3]
+        m.affine_dxy = aff[4]
+        m.affine_dy = aff[5]
+        m.affine_dyx = aff[6]
+        m.affine_dyy = aff[7]
+    
     img = fitsio.read(fn, ext=1)
     cheaphash = np.sum(img)
     # cheaphash becomes an int64.
