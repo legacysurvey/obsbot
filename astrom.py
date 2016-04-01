@@ -39,6 +39,39 @@ import numpy as np
 from glob import glob
 from measure_raw import measure_raw_mosaic3
 import os
+import pylab as plt
+
+
+A = fits_table('Almanac_2016-03-31.fits')
+A.cut(A.ra_offset < 99)
+T = fits_table('db.fits')
+T.cut(np.array([e in A.expnum for e in T.expnum]))
+print(len(A), len(T))
+from camera_mosaic import dradec_to_ref_chip
+refdra,refddec = dradec_to_ref_chip(T)
+
+plt.clf()
+plt.subplot(2,1,1)
+p1 = plt.plot(A.expnum, A.ra_offset, 'b.')
+p2 = plt.plot(T.expnum, refdra, 'r.')
+plt.figlegend([p1[0],p2[0]], ('Mosstat', 'Copilot'), 'upper right')
+plt.ylabel('dRA (arcsec)')
+plt.subplot(2,1,2)
+plt.plot(A.expnum, A.dec_offset, 'b.')
+plt.plot(T.expnum, refddec, 'r.')
+plt.ylabel('dDec (arcsec)')
+plt.xlabel('Expnum')
+plt.suptitle('Copilot and Mosstat, 2016-03-31')
+plt.savefig('astrom.png')
+
+plt.clf()
+p1 = plt.plot(A.expnum, A.ra_offset - refdra, 'b.')
+p2 = plt.plot(A.expnum, A.dec_offset - refddec, 'r.')
+plt.figlegend([p1[0],p2[0]], ('RA', 'Dec'), 'upper right')
+plt.ylabel('Mosstat - Copilot (arcsec)')
+plt.xlabel('Expnum')
+plt.suptitle('Copilot and Mosstat, 2016-03-31')
+plt.savefig('astrom2.png')
 
 A = fits_table('Almanac_2016-03-20.fits')
 A.about()
@@ -129,7 +162,6 @@ A.add_columns_from(AC)
 
 A.about()
 
-import pylab as plt
 
 plt.clf()
 p1 = plt.plot(A.zpt, A.zp, 'b.')

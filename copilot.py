@@ -383,24 +383,18 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     if Tx.camera[0].strip() == 'mosaic3':
         # Convert into offsets that match Mosstat ie, offsets in im16,
         # plus magical offset of mosstat-copilot on im16.
-
-        # Assume the affine rotation elements are due to a
-        # whole-camera rigid rotation.  Push this through the
-        # difference in CRPIX values (ie, distance from boresight)
-        # through that rotation matrix to convert an offset in imX to
-        # an offset in im16.
-        crx, cry = Tx.affine_x0, Tx.affine_y0
-        if not np.all(crx == 0):
+        if not np.all(Tx.affine_x0 == 0):
             from camera_mosaic import dradec_to_ref_chip
-            refdra,refddec = dradec_to_ref_chip(T)
-        
+            refdra,refddec = dradec_to_ref_chip(Tx)
+
     if refdra is not None:
-        # 
+        # imX plotted lightly
         plt.plot(Tx.mjd_obs, dra,  'bo', alpha=0.2)
         plt.plot(Tx.mjd_obs, ddec, 'go', alpha=0.2)
-        pr = plt.plot(Tx.mjd_obs, dra,  'b-', alpha=0.1)
-        pd = plt.plot(Tx.mjd_obs, ddec, 'g-', alpha=0.1)
+        plt.plot(Tx.mjd_obs, dra,  'b-', alpha=0.1)
+        plt.plot(Tx.mjd_obs, ddec, 'g-', alpha=0.1)
 
+        # Predicted im16 plotted heavy
         I = np.flatnonzero(Tx.affine_x0)
         plt.plot(Tx.mjd_obs[I], refdra[I],  'bo')
         plt.plot(Tx.mjd_obs[I], refddec[I], 'go')

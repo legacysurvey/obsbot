@@ -31,7 +31,7 @@ def dradec_to_ref_chip(T, refext = 'im16'):
     offsets = dict(
         im16 = (-5.4, 3.4),
         )
-    offra,offdec = offsets[refext]
+    offra,offdec = offsets.get(refext, (0,0))
     refdra  = xdra  + offra
     refddec = xddec + offdec
     return refdra, refddec
