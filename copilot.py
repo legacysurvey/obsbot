@@ -425,6 +425,13 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         plt.plot(Tx.mjd_obs[I], refddec[I], 'go')
         pr = plt.plot(Tx.mjd_obs[I], refdra[I],  'b-', alpha=0.5)
         pd = plt.plot(Tx.mjd_obs[I], refddec[I], 'g-', alpha=0.5)
+
+        if not nightly:
+            mjd = Tx.mjd_obs[I[-1]]
+            r,d = refdra[I[-1]], refddec[I[-1]]
+            yl,yh = plt.ylim()
+            plt.text(mjd, yl+0.03*(yh-yl), '(%.1f, %.1f)' % (r,d),
+                     ha='center', bbox=bbox)
         
     else:
         plt.plot(Tx.mjd_obs, dra,  'bo')
