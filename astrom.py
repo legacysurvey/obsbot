@@ -40,17 +40,17 @@ from glob import glob
 from measure_raw import measure_raw_mosaic3
 import os
 
-T = fits_table('Almanac_2016-03-20.fits')
-T.about()
+A = fits_table('Almanac_2016-03-20.fits')
+A.about()
 
-#print('Extensions', np.unique(T.extname))
-T.cut(T.extname == 'im16')
-print(len(T), 'im16')
-#print('Filenames', T.filename)
-#print(' '.join(T.filename))
-#print('Expnums:', ', '.join(['%i' % e for e in T.expnum]))
+#print('Extensions', np.unique(A.extname))
+A.cut(A.extname == 'im16')
+print(len(A), 'im16')
+#print('Filenames', A.filename)
+#print(' '.join(A.filename))
+#print('Expnums:', ', '.join(['%i' % e for e in A.expnum]))
 
-#T = T[:10]
+#A = A[:10]
 
 cofn = 'copilot2.fits'
 #cofn = 'copilot3.fits'
@@ -60,13 +60,13 @@ if not os.path.exists(cofn):
     for fn in fns:
         hdr = fitsio.read_header(fn)
         expnum = hdr['EXPNUM']
-        if not expnum in T.expnum:
+        if not expnum in A.expnum:
             continue
         expnum_map[expnum] = fn
         print('File', fn, 'is expnum', expnum)
         
     MM = []
-    for i,t in enumerate(T):
+    for i,t in enumerate(A):
         #extstring = t.extname
         fn = expnum_map[t.expnum]
     
@@ -106,36 +106,36 @@ if not 'expnum' in C.columns():
     for fn in fns:
         hdr = fitsio.read_header(fn)
         expnum = hdr['EXPNUM']
-        if not expnum in T.expnum:
+        if not expnum in A.expnum:
             continue
         expnum_map[fn] = expnum
         print('File', fn, 'is expnum', expnum)
     C.expnum = np.array([expnum_map[fn.strip()] for fn in C.filename])
     C.writeto('copilot2.fits')
     
-TC = fits_table()
+AC = fits_table()
 for c in C.columns():
-    TC.set(c, [])
+    AC.set(c, [])
         
 # First: mosstat vs copilot for im16.
-for i in range(len(T)):
-    J = np.flatnonzero((C.expnum == T.expnum[i]) * (C.extension == 'im16'))
+for i in range(len(A)):
+    J = np.flatnonzero((C.expnum == A.expnum[i]) * (C.extension == 'im16'))
     assert(len(J) == 1)
     j = J[0]
     for c in C.columns():
-        TC.get(c).append(C.get(c)[j])
-TC.to_np_arrays()
-T.add_columns_from(TC)
+        AC.get(c).append(C.get(c)[j])
+AC.to_np_arrays()
+A.add_columns_from(AC)
 
-T.about()
+A.about()
 
 import pylab as plt
 
 plt.clf()
-p1 = plt.plot(T.zpt, T.zp, 'b.')
-p2 = plt.plot(T.zpt, T.zp_med, 'g.')
-p3 = plt.plot(T.zpt, T.zp_skysub, 'r.')
-p4 = plt.plot(T.zpt, T.zp_med_skysub, 'm.')
+p1 = plt.plot(A.zpt, A.zp, 'b.')
+p2 = plt.plot(A.zpt, A.zp_med, 'g.')
+p3 = plt.plot(A.zpt, A.zp_skysub, 'r.')
+p4 = plt.plot(A.zpt, A.zp_med_skysub, 'm.')
 plt.legend([p1[0],p2[0],p3[0],p4[0]], ['Current', 'Median', 'Sky', 'Med,Sky'],
            'upper left')
 plt.xlabel('Mosstat Zeropoint')
@@ -143,10 +143,10 @@ plt.ylabel('Copilot Zeropoint')
 plt.savefig('zpt.png')
 
 plt.clf()
-p1 = plt.plot(T.zpt, 0.0 + T.zp, 'b.')
-p2 = plt.plot(T.zpt, 0.2 + T.zp_med, 'g.')
-p3 = plt.plot(T.zpt, 0.4 + T.zp_skysub, 'r.')
-p4 = plt.plot(T.zpt, 0.6 + T.zp_med_skysub, 'm.')
+p1 = plt.plot(A.zpt, 0.0 + A.zp, 'b.')
+p2 = plt.plot(A.zpt, 0.2 + A.zp_med, 'g.')
+p3 = plt.plot(A.zpt, 0.4 + A.zp_skysub, 'r.')
+p4 = plt.plot(A.zpt, 0.6 + A.zp_med_skysub, 'm.')
 plt.legend([p1[0],p2[0],p3[0],p4[0]], ['Current', 'Median', 'Sky', 'Med,Sky'],
            'upper left')
 plt.xlabel('Mosstat Zeropoint')
@@ -155,10 +155,10 @@ plt.savefig('zpt1.png')
 
 
 plt.clf()
-p1 = plt.plot(T.zpt, T.zp - T.zpt, 'b.')
-p2 = plt.plot(T.zpt, T.zp_med - T.zpt, 'g.')
-p3 = plt.plot(T.zpt, T.zp_skysub - T.zpt, 'r.')
-p4 = plt.plot(T.zpt, T.zp_med_skysub - T.zpt, 'm.')
+p1 = plt.plot(A.zpt, A.zp - A.zpt, 'b.')
+p2 = plt.plot(A.zpt, A.zp_med - A.zpt, 'g.')
+p3 = plt.plot(A.zpt, A.zp_skysub - A.zpt, 'r.')
+p4 = plt.plot(A.zpt, A.zp_med_skysub - A.zpt, 'm.')
 plt.legend([p1[0],p2[0],p3[0],p4[0]], ['Current', 'Median', 'Sky', 'Med,Sky'],
            'lower left')
 plt.xlabel('Mosstat Zeropoint')
@@ -167,23 +167,23 @@ plt.savefig('zpt2.png')
 
 
 plt.clf()
-p1 = plt.plot(T.zpt, 0.6 + T.zp - T.zpt, 'b.')
-p2 = plt.plot(T.zpt, 0.4 + T.zp_med - T.zpt, 'g.')
-p3 = plt.plot(T.zpt, 0.2 + T.zp_skysub - T.zpt, 'r.')
-p4 = plt.plot(T.zpt, 0.0 + T.zp_med_skysub - T.zpt, 'm.')
+p1 = plt.plot(A.zpt, 0.6 + A.zp - A.zpt, 'b.')
+p2 = plt.plot(A.zpt, 0.4 + A.zp_med - A.zpt, 'g.')
+p3 = plt.plot(A.zpt, 0.2 + A.zp_skysub - A.zpt, 'r.')
+p4 = plt.plot(A.zpt, 0.0 + A.zp_med_skysub - A.zpt, 'm.')
 plt.axhline(0.0, color='k', alpha=0.1)
 plt.axhline(0.2, color='k', alpha=0.1)
 plt.axhline(0.4, color='k', alpha=0.1)
 plt.axhline(0.6, color='k', alpha=0.1)
 plt.legend([p1[0],p2[0],p3[0],p4[0]], [
-    'Current (%.0f +- %.0f)' % (1000. * np.mean(T.zp - T.zpt),
-                                1000. * np.std(T.zp - T.zpt)),
-    'Median  (%.0f +- %.0f)' % (1000. * np.mean(T.zp_med - T.zpt),
-                                1000. * np.std(T.zp_med - T.zpt)),
-    'Sky (%.0f +- %.0f)' % (1000. * np.mean(T.zp_skysub - T.zpt),
-                            1000. * np.std(T.zp_skysub - T.zpt)),
-    'Med,Sky (%.0f +- %.0f)' % (1000. * np.mean(T.zp_med_skysub - T.zpt),
-                                1000. * np.std(T.zp_med_skysub - T.zpt)),],
+    'Current (%.0f +- %.0f)' % (1000. * np.mean(A.zp - A.zpt),
+                                1000. * np.std(A.zp - A.zpt)),
+    'Median  (%.0f +- %.0f)' % (1000. * np.mean(A.zp_med - A.zpt),
+                                1000. * np.std(A.zp_med - A.zpt)),
+    'Sky (%.0f +- %.0f)' % (1000. * np.mean(A.zp_skysub - A.zpt),
+                            1000. * np.std(A.zp_skysub - A.zpt)),
+    'Med,Sky (%.0f +- %.0f)' % (1000. * np.mean(A.zp_med_skysub - A.zpt),
+                                1000. * np.std(A.zp_med_skysub - A.zpt)),],
            'lower left')
 plt.xlabel('Mosstat Zeropoint')
 plt.ylabel('Copilot Zeropoint - Mosstat Zeropoint')
@@ -195,28 +195,30 @@ plt.savefig('zpt3.png')
 
 plt.clf()
 # plt.subplot(1,2,1)
-# plt.plot(T.dx, T.ra_offset, 'b.')
+# plt.plot(A.dx, A.ra_offset, 'b.')
 # plt.xlabel('dx')
 # plt.ylabel('RA offset')
 # plt.subplot(1,2,2)
-# plt.plot(T.dy, T.dec_offset, 'b.')
+# plt.plot(A.dy, A.dec_offset, 'b.')
 # plt.xlabel('dy')
 # plt.ylabel('Dec offset')
-p1 = plt.plot(T.ra_offset,  T.dy * 0.262, 'b.')
-p2 = plt.plot(T.dec_offset, T.dx * 0.262, 'r.')
+p1 = plt.plot(A.ra_offset,  A.dy * 0.262, 'b.')
+p2 = plt.plot(A.dec_offset, A.dx * 0.262, 'r.')
 plt.legend([p1[0],p2[0]], ['dy,dRA','dx,dDec'], 'upper left')
 plt.xlabel('dDec | dRA')
 plt.ylabel('dx | dy')
 plt.savefig('diff.png')
 
 
-dra = np.median(T.ra_offset - T.dra)
-ddec = np.median(T.dec_offset - T.ddec)
+dra = np.median(A.ra_offset - A.dra)
+ddec = np.median(A.dec_offset - A.ddec)
 print('Shift in im16 dRA,dDec, arcsec: %.2f, %.2f' % (dra, ddec))
+off_dra = dra
+off_ddec = ddec
 
 plt.clf()
-p1 = plt.plot(T.ra_offset,  T.dra, 'b.')
-p2 = plt.plot(T.dec_offset, T.ddec, 'r.')
+p1 = plt.plot(A.ra_offset,  A.dra, 'b.')
+p2 = plt.plot(A.dec_offset, A.ddec, 'r.')
 ax = plt.axis()
 xx = np.array([-20,20])
 plt.plot(xx, xx - dra, 'b-', alpha=0.2)
@@ -231,10 +233,10 @@ plt.savefig('diffrd.png')
 
 
 plt.clf()
-p1 = plt.plot(T.expnum, T.dx * 0.262, 'b.')
-p2 = plt.plot(T.expnum, T.dy * 0.262, 'r.')
-p3 = plt.plot(T.expnum, T.ra_offset, 'g.')
-p4 = plt.plot(T.expnum, T.dec_offset, 'm.')
+p1 = plt.plot(A.expnum, A.dx * 0.262, 'b.')
+p2 = plt.plot(A.expnum, A.dy * 0.262, 'r.')
+p3 = plt.plot(A.expnum, A.ra_offset, 'g.')
+p4 = plt.plot(A.expnum, A.dec_offset, 'm.')
 plt.legend([p1[0],p2[0],p3[0],p4[0]], ['dx','dy','dRA','dDec'], 'lower right')
 plt.xlabel('expnum')
 plt.savefig('difft.png')
@@ -243,6 +245,7 @@ plt.savefig('difft.png')
 # Now, look at each copilot extension vs im16.
 from astrometry.util.plotutils import PlotSequence
 ps = PlotSequence('astrom')
+
 
 C.affdx = C.affine[:,2]
 C.affdy = C.affine[:,5]
@@ -268,36 +271,70 @@ ps.savefig()
 
 
 CICR = []
-for ext in range(1, 16):
+#for ext in range(1, 16):
+for ext in [4, 16]:
     Ci = C[C.extension == 'im%i' % ext]
     print('Extension', ext, ':', len(Ci), 'exposures')
     Cr = Cref[np.array([ref_expnum[expnum] for expnum in Ci.expnum])]
 
     CICR.append((ext,Ci,Cr))
+
+    from camera_mosaic import dradec_to_ref_chip
+    Ci.affine_x0  = Ci.affine[:,0]
+    Ci.affine_y0  = Ci.affine[:,1]
+    Ci.affine_dx  = Ci.affine[:,2]
+    Ci.affine_dxx = Ci.affine[:,3]
+    Ci.affine_dxy = Ci.affine[:,4]
+    Ci.affine_dy  = Ci.affine[:,5]
+    Ci.affine_dyx = Ci.affine[:,6]
+    Ci.affine_dyy = Ci.affine[:,7]
+    
+    cdra,cddec = dradec_to_ref_chip(Ci, refext=refext)
+
+    amap = dict([(expnum, i) for i,expnum in enumerate(A.expnum)])
+    ai = np.array([amap[e] for e in Ci.expnum])
+    adra  = A.ra_offset[ai]
+    addec = A.dec_offset[ai]
+
+    print('Ci expnum:', Ci.expnum)
+    print('A expnum:', A.expnum[ai])
+
+    
+    plt.clf()
+    plt.plot(adra,  cdra - adra, 'b.')
+    plt.plot(addec, cddec- addec, 'r.')
+    plt.axhline(0, color='k', alpha=0.1)
+    plt.legend([p1[0],p2[0]], ['dRA','dDec'], 'upper left')
+    plt.xlabel('Mosstat %s offset (arcsec)' % refext)
+    plt.ylabel('Copilot im%i - Mosstat %s' % (ext, refext))
+    plt.title('Mosaic3: Copilot offsets w/ rotation (arcsec)')
+    ps.savefig()
+
     
     # Take the offset between the reference chip CRPIX and this chip's
     # CRPIX and push that through the affine rotation matrix.
-
+    
     # Assume the affine rotation elements are due to a whole-camera
     # rigid rotation.  Push this through the difference in CRPIX
     # values (ie, distance from boresight) through that rotation
     # matrix to convert an offset in imX to an offset in im16.
-    (refcrx, refcry) = crpixes[refext]
-    (crx,    cry)    = crpixes['im%i' % ext]
+    (refcrx, refcry) = nom.crpix(refext)
+    (crx,    cry)    = nom.crpix('im%i' % ext)
     dcrx = refcrx - crx
     dcry = refcry - cry
     dcx = Ci.affine[:, 3] * dcrx + Ci.affine[:,4] * dcry - dcrx
     dcy = Ci.affine[:, 6] * dcrx + Ci.affine[:,7] * dcry - dcry
     print('Scatter:', np.std(Cr.dx - (Ci.dx - dcx)), np.std(Cr.dy - (Ci.dy - dcy)))
-
-
+    
     drai = np.median(Cr.dra - Ci.dra)
     ddeci = np.median(Cr.ddec - Ci.ddec)
 
+    ax = [-20,20,-20,20]
+    
     plt.clf()
     plt.plot(Cr.dra, Ci.dra, 'b.')
     plt.plot(Cr.ddec, Ci.ddec, 'r.')
-    ax = plt.axis()
+    #ax = plt.axis()
     xx = np.array([-20,20])
     p1 = plt.plot(xx, xx - drai, 'b-', alpha=0.2)
     p2 = plt.plot(xx, xx - ddeci, 'r-', alpha=0.2)
@@ -307,50 +344,62 @@ for ext in range(1, 16):
     plt.ylabel('im%i' % ext)
     plt.title('Mosaic3: Copilot offsets (arcsec)')
     ps.savefig()
-
     
-    plt.clf()
-    plt.plot(Cr.dx, Ci.dx, 'b.')
-    plt.plot(Cr.dy, Ci.dy, 'r.')
-
-    plt.plot(Cr.dx, Ci.dx - dcx, 'c.')
-    plt.plot(Cr.dy, Ci.dy - dcy, 'm.')
-
-    dxi = np.median(Cr.dx - Ci.dx)
-    dyi = np.median(Cr.dy - Ci.dy)
-
-    ax = plt.axis()
-    xx = np.array([-100,100])
-    p1 = plt.plot(xx, xx - dxi, 'b-', alpha=0.2)
-    p2 = plt.plot(xx, xx - dyi, 'r-', alpha=0.2)
-    plt.axis(ax)
-    plt.legend([p1[0],p2[0]], ['dx','dy'], 'upper left')
-    plt.xlabel(refext)
-    plt.ylabel('im%i' % ext)
-    plt.title('Mosaic3: Copilot offsets (pixels)')
-    ps.savefig()
-
-
+    
+    # plt.clf()
+    # plt.plot(Cr.dx, Ci.dx, 'b.')
+    # plt.plot(Cr.dy, Ci.dy, 'r.')
+    # 
+    # plt.plot(Cr.dx, Ci.dx - dcx, 'c.')
+    # plt.plot(Cr.dy, Ci.dy - dcy, 'm.')
+    # 
+    # dxi = np.median(Cr.dx - Ci.dx)
+    # dyi = np.median(Cr.dy - Ci.dy)
+    # 
+    # ax = plt.axis()
+    # xx = np.array([-100,100])
+    # p1 = plt.plot(xx, xx - dxi, 'b-', alpha=0.2)
+    # p2 = plt.plot(xx, xx - dyi, 'r-', alpha=0.2)
+    # plt.axis(ax)
+    # plt.legend([p1[0],p2[0]], ['dx','dy'], 'upper left')
+    # plt.xlabel(refext)
+    # plt.ylabel('im%i' % ext)
+    # plt.title('Mosaic3: Copilot offsets (pixels)')
+    # ps.savefig()
+    
     cdx = Ci.dx - dcx
     cdy = Ci.dy - dcy
     
     cdra  = (Ci.cd[:,0] * cdx + Ci.cd[:,1] * cdy) * 3600.
     cddec = (Ci.cd[:,2] * cdx + Ci.cd[:,3] * cdy) * 3600.
-
+    
     plt.clf()
     plt.plot(Cr.dra,  cdra, 'b.')
     plt.plot(Cr.ddec, cddec, 'r.')
-    ax = plt.axis()
+    #ax = plt.axis()
     xx = np.array([-20,20])
     p1 = plt.plot(xx, xx - np.median(Cr.dra - cdra), 'b-', alpha=0.2)
     p2 = plt.plot(xx, xx - np.median(Cr.ddec - cddec), 'r-', alpha=0.2)
     plt.axis(ax)
     plt.legend([p1[0],p2[0]], ['dRA','dDec'], 'upper left')
-    plt.xlabel(refext)
-    plt.ylabel('im%i' % ext)
+    plt.xlabel('Copilot %s' % refext)
+    plt.ylabel('Copilot im%i' % ext)
     plt.title('Mosaic3: Copilot offsets w/ rotation (arcsec)')
     ps.savefig()
 
+
+    plt.clf()
+    plt.plot(adra,  cdra  + off_dra, 'b.')
+    plt.plot(addec, cddec + off_ddec, 'r.')
+    plt.axis(ax)
+    xx = np.array([-20,20])
+    plt.plot(xx, xx, 'k-', alpha=0.2)
+    plt.xlabel('Mosstat %s' % refext)
+    plt.ylabel('Copilot im%i -> Mosstat %s' % (ext, refext))
+    plt.title('Mosaic3: Copilot offsets w/ rotation (arcsec)')
+    ps.savefig()
+
+    
     plt.clf()
     plt.plot(Cr.dra,  cdra - Cr.dra, 'b.')
     plt.plot(Cr.ddec, cddec- Cr.ddec, 'r.')
@@ -360,8 +409,7 @@ for ext in range(1, 16):
     plt.ylabel('im%i - %s' % (ext, refext))
     plt.title('Mosaic3: Copilot offsets w/ rotation (arcsec)')
     ps.savefig()
-
-    # 
+    
     # plt.clf()
     # plt.plot(Cr.affdx, Ci.affdx, 'b.')
     # plt.plot(Cr.affdy, Ci.affdy, 'r.')

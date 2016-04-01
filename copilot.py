@@ -390,28 +390,10 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         # through that rotation matrix to convert an offset in imX to
         # an offset in im16.
         crx, cry = Tx.affine_x0, Tx.affine_y0
-
-        # Only show im16 values if ALL the exposures have affine measurements
-        if np.all(crx > 0):
-            refext = 'im16'
-            (refcrx, refcry) = nom.crpix[refext]
-            # Distance between im16 and this chip
-            dcrx = refcrx - crx
-            dcry = refcry - cry
-            # Apply rotation
-            dcx = Tx.affine_dxx * dcrx + Tx.affine_dxy * dcry - dcrx
-            dcy = Tx.affine_dyx * dcrx + Tx.affine_dyy * dcry - dcry
-            # Predicted pixel shift in im16
-            cdx = Tx.dx - dcx
-            cdy = Tx.dy - dcy
-            # Convert to dRA, dDec in im16
-            dra  = (CD[:,0] * cdx + CD[:,1] * cdy) * 3600.
-            ddec = (CD[:,2] * cdx + CD[:,3] * cdy) * 3600.
-            # Apply remaining mosstat - copilot offset
-            refdra  = dra  + -5.4
-            refddec = ddec +  3.4
-    
-
+        if not np.all(crx == 0):
+            from camera_mosaic import dradec_to_ref_chip
+            refdra,refddec = dradec_to_ref_chip(T)
+        
     if refdra is not None:
         # 
         plt.plot(Tx.mjd_obs, dra,  'bo', alpha=0.2)
@@ -419,10 +401,11 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         pr = plt.plot(Tx.mjd_obs, dra,  'b-', alpha=0.1)
         pd = plt.plot(Tx.mjd_obs, ddec, 'g-', alpha=0.1)
 
-        plt.plot(Tx.mjd_obs, refdra,  'bo')
-        plt.plot(Tx.mjd_obs, refddec, 'go')
-        pr = plt.plot(Tx.mjd_obs, refdra,  'b-', alpha=0.5)
-        pd = plt.plot(Tx.mjd_obs, refddec, 'g-', alpha=0.5)
+        I = np.flatnonzero(Tx.affine_x0)
+        plt.plot(Tx.mjd_obs[I], refdra[I],  'bo')
+        plt.plot(Tx.mjd_obs[I], refddec[I], 'go')
+        pr = plt.plot(Tx.mjd_obs[I], refdra[I],  'b-', alpha=0.5)
+        pd = plt.plot(Tx.mjd_obs[I], refddec[I], 'g-', alpha=0.5)
         
     else:
         plt.plot(Tx.mjd_obs, dra,  'bo')
