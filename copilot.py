@@ -121,7 +121,7 @@ def get_twilight(camera, date):
     return t
 
 def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
-                      markmjds=[], show_plot=True):
+                      markmjds=[], show_plot=True, nightly=False):
     import pylab as plt
     T = db_to_fits(mm)
     T.band = np.core.defchararray.replace(T.band, 'zd', 'z')
@@ -218,8 +218,9 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     plt.axhline(1.0, color='k', alpha=0.1)
     plt.axhline(0.8, color='k', alpha=0.1)
 
-    plt.text(latest.mjd_obs, yl+0.03*(yh-yl),
-             '%.2f' % latest.seeing, ha='center', bbox=bbox)
+    if not nightly:
+        plt.text(latest.mjd_obs, yl+0.03*(yh-yl),
+                 '%.2f' % latest.seeing, ha='center', bbox=bbox)
 
     #xl,xh = plt.xlim()
     #plt.text((xl+xh)/2., 
@@ -267,10 +268,11 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     
     plt.axhline(0, color='k', alpha=0.5)
 
-    latest = T[ilatest]
-    plt.text(latest.mjd_obs, latest.dsky - 0.05*(yh-yl),
-             '%.2f' % latest.sky, ha='center', va='top',
-             bbox=bbox)
+    if not nightly:
+        latest = T[ilatest]
+        plt.text(latest.mjd_obs, latest.dsky - 0.05*(yh-yl),
+                 '%.2f' % latest.sky, ha='center', va='top',
+                 bbox=bbox)
     
     # Plot strings of pass 1,2,3
     I = np.argsort(T.mjd_obs)
@@ -323,8 +325,9 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     plt.axhline(0.7, color='k', ls='-', alpha=0.25)
     yl,yh = min(0.89, max(mn, yl)), min(mx, max(yh, 1.01))
 
-    plt.text(latest.mjd_obs, yl+0.03*(yh-yl),
-             '%.2f' % latest.transparency, ha='center', bbox=bbox)
+    if not nightly:
+        plt.text(latest.mjd_obs, yl+0.03*(yh-yl),
+                 '%.2f' % latest.transparency, ha='center', bbox=bbox)
 
     plt.ylim(yl, yh)
     plt.subplot(SP,1,4)
@@ -360,14 +363,15 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         if len(I):
             plt.plot(Tb.mjd_obs[I], Tb.exptime[I], 'o', color=ccmap[band])
 
-            yl,yh = plt.ylim()
-            for i in I:
-                plt.text(Tb.mjd_obs[i], Tb.exptime[i] + 0.04*(yh-yl),
-                         '%.2f' % (Tb.depth_factor[i]),
-                         rotation=90, ha='center', va='bottom')
-                # '%.0f %%' % (100. * Tb.depth_factor[i]),
-            yh = max(yh, max(Tb.exptime[I] + 0.3*(yh-yl)))
-            plt.ylim(yl,yh)
+            if not nightly:
+                yl,yh = plt.ylim()
+                for i in I:
+                    plt.text(Tb.mjd_obs[i], Tb.exptime[i] + 0.04*(yh-yl),
+                             '%.2f' % (Tb.depth_factor[i]),
+                             rotation=90, ha='center', va='bottom')
+                    # '%.0f %%' % (100. * Tb.depth_factor[i]),
+                yh = max(yh, max(Tb.exptime[I] + 0.3*(yh-yl)))
+                plt.ylim(yl,yh)
             
     yl,yh = plt.ylim()
     for band,Tb in zip(bands, TT):
@@ -1156,7 +1160,8 @@ def main(cmdlineargs=None, get_copilot=False):
 
 
     if opt.plot:
-        plot_recent(opt, nom, tiles=tiles, markmjds=markmjds, show_plot=False)
+        plot_recent(opt, nom, tiles=tiles, markmjds=markmjds, show_plot=False,
+                    nightly=opt.nightplot)
         return 0
         
     print('Loading SFD maps...')
