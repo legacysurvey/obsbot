@@ -218,7 +218,10 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     plt.axhline(1.0, color='k', alpha=0.1)
     plt.axhline(0.8, color='k', alpha=0.1)
 
-    if not nightly:
+    if nightly:
+        plt.text(latest.mjd_obs, yl+0.03*(yh-yl),
+                 'Median: %.2f' % np.median(T.seeing), ha='right', bbox=bbox)
+    else:
         plt.text(latest.mjd_obs, yl+0.03*(yh-yl),
                  '%.2f' % latest.seeing, ha='center', bbox=bbox)
 
@@ -246,6 +249,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     mx = 2.0
     minsky = -0.15
     nomskies = []
+    medskies = []
     for band,Tb in zip(bands, TT):
         sky0 = nom.sky(band)
         T.dsky[T.band == band] = Tb.sky - sky0
@@ -254,6 +258,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
             plt.plot(Tb.mjd_obs[I], Tb.sky[I] - sky0, 'o', color=ccmap[band])
             minsky = min(minsky, min(Tb.sky[I] - sky0))
             nomskies.append((band, sky0))
+            medskies.append((band, np.median(Tb.sky[I])))
         I = np.flatnonzero((Tb.sky - sky0) > mx)
         if len(I):
             plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
@@ -268,7 +273,11 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     
     plt.axhline(0, color='k', alpha=0.5)
 
-    if not nightly:
+    if nightly:
+        txt = 'Median: ' + ', '.join(['%s=%.2f' % (band,sky)
+                                      for band,sky in medskies])
+        plt.text(latest.mjd_obs, 0, txt, ha='right', va='top', bbox=bbox)
+    else:
         latest = T[ilatest]
         plt.text(latest.mjd_obs, latest.dsky - 0.05*(yh-yl),
                  '%.2f' % latest.sky, ha='center', va='top',
@@ -325,7 +334,11 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     plt.axhline(0.7, color='k', ls='-', alpha=0.25)
     yl,yh = min(0.89, max(mn, yl)), min(mx, max(yh, 1.01))
 
-    if not nightly:
+    if nightly:
+        plt.text(latest.mjd_obs, yl+0.03*(yh-yl),
+                'Median: %.2f' % np.median(T.transparency),
+                ha='right', bbox=bbox)
+    else:
         plt.text(latest.mjd_obs, yl+0.03*(yh-yl),
                  '%.2f' % latest.transparency, ha='center', bbox=bbox)
 
