@@ -121,7 +121,7 @@ def get_twilight(camera, date):
     return t
 
 def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
-                      markmjds=[], show_plot=True):
+                      markmjds=[], show_plot=True, nightly=False):
     import pylab as plt
     T = db_to_fits(mm)
     T.band = np.core.defchararray.replace(T.band, 'zd', 'z')
@@ -198,6 +198,8 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     ilatest = np.argmax(T.mjd_obs)
     latest = T[ilatest]
 
+    bbox = dict(facecolor='white', alpha=0.8, edgecolor='none')
+    
     SP = 5
     mx = 2.05
     plt.subplot(SP,1,1)
@@ -216,9 +218,16 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     plt.axhline(1.0, color='k', alpha=0.1)
     plt.axhline(0.8, color='k', alpha=0.1)
 
-    plt.text(latest.mjd_obs, yl+0.01*(yh-yl),
-             '%.2f' % latest.seeing, ha='center')
+    if nightly:
+        plt.text(latest.mjd_obs, yl+0.03*(yh-yl),
+                 'Median: %.2f' % np.median(T.seeing), ha='right', bbox=bbox)
+    else:
+        plt.text(latest.mjd_obs, yl+0.03*(yh-yl),
+                 '%.2f' % latest.seeing, ha='center', bbox=bbox)
 
+    #xl,xh = plt.xlim()
+    #plt.text((xl+xh)/2., 
+    
     y = yl + 0.01*(yh-yl)
     plt.plot(np.vstack((T.mjd_obs, T.mjd_end)),
              np.vstack((y, y)), '-', lw=3, alpha=0.5, color=ccmap[band],
@@ -238,7 +247,9 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
 
     T.dsky = np.zeros(len(T), np.float32)
     mx = 2.0
-    minsky = 0
+    minsky = -0.15
+    nomskies = []
+    medskies = []
     for band,Tb in zip(bands, TT):
         sky0 = nom.sky(band)
         T.dsky[T.band == band] = Tb.sky - sky0
@@ -246,17 +257,31 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         if len(I):
             plt.plot(Tb.mjd_obs[I], Tb.sky[I] - sky0, 'o', color=ccmap[band])
             minsky = min(minsky, min(Tb.sky[I] - sky0))
+            nomskies.append((band, sky0))
+            medskies.append((band, np.median(Tb.sky[I])))
         I = np.flatnonzero((Tb.sky - sky0) > mx)
         if len(I):
             plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
+
+    txt = ', '.join(['%s=%.2f' % (band,sky0) for band,sky0 in nomskies])
+    xl,xh = plt.xlim()
+    plt.text((xl+xh)/2., 0., txt, va='bottom', bbox=bbox)
+    
     yl,yh = plt.ylim()
-    yh = min(yh,mx)
+    yh = min(yh, mx)
     yl = minsky - 0.03 * (yh-yl)
     
     plt.axhline(0, color='k', alpha=0.5)
-    
-    plt.text(latest.mjd_obs, yl+0.01*(yh-yl),
-             '%.2f' % latest.sky, ha='center')
+
+    if nightly:
+        txt = 'Median: ' + ', '.join(['%s=%.2f' % (band,sky)
+                                      for band,sky in medskies])
+        plt.text(latest.mjd_obs, 0, txt, ha='right', va='top', bbox=bbox)
+    else:
+        latest = T[ilatest]
+        plt.text(latest.mjd_obs, latest.dsky - 0.05*(yh-yl),
+                 '%.2f' % latest.sky, ha='center', va='top',
+                 bbox=bbox)
     
     # Plot strings of pass 1,2,3
     I = np.argsort(T.mjd_obs)
@@ -266,28 +291,25 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     while i < len(TJ):
         t = TJ[i]
         p0 = t.passnumber
-        j = 0
-        for j,tj in enumerate(TJ[i+1:]):
-            if tj.passnumber != p0:
-                break
-        j += i+1
-        #print('Exposures from [%i,%i) have pass %i' % (i, j, p0))
+        j = i
+        while j < len(TJ) and TJ.passnumber[j] == p0:
+            j += 1
+        print('Exposures from [%i,%i) have pass %i' % (i, j, p0))
         tend = TJ[j-1]
         
         y = yl + 0.1 * (yh-yl)
         if j > i+1:
             plt.plot([t.mjd_obs, tend.mjd_obs], [y, y], 'b-', lw=2, alpha=0.5)
-            plt.plot([t.mjd_obs, t.mjd_obs], [y - 0.05*(yh-yl), y + 0.05*(yh-yl)],
-                     'b-', lw=2, alpha=0.5)
-            plt.plot([tend.mjd_obs, tend.mjd_obs], [y - 0.05*(yh-yl), y + 0.05*(yh-yl)],
-                     'b-', lw=2, alpha=0.5)
+            # add error bar caps on the endpoints
+            for mjd in [t.mjd_obs, tend.mjd_obs]:
+                plt.plot([mjd, mjd], [y - 0.03*(yh-yl), y + 0.03*(yh-yl)],
+                         'b-', lw=2, alpha=0.5)
         plt.text((t.mjd_obs + tend.mjd_obs)/2., y, '%i' % p0,
                  ha='center', va='top')
         i = j
-
         
     plt.axhline(-0.25, color='k', alpha=0.25)
-            
+
     plt.ylim(yl,yh)
     plt.ylabel('Sky - nominal (mag)')
 
@@ -312,8 +334,13 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     plt.axhline(0.7, color='k', ls='-', alpha=0.25)
     yl,yh = min(0.89, max(mn, yl)), min(mx, max(yh, 1.01))
 
-    plt.text(latest.mjd_obs, yl+0.01*(yh-yl),
-             '%.2f' % latest.transparency, ha='center')
+    if nightly:
+        plt.text(latest.mjd_obs, yl+0.03*(yh-yl),
+                'Median: %.2f' % np.median(T.transparency),
+                ha='right', bbox=bbox)
+    else:
+        plt.text(latest.mjd_obs, yl+0.03*(yh-yl),
+                 '%.2f' % latest.transparency, ha='center', bbox=bbox)
 
     plt.ylim(yl, yh)
     plt.subplot(SP,1,4)
@@ -329,7 +356,8 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
             bad = (Tb.sky == 0)
             clipped = np.minimum(clipped, t_sat + bad*1000000)
         Tb.clipped_exptime = clipped
-        Tb.depth_factor = Tb.exptime / clipped
+        #Tb.depth_factor = Tb.exptime / clipped
+        Tb.depth_factor = Tb.exptime / exptime
         I = np.flatnonzero(exptime > clipped)
         if len(I):
             plt.plot(Tb.mjd_obs[I], exptime[I], 'v', **limitstyle(band))
@@ -348,6 +376,16 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         if len(I):
             plt.plot(Tb.mjd_obs[I], Tb.exptime[I], 'o', color=ccmap[band])
 
+            if not nightly:
+                yl,yh = plt.ylim()
+                for i in I:
+                    plt.text(Tb.mjd_obs[i], Tb.exptime[i] + 0.04*(yh-yl),
+                             '%.2f' % (Tb.depth_factor[i]),
+                             rotation=90, ha='center', va='bottom')
+                    # '%.0f %%' % (100. * Tb.depth_factor[i]),
+                yh = max(yh, max(Tb.exptime[I] + 0.3*(yh-yl)))
+                plt.ylim(yl,yh)
+            
     yl,yh = plt.ylim()
     for band,Tb in zip(bands, TT):
         dt = dict(g=-0.5,r=+0.5,z=0)[band]
@@ -400,6 +438,13 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         plt.plot(Tx.mjd_obs[I], refddec[I], 'go')
         pr = plt.plot(Tx.mjd_obs[I], refdra[I],  'b-', alpha=0.5)
         pd = plt.plot(Tx.mjd_obs[I], refddec[I], 'g-', alpha=0.5)
+
+        if not nightly:
+            mjd = Tx.mjd_obs[I[-1]]
+            r,d = refdra[I[-1]], refddec[I[-1]]
+            yl,yh = plt.ylim()
+            plt.text(mjd, yl+0.03*(yh-yl), '(%.1f, %.1f)' % (r,d),
+                     ha='center', bbox=bbox)
         
     else:
         plt.plot(Tx.mjd_obs, dra,  'bo')
@@ -528,13 +573,31 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
 
             plt.axis(ax)
 
-    Tcount = T[(T.passnumber > 0) * (T.bad_pixcnt == False) *
-               (T.nmatched > 10)]
-    for band in np.unique(Tcount.band):
+    #Tcount = T[(T.passnumber > 0) * (T.bad_pixcnt == False) *
+    #           (T.nmatched > 10)]
+
+    #number of images with depth factor < 0.3 + number of images with seeing > 2"
+    
+    #for band in np.unique(Tcount.band):
+    
+    for band,Tb in zip(bands, TT):
         for passnum in [1,2,3]:
-            N = np.sum((Tcount.band == band) * (Tcount.passnumber == passnum))
-            print('Band %s: total of %i pass %i tiles' % (band, N, passnum))
-        
+
+            Tcount = Tb[(Tb.passnumber == passnum) * (Tb.bad_pixcnt == False) *
+                        (Tb.nmatched > 10)]
+            N = len(Tcount)
+            print('\nBand %s, pass %i: total of %i tiles' % (band, passnum, N))
+            if N > 0:
+                depth_thresh = 0.3
+                seeing_thresh = 2.0
+                shallow = (Tcount.depth_factor < depth_thresh)
+                blurry = (Tcount.seeing > seeing_thresh)
+                if np.sum(shallow):
+                    print('  %i have low depth_factor < %g' % (np.sum(shallow), depth_thresh))
+                if np.sum(blurry):
+                    print('  %i have large seeing > %g' % (np.sum(blurry), seeing_thresh))
+                Ngood = np.sum(np.logical_not(shallow) * np.logical_not(blurry))
+                print('Band %s, pass %i: total of %i good tiles' % (band, passnum, Ngood))
     
     if show_plot:
         plt.draw()
@@ -1135,7 +1198,8 @@ def main(cmdlineargs=None, get_copilot=False):
 
 
     if opt.plot:
-        plot_recent(opt, nom, tiles=tiles, markmjds=markmjds, show_plot=False)
+        plot_recent(opt, nom, tiles=tiles, markmjds=markmjds, show_plot=False,
+                    nightly=opt.nightplot)
         return 0
         
     print('Loading SFD maps...')
