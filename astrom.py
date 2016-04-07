@@ -162,7 +162,6 @@ A.add_columns_from(AC)
 
 A.about()
 
-
 plt.clf()
 p1 = plt.plot(A.zpt, A.zp, 'b.')
 p2 = plt.plot(A.zpt, A.zp_med, 'g.')

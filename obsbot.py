@@ -248,6 +248,10 @@ def ephem_date_to_mjd(edate):
     from astrometry.util.starutil_numpy import datetomjd
     return datetomjd(edate.datetime())
 
+def mjd_to_ephem_date(mjd):
+    # MAGIC ephem.Date(datetime.datetime(1858, 11, 17, 0, 0, 0))
+    return ephem.Date(mjd -15019.5)
+
 class NewFileWatcher(object):
     def __init__(self, dir, backlog=True, only_process_newest=False):
         self.dir = dir

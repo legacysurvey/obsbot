@@ -2,6 +2,8 @@ from decam import *
 
 camera_name = 'decam'
 
+data_env_var = 'DECAM_DATA'
+
 database_filename = camera_name + '.sqlite3'
 
 nominal_cal = DecamNominalCalibration()

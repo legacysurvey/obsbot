@@ -1036,7 +1036,7 @@ def main(cmdlineargs=None, get_copilot=False):
 
     # Mosaic or Decam?
     from camera import (nominal_cal, ephem_observer, default_extension,
-                        tile_path, camera_name)
+                        tile_path, camera_name, data_env_var)
     nom = nominal_cal
     obs = ephem_observer()
     
@@ -1045,7 +1045,7 @@ def main(cmdlineargs=None, get_copilot=False):
     parser.add_option('--ext', default=default_extension,
                       help='Extension to read for computing observing conditions: default %default')
     parser.add_option('--extnum', type=int, help='Integer extension to read')
-    parser.add_option('--rawdata', help='Directory to monitor for new images: default $MOS3_DATA if set, else "rawdata"', default=None)
+    parser.add_option('--rawdata', help='Directory to monitor for new images: default $%s if set, else "rawdata"' % data_env_var, default=None)
 
     parser.add_option('--n-fwhm', default=None, type=int, help='Number of stars on which to measure FWHM')
     
@@ -1108,7 +1108,7 @@ def main(cmdlineargs=None, get_copilot=False):
 
     imagedir = opt.rawdata
     if imagedir is None:
-        imagedir = os.environ.get('MOS3_DATA', 'rawdata')
+        imagedir = os.environ.get(data_env_var, 'rawdata')
 
     rawext = opt.ext
     if opt.extnum is not None:
