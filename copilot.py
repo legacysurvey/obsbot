@@ -263,13 +263,14 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         if len(I):
             plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
 
-    txt = ', '.join(['%s=%.2f' % (band,sky0) for band,sky0 in nomskies])
-    xl,xh = plt.xlim()
-    plt.text((xl+xh)/2., 0., txt, va='bottom', bbox=bbox)
-    
     yl,yh = plt.ylim()
     yh = min(yh, mx)
     yl = minsky - 0.03 * (yh-yl)
+            
+    txt = ', '.join(['%s=%.2f' % (band,sky0) for band,sky0 in nomskies])
+    xl,xh = plt.xlim()
+    plt.text((xl+xh)/2., min(0., (yl + 0.95*(yh-yl))), txt,
+             va='bottom', bbox=bbox)
     
     plt.axhline(0, color='k', alpha=0.5)
 
