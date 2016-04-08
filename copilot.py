@@ -485,7 +485,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     else:
         ii = range(len(Tx))
 
-    txty = mx
+    txty = mx * 0.8
     for i in ii:
         if Tx.expnum[i] == 0:
             continue
