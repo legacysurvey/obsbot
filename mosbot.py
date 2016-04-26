@@ -34,14 +34,9 @@ def main(cmdlineargs=None, get_mosbot=False):
 
     from camera_mosaic import (ephem_observer, default_extension, nominal_cal,
                                tile_path)
-    
-    parser.add_option('--rawdata', help='Directory to monitor for new images: default $MOS3_DATA if set, else "rawdata"', default=None)
-    parser.add_option('--script', dest='scriptfn', help='Write top-level shell script, default is %default', default='/mosaic3/exec/mosbot/tonight.sh')
-    parser.add_option('--no-write-script', dest='write_script', default=True, action='store_false')
-    parser.add_option('--ext', help='Extension to read for computing observing conditions, default %default', default=default_extension)
-    parser.add_option('--tiles',
-                      default=tile_path,
-                      help='Observation status file, default %default')
+
+    parser.add_option('--no-filter', dest='set_filter', action='store_false', default=True,
+                      help='Do not set the filter at the beginning of tonight.sh')
 
     parser.add_option('--pass', dest='passnum', type=int, default=2,
                       help='Set default pass number (1/2/3), default 2')
@@ -51,6 +46,15 @@ def main(cmdlineargs=None, get_mosbot=False):
     parser.add_option('--no-cut-past', dest='cut_before_now',
                       default=True, action='store_false',
                       help='Do not cut tiles that were supposed to be observed in the past')
+
+    parser.add_option('--rawdata', help='Directory to monitor for new images: default $MOS3_DATA if set, else "rawdata"', default=None)
+    parser.add_option('--script', dest='scriptfn', help='Write top-level shell script, default is %default', default='/mosaic3/exec/mosbot/tonight.sh')
+    parser.add_option('--no-write-script', dest='write_script', default=True, action='store_false')
+    parser.add_option('--ext', help='Extension to read for computing observing conditions, default %default', default=default_extension)
+    parser.add_option('--tiles',
+                      default=tile_path,
+                      help='Observation status file, default %default')
+
     
     if cmdlineargs is None:
         opt,args = parser.parse_args()
@@ -178,10 +182,11 @@ class Mosbot(NewFileWatcher):
         script.append(log('Starting script'))
         script.append(log('###############'))
 
-        # tonight.sh setting the filter once at the start of the night!
-        j = J[0]
-        f = str(j['filter'])
-        script.append(jnox_filter(f))
+        if self.opt.set_filter:
+            # tonight.sh setting the filter once at the start of the night!
+            j = J[0]
+            f = str(j['filter'])
+            script.append(jnox_filter(f))
         
         # Write top-level script and shell scripts for default plan.
         for i,j in enumerate(J):
