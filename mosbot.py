@@ -169,13 +169,16 @@ class Mosbot(NewFileWatcher):
         f.close()
         os.chmod(path, chmod)
 
+        # Start writing the "tonight.sh" script.
         script = []
+        # tonight.sh initial NOCS commands
         script.append(jnox_preamble(scriptfn))
 
         script.append(log('###############'))
         script.append(log('Starting script'))
         script.append(log('###############'))
 
+        # tonight.sh setting the filter once at the start of the night!
         j = J[0]
         f = str(j['filter'])
         script.append(jnox_filter(f))
@@ -187,11 +190,11 @@ class Mosbot(NewFileWatcher):
             seq = i + 1
             
             if seq > 1:
-
                 script.append('# Check for file "%s"; read out and quit if it exists' % quitfile)
                 script.append('if [ -f %s ]; then\n  . read.sh; rm %s; exit 0;\nfi' %
                               (quitfile,quitfile))
-                
+
+                # tonight.sh: slew to next field while reading out previous exposure
                 # Write slewread-##.sh script
                 fn = self.slewscriptpattern % seq
                 path = os.path.join(self.scriptdir, fn)
@@ -206,6 +209,7 @@ class Mosbot(NewFileWatcher):
                               (quitfile,quitfile))
                 
 
+            # tonight.sh: start exposure
             script.append('\n### Exposure %i ###\n' % seq)
             script.append('echo "%i" > %s' % (seq, seqnumfn))
             script.append(log('Starting exposure %i' % seq))
@@ -218,7 +222,7 @@ class Mosbot(NewFileWatcher):
             if exptime is not None:
                 j['expTime'] = exptime
             
-            # Write expose-##.sh
+            # Write expose-##.sh default exposure script
             fn = self.expscriptpattern % seq
             path = os.path.join(self.scriptdir, fn)
             f = open(path, 'w')
