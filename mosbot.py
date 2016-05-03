@@ -34,14 +34,9 @@ def main(cmdlineargs=None, get_mosbot=False):
 
     from camera_mosaic import (ephem_observer, default_extension, nominal_cal,
                                tile_path)
-    
-    parser.add_option('--rawdata', help='Directory to monitor for new images: default $MOS3_DATA if set, else "rawdata"', default=None)
-    parser.add_option('--script', dest='scriptfn', help='Write top-level shell script, default is %default', default='/mosaic3/exec/mosbot/tonight.sh')
-    parser.add_option('--no-write-script', dest='write_script', default=True, action='store_false')
-    parser.add_option('--ext', help='Extension to read for computing observing conditions, default %default', default=default_extension)
-    parser.add_option('--tiles',
-                      default=tile_path,
-                      help='Observation status file, default %default')
+
+    parser.add_option('--no-filter', dest='set_filter', action='store_false', default=True,
+                      help='Do not set the filter at the beginning of tonight.sh')
 
     parser.add_option('--pass', dest='passnum', type=int, default=2,
                       help='Set default pass number (1/2/3), default 2')
@@ -51,6 +46,15 @@ def main(cmdlineargs=None, get_mosbot=False):
     parser.add_option('--no-cut-past', dest='cut_before_now',
                       default=True, action='store_false',
                       help='Do not cut tiles that were supposed to be observed in the past')
+
+    parser.add_option('--rawdata', help='Directory to monitor for new images: default $MOS3_DATA if set, else "rawdata"', default=None)
+    parser.add_option('--script', dest='scriptfn', help='Write top-level shell script, default is %default', default='/mosaic3/exec/mosbot/tonight.sh')
+    parser.add_option('--no-write-script', dest='write_script', default=True, action='store_false')
+    parser.add_option('--ext', help='Extension to read for computing observing conditions, default %default', default=default_extension)
+    parser.add_option('--tiles',
+                      default=tile_path,
+                      help='Observation status file, default %default')
+
     
     if cmdlineargs is None:
         opt,args = parser.parse_args()
@@ -169,16 +173,20 @@ class Mosbot(NewFileWatcher):
         f.close()
         os.chmod(path, chmod)
 
+        # Start writing the "tonight.sh" script.
         script = []
+        # tonight.sh initial NOCS commands
         script.append(jnox_preamble(scriptfn))
 
         script.append(log('###############'))
         script.append(log('Starting script'))
         script.append(log('###############'))
 
-        j = J[0]
-        f = str(j['filter'])
-        script.append(jnox_filter(f))
+        if self.opt.set_filter:
+            # tonight.sh setting the filter once at the start of the night!
+            j = J[0]
+            f = str(j['filter'])
+            script.append(jnox_filter(f))
         
         # Write top-level script and shell scripts for default plan.
         for i,j in enumerate(J):
@@ -187,11 +195,11 @@ class Mosbot(NewFileWatcher):
             seq = i + 1
             
             if seq > 1:
-
                 script.append('# Check for file "%s"; read out and quit if it exists' % quitfile)
                 script.append('if [ -f %s ]; then\n  . read.sh; rm %s; exit 0;\nfi' %
                               (quitfile,quitfile))
-                
+
+                # tonight.sh: slew to next field while reading out previous exposure
                 # Write slewread-##.sh script
                 fn = self.slewscriptpattern % seq
                 path = os.path.join(self.scriptdir, fn)
@@ -206,6 +214,7 @@ class Mosbot(NewFileWatcher):
                               (quitfile,quitfile))
                 
 
+            # tonight.sh: start exposure
             script.append('\n### Exposure %i ###\n' % seq)
             script.append('echo "%i" > %s' % (seq, seqnumfn))
             script.append(log('Starting exposure %i' % seq))
@@ -218,7 +227,7 @@ class Mosbot(NewFileWatcher):
             if exptime is not None:
                 j['expTime'] = exptime
             
-            # Write expose-##.sh
+            # Write expose-##.sh default exposure script
             fn = self.expscriptpattern % seq
             path = os.path.join(self.scriptdir, fn)
             f = open(path, 'w')

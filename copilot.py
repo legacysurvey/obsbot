@@ -263,13 +263,14 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         if len(I):
             plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
 
-    txt = ', '.join(['%s=%.2f' % (band,sky0) for band,sky0 in nomskies])
-    xl,xh = plt.xlim()
-    plt.text((xl+xh)/2., 0., txt, va='bottom', bbox=bbox)
-    
     yl,yh = plt.ylim()
     yh = min(yh, mx)
     yl = minsky - 0.03 * (yh-yl)
+            
+    txt = ', '.join(['%s=%.2f' % (band,sky0) for band,sky0 in nomskies])
+    xl,xh = plt.xlim()
+    plt.text((xl+xh)/2., min(0., (yl + 0.95*(yh-yl))), txt,
+             va='bottom', bbox=bbox)
     
     plt.axhline(0, color='k', alpha=0.5)
 
@@ -484,7 +485,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     else:
         ii = range(len(Tx))
 
-    txty = mx
+    txty = mx * 0.8
     for i in ii:
         if Tx.expnum[i] == 0:
             continue
@@ -1036,7 +1037,7 @@ def main(cmdlineargs=None, get_copilot=False):
 
     # Mosaic or Decam?
     from camera import (nominal_cal, ephem_observer, default_extension,
-                        tile_path, camera_name)
+                        tile_path, camera_name, data_env_var)
     nom = nominal_cal
     obs = ephem_observer()
     
@@ -1045,7 +1046,7 @@ def main(cmdlineargs=None, get_copilot=False):
     parser.add_option('--ext', default=default_extension,
                       help='Extension to read for computing observing conditions: default %default')
     parser.add_option('--extnum', type=int, help='Integer extension to read')
-    parser.add_option('--rawdata', help='Directory to monitor for new images: default $MOS3_DATA if set, else "rawdata"', default=None)
+    parser.add_option('--rawdata', help='Directory to monitor for new images: default $%s if set, else "rawdata"' % data_env_var, default=None)
 
     parser.add_option('--n-fwhm', default=None, type=int, help='Number of stars on which to measure FWHM')
     
@@ -1108,7 +1109,7 @@ def main(cmdlineargs=None, get_copilot=False):
 
     imagedir = opt.rawdata
     if imagedir is None:
-        imagedir = os.environ.get('MOS3_DATA', 'rawdata')
+        imagedir = os.environ.get(data_env_var, 'rawdata')
 
     rawext = opt.ext
     if opt.extnum is not None:

@@ -162,7 +162,6 @@ A.add_columns_from(AC)
 
 A.about()
 
-
 plt.clf()
 p1 = plt.plot(A.zpt, A.zp, 'b.')
 p2 = plt.plot(A.zpt, A.zp_med, 'g.')
@@ -302,15 +301,36 @@ plt.title('Mosaic astrometry -- 2016-03-20')
 ps.savefig()
 
 
+C.nomzp = np.array([nom.zeropoint(b, ext=ext.strip())
+                    for b,ext in zip(C.band, C.extension)])
+
 CICR = []
-#for ext in range(1, 16):
-for ext in [4, 16]:
+#for ext in [4, 16]:
+for ext in range(1, 16):
     Ci = C[C.extension == 'im%i' % ext]
     print('Extension', ext, ':', len(Ci), 'exposures')
     Cr = Cref[np.array([ref_expnum[expnum] for expnum in Ci.expnum])]
 
     CICR.append((ext,Ci,Cr))
 
+# Photometric zeropoint offsets
+for ext,Ci,Cr in CICR:
+    plt.clf()
+    plt.hist(Ci.zp_med_skysub - Cr.zp_med_skysub, bins=20)
+    plt.xlabel('Zeropoint of ext %i vs ref im16' % ext)
+    ps.savefig()
+
+# Photometric zeropoint offsets
+for ext,Ci,Cr in CICR:
+    plt.clf()
+    plt.hist(Ci.zp_med_skysub - Ci.nomzp, bins=20)
+    plt.xlabel('Zeropoint of ext %i vs nominal' % ext)
+    ps.savefig()
+
+sys.exit(0)    
+
+
+for ext,Ci,Cr in CICR:
     from camera_mosaic import dradec_to_ref_chip
     Ci.affine_x0  = Ci.affine[:,0]
     Ci.affine_y0  = Ci.affine[:,1]
@@ -456,6 +476,7 @@ for ext in [4, 16]:
     # plt.title('Mosaic3: Copilot offsets (affine; pixels)')
     # ps.savefig()
 
+    
     
 sys.exit(0)    
     
