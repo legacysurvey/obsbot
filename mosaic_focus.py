@@ -108,7 +108,7 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
         I,J,d = match_xy(px, py, fx, fy, radius2)
 
         # Choose the brightest PS1 stars not near an edge
-        ps1band = ps1cat.ps1band[band]
+        ps1band = ps1cat.ps1band.get(band, 2)
         ps1mag = stars.median[I, ps1band]
         hdr = self.hdr
         shifts = self.get_focus_shifts(hdr)
