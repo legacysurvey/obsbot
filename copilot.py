@@ -670,7 +670,6 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
 
     skip = False
     if obstype in ['zero', 'focus', 'dome flat', '']:
-        print('Skipping obstype =', obstype)
         skip = True
     if exptime == 0:
         print('Exposure time EXPTIME in header =', exptime)
@@ -682,7 +681,14 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         print('Solid (block) filter.')
         skip = True
 
+    mfocus = False
+    camera  = camera_name(phdr)
+    if opt.focus and obstype == 'focus' and camera == 'mosaic3':
+        skip = False
+        mfocus = True
+
     if skip and not db:
+        print('Skipping obstype =', obstype)
         return None
 
     if db:
@@ -712,7 +718,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         m.bad_pixcnt = ('PIXCNT1' in phdr)
         m.readtime = phdr.get('READTIME', 0.)
 
-    if opt.focus and obstype == 'focus' and m.camera == 'mosaic3':
+    if mfocus:
         from mosaic_focus import Mosaic3FocusMeas
         show_plot = opt.show
         if show_plot:
@@ -730,7 +736,8 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
             plt.show(block=False)
             plt.pause(0.001)
             plt.figure(1)
-
+        skip = True
+        
     if skip:
         m.save()
         return None

@@ -283,6 +283,13 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
         # In pixel variance...
         meanseeing = np.mean(seeings)
         meanseeing = pixvar2seeing(meanseeing)
+
+        if meanseeing > 2.0:
+            mn,mx = meanseeing - 1., meanseeing + 1.5
+            plt.subplot(3,1,1)
+            plt.ylim(mn, mx)
+            plt.subplot(3,1,2)
+            plt.ylim(mn, mx)
         
         if plotfn is not None:
             plt.subplot(3,1,1)
