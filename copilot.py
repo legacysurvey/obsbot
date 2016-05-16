@@ -723,13 +723,19 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
             ext = get_default_extension(fn)
         meas = Mosaic3FocusMeas(fn, ext, nom)
         focusfn = 'focus.png'
-        meas.run(ps=None, plotfn=focusfn)
-        print('Wrote', focusfn)
-        if show_plot:
-            plt.draw()
-            plt.show(block=False)
-            plt.pause(0.001)
-            plt.figure(1)
+        M = meas.run(ps=None, plotfn=focusfn)
+        if not 'focus' in M:
+            if M['nmatched'] < 10:
+                print('FAILED TO MATCH ENOUGH STARS IN FOCUS FRAME -- please '
+                      'try another image extension, eg:')
+                print('  python mosaic_focus.py --ext im16 %s' % fn)
+        else:
+            print('Wrote', focusfn)
+            if show_plot:
+                plt.draw()
+                plt.show(block=False)
+                plt.pause(0.001)
+                plt.figure(1)
 
     if skip:
         m.save()
