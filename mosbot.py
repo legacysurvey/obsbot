@@ -193,13 +193,17 @@ class Mosbot(NewFileWatcher):
 
             # The sequence number start at 1
             seq = i + 1
+
+            # tonight.sh: start exposure
+            script.append('\n### Exposure %i ###\n' % seq)
+            script.append('echo "%i" > %s' % (seq, seqnumfn))
             
             if seq > 1:
                 script.append('# Check for file "%s"; read out and quit if it exists' % quitfile)
                 script.append('if [ -f %s ]; then\n  . read.sh; rm %s; exit 0;\nfi' %
                               (quitfile,quitfile))
 
-                # tonight.sh: slew to next field while reading out previous exposure
+                # tonight.sh: slew to field while reading out previous exposure
                 # Write slewread-##.sh script
                 fn = self.slewscriptpattern % seq
                 path = os.path.join(self.scriptdir, fn)
@@ -214,9 +218,6 @@ class Mosbot(NewFileWatcher):
                               (quitfile,quitfile))
                 
 
-            # tonight.sh: start exposure
-            script.append('\n### Exposure %i ###\n' % seq)
-            script.append('echo "%i" > %s' % (seq, seqnumfn))
             script.append(log('Starting exposure %i' % seq))
             expfn = self.expscriptpattern % seq
             script.append(log('Tile: $(grep "Tile:" %s)' % expfn))

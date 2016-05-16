@@ -113,7 +113,7 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
         I,J,d = match_xy(px, py, fx, fy, radius2)
 
         # Choose the brightest PS1 stars not near an edge
-        ps1band = ps1cat.ps1band[band]
+        ps1band = ps1cat.ps1band.get(band, 2)
         ps1mag = stars.median[I, ps1band]
         hdr = self.hdr
         shifts = self.get_focus_shifts(hdr)
@@ -288,14 +288,21 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
         # In pixel variance...
         meanseeing = np.mean(seeings)
         meanseeing = pixvar2seeing(meanseeing)
+
+        if meanseeing > 2.0:
+            mn,mx = meanseeing - 1., meanseeing + 1.5
+            plt.subplot(3,1,1)
+            plt.ylim(mn, mx)
+            plt.subplot(3,1,2)
+            plt.ylim(mn, mx)
         
         if plotfn is not None:
             plt.subplot(3,1,1)
             plt.xlabel('')
             plt.subplot(3,1,2)
             plt.xlabel('')
-            plt.suptitle('Focus (expnum = %i): Focus %.0f, Seeing %.1f' %
-                         (self.primhdr.get('EXPNUM', 0), fmean, meanseeing))
+            plt.suptitle('Focus (expnum = %i): Focus %.0f, Seeing %.1f, Band %s' %
+                         (self.primhdr.get('EXPNUM', 0), fmean, meanseeing, band))
             plt.savefig(plotfn)
         else:
             ps.savefig()
@@ -424,18 +431,27 @@ if __name__ == '__main__':
                       default="im4")
     parser.add_option('--plot-prefix', default='focus',
                       help='Filename prefix for plots')
+    parser.add_option('--no-plots', dest='plots', default=True, action='store_false', help='Turn off debugging plots')
+    parser.add_option('--plot', dest='plotfn', default='focus.png',
+                      help='Set final summary plot filename, default %default')
     opt,args = parser.parse_args()
 
     if len(args) == 0:
         parser.print_help()
         sys.exit(-1)
     
-    ps = PlotSequence(opt.plot_prefix)
+    if opt.plots:
+        ps = PlotSequence(opt.plot_prefix)
+    else:
+        import pylab as plt
+        plt.figure(1, figsize=(8,10))
+        plt.subplots_adjust(top=0.95)
+        ps = None
 
     from camera_mosaic import nominal_cal
     nom = nominal_cal
 
     for fn in args:
         meas = Mosaic3FocusMeas(fn, opt.ext, nom)
-        meas.run(ps)
+        meas.run(ps=ps, plotfn=opt.plotfn)
         

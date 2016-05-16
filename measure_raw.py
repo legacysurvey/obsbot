@@ -189,17 +189,35 @@ class RawMeasurer(object):
         airmass = primhdr['AIRMASS']
         print('Band', band, 'Exptime', exptime, 'Airmass', airmass)
 
-        zp0 = self.nom.zeropoint(band, ext=self.ext)
-        sky0 = self.nom.sky(band)
-        kx = self.nom.fiducial_exptime(band).k_co
+        try:
+            zp0 = self.nom.zeropoint(band, ext=self.ext)
+        except KeyError:
+            print('Unknown band "%s"; no zeropoint available.' % band)
+            zp0 = None
+
+        try:
+            sky0 = self.nom.sky(band)
+        except KeyError:
+            print('Unknown band "%s"; no nominal sky available.' % band)
+            sky0 = None
+
+        try:
+            kx = self.nom.fiducial_exptime(band).k_co
+        except ValueError:
+            print('Unknown band "%s"; no k_co available.' % band)
+            kx = None
         
         # Find the sky value and noise level
         sky,sig1 = self.get_sky_and_sigma(img)
 
         sky1 = np.median(sky)
-        skybr = -2.5 * np.log10(sky1/pixsc/pixsc/exptime) + zp0
-        print('Sky brightness: %8.3f mag/arcsec^2' % skybr)
-        print('Fiducial:       %8.3f mag/arcsec^2' % sky0)
+
+        if zp0 is not None:
+            skybr = -2.5 * np.log10(sky1/pixsc/pixsc/exptime) + zp0
+            print('Sky brightness: %8.3f mag/arcsec^2' % skybr)
+            print('Fiducial:       %8.3f mag/arcsec^2' % sky0)
+        else:
+            skybr = None
 
         # Read WCS header and compute boresight
         wcs = self.get_wcs(hdr)
@@ -213,7 +231,7 @@ class RawMeasurer(object):
                     hdr=hdr, wcs=wcs, ra_ccd=ra_ccd, dec_ccd=dec_ccd,
                     extension=ext, camera=camera)
         
-        if not np.isfinite(skybr):
+        if skybr is not None and not np.isfinite(skybr):
             print('Measured negative sky brightness:', sky1, 'counts')
             return meas
         
@@ -376,8 +394,12 @@ class RawMeasurer(object):
         #print('Got PS1 stars:', len(stars))
     
         # we add the color term later
-        ps1band = ps1cat.ps1band[band]
-        stars.mag = stars.median[:, ps1band]
+        try:
+            ps1band = ps1cat.ps1band[band]
+            stars.mag = stars.median[:, ps1band]
+        except KeyError:
+            ps1band = None
+            stars.mag = np.zeros(len(stars), np.float32)
         
         ok,px,py = wcs.radec2pixelxy(stars.ra, stars.dec)
         px -= 1
