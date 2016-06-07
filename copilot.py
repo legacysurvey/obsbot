@@ -942,7 +942,8 @@ def mark_twilight(camera, date):
     mark.append((ephemdate_to_mjd(twi.morn10),'g'))
     return mark
     
-def plot_recent(opt, nom, tiles=None, markmjds=[], **kwargs):
+def plot_recent(opt, nom, tiles=None, markmjds=[],
+                botplanfn=None, **kwargs):
     import obsdb
 
     if opt.mjdend is None:
@@ -977,13 +978,12 @@ def plot_recent(opt, nom, tiles=None, markmjds=[], **kwargs):
                       mjdrange=(mjd_start, mjd_end), markmjds=markmjds,
                       **kwargs)
 
-    planfn = 'mosbot-plan.fits'
-    if not os.path.exists(planfn) or tiles is None:
+    if botplanfn is None or (not os.path.exists(botplanfn)) or tiles is None:
         return
 
     import pylab as plt
     from astrometry.util.fits import fits_table
-    P = fits_table(planfn)
+    P = fits_table(botplanfn)
     
     mlast = mm.order_by('mjd_obs').last()
 
@@ -1050,7 +1050,7 @@ def main(cmdlineargs=None, get_copilot=False):
 
     # Mosaic or Decam?
     from camera import (nominal_cal, ephem_observer, default_extension,
-                        tile_path, camera_name, data_env_var)
+                        tile_path, camera_name, data_env_var, bot_name)
     nom = nominal_cal
     obs = ephem_observer()
     
@@ -1210,10 +1210,11 @@ def main(cmdlineargs=None, get_copilot=False):
 
         return 0
 
-
+    botplanfn = '%s-plan.fits' % bot_name
+    
     if opt.plot:
         plot_recent(opt, nom, tiles=tiles, markmjds=markmjds, show_plot=False,
-                    nightly=opt.nightplot)
+                    nightly=opt.nightplot, botplanfn=botplanfn)
         return 0
         
     print('Loading SFD maps...')
@@ -1238,11 +1239,12 @@ def main(cmdlineargs=None, get_copilot=False):
             sfd = None
             mp.map(bounce_process_image,
                    [(fn, rawext, nom, sfd, opt, obs, tiles) for fn in fns])
-        plot_recent(opt, nom, tiles=tiles, markmjds=markmjds, show_plot=False)
+        plot_recent(opt, nom, tiles=tiles, markmjds=markmjds, show_plot=False,
+                    botplanfn=botplanfn)
         return 0
     
 
-    copilot = Copilot(imagedir, rawext, opt, nom, sfd, obs, tiles)
+    copilot = Copilot(imagedir, rawext, opt, nom, sfd, obs, tiles, botplanfn)
 
     # for testability
     if get_copilot:
@@ -1254,7 +1256,7 @@ def main(cmdlineargs=None, get_copilot=False):
 
 class Copilot(NewFileWatcher):
     def __init__(self, imagedir, rawext,
-                 opt, nom, sfd, obs, tiles):
+                 opt, nom, sfd, obs, tiles, botplanfn):
         self.rawext = rawext
         super(Copilot, self).__init__(imagedir, backlog=True)
 
@@ -1268,7 +1270,8 @@ class Copilot(NewFileWatcher):
         self.sfd = sfd
         self.obs = obs
         self.tiles = tiles
-
+        self.botplanfn = botplanfn
+        
         # Record of exposure times we've seen
         self.exptimes = []
         
@@ -1314,7 +1317,7 @@ class Copilot(NewFileWatcher):
             markmjds.append((datetomjd(edate), 'r', 'MISSING IMAGE!'))
         
         plot_recent(self.opt, self.nom, tiles=self.tiles, markmjds=markmjds,
-                    show_plot=self.opt.show)
+                    show_plot=self.opt.show, botplanfn=self.botplanfn)
 
 if __name__ == '__main__':
     import obsdb

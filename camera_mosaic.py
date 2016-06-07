@@ -2,6 +2,8 @@ from mosaic import *
 
 camera_name = 'mosaic3'
 
+bot_name = 'mosbot'
+
 data_env_var = 'MOS3_DATA'
 
 database_filename = camera_name + '.sqlite3'

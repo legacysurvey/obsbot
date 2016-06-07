@@ -2,6 +2,8 @@ from decam import *
 
 camera_name = 'decam'
 
+bot_name = 'decbot'
+
 data_env_var = 'DECAM_DATA'
 
 database_filename = camera_name + '.sqlite3'
