@@ -729,13 +729,19 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
             ext = get_default_extension(fn)
         meas = Mosaic3FocusMeas(fn, ext, nom)
         focusfn = 'focus.png'
-        meas.run(ps=None, plotfn=focusfn)
-        print('Wrote', focusfn)
-        if show_plot:
-            plt.draw()
-            plt.show(block=False)
-            plt.pause(0.001)
-            plt.figure(1)
+        M = meas.run(ps=None, plotfn=focusfn)
+        if not 'focus' in M:
+            if M['nmatched'] < 10:
+                print('FAILED TO MATCH ENOUGH STARS IN FOCUS FRAME -- please '
+                      'try another image extension, eg:')
+                print('  python mosaic_focus.py --ext im16 %s' % fn)
+        else:
+            print('Wrote', focusfn)
+            if show_plot:
+                plt.draw()
+                plt.show(block=False)
+                plt.pause(0.001)
+                plt.figure(1)
         skip = True
         
     if skip:
@@ -936,7 +942,8 @@ def mark_twilight(camera, date):
     mark.append((ephemdate_to_mjd(twi.morn10),'g'))
     return mark
     
-def plot_recent(opt, nom, tiles=None, markmjds=[], **kwargs):
+def plot_recent(opt, nom, tiles=None, markmjds=[],
+                botplanfn=None, **kwargs):
     import obsdb
 
     if opt.mjdend is None:
@@ -971,44 +978,83 @@ def plot_recent(opt, nom, tiles=None, markmjds=[], **kwargs):
                       mjdrange=(mjd_start, mjd_end), markmjds=markmjds,
                       **kwargs)
 
-    planfn = 'mosbot-plan.fits'
-    if not os.path.exists(planfn) or tiles is None:
+    if botplanfn is None or (not os.path.exists(botplanfn)) or tiles is None:
         return
 
     import pylab as plt
     from astrometry.util.fits import fits_table
-    P = fits_table(planfn)
+    P = fits_table(botplanfn)
     
     mlast = mm.order_by('mjd_obs').last()
 
     mrecent = mm.order_by('-mjd_obs')[:10]
+
+    ccmap = dict(g='g', r='r', z='m')
+    lp,lt = [],[]
     
     plt.clf()
     I = (tiles.in_desi == 1) * (tiles.z_done == 0)
     plt.plot(tiles.ra[I], tiles.dec[I], 'k.', alpha=0.05)
     I = (tiles.in_desi == 1) * (tiles.z_done > 0)
     plt.plot(tiles.ra[I], tiles.dec[I], 'k.', alpha=0.5)
-    plt.plot([m.rabore for m in mm], [m.decbore for m in mm], 'm.')
 
+    plt.plot([m.rabore for m in mm], [m.decbore for m in mm], 'k-',
+             lw=2, alpha=0.5)
+    pr = plt.scatter([m.rabore for m in mm], [m.decbore for m in mm],
+                     color=[ccmap.get(m.band,'k') for m in mm], marker='o',
+                     s=20)
+    # for k,v in ccmap.items():
+    #     mmb = [m for m in mm if m.band == k]
+    #     if len(mmb) == 0:
+    #         continue
+    #     pr = plt.plot([m.rabore for m in mmb], [m.decbore for m in mmb], '.',
+    #                   color=v)
+    lp.append(pr)
+    lt.append('Recent')
+        
+    P.color = np.array([ccmap.get(f,'k') for f in P.filter])
     I = np.flatnonzero(P.type == '1')
     I = I[:10]
-    plt.plot(P[I].ra, P[I].dec, 'k^', alpha=0.3)
+    p1 = plt.scatter(P.ra[I], P.dec[I], c=P.color[I], marker='^', alpha=0.5,
+                     s=60)
+    plt.plot(P.ra[I], P.dec[I], 'k-', alpha=0.1)
+    lp.append(p1)
+    lt.append('Upcoming P1')
+    
     I = np.flatnonzero(P.type == '2')
     I = I[:10]
-    plt.plot(P[I].ra, P[I].dec, 'ks', alpha=0.3)
+    p2 = plt.scatter(P.ra[I], P.dec[I], c=P.color[I], marker='s', alpha=0.5,
+                     s=60)
+    plt.plot(P.ra[I], P.dec[I], 'k-', alpha=0.1)
+    lp.append(p2)
+    lt.append('Upcoming P2')
+
     I = np.flatnonzero(P.type == '3')
     I = I[:10]
-    plt.plot(P[I].ra, P[I].dec, 'kp', alpha=0.3)
+    p3 = plt.scatter(P.ra[I], P.dec[I], c=P.color[I], marker='p', alpha=0.5,
+                     s=60)
+    plt.plot(P.ra[I], P.dec[I], 'k-', alpha=0.1)
+    lp.append(p3)
+    lt.append('Upcoming P3')
 
-    plt.plot(mlast.rabore, mlast.decbore, 'mo')
+    pl = plt.plot(mlast.rabore, mlast.decbore, 'o',
+                  color=ccmap.get(mlast.band,'k'), ms=10)
+    lp.append(pl[0])
+    lt.append('Last exposure')
 
     I = np.flatnonzero(P.type == 'P')
-    plt.plot(P[I].ra, P[I].dec, 'm*-', ms=12)
-
+    plt.plot(P.ra[I], P.dec[I], 'k-', lw=3, alpha=0.5)
+    pplan = plt.scatter(P.ra[I], P.dec[I], c=P.color[I], marker='*',
+                        s=100)
+    lp.append(pplan)
+    lt.append('Planned')
+    
     plt.xlabel('RA (deg)')
     plt.ylabel('Dec (deg)')
     #plt.axis([360,0,-20,90])
 
+    plt.figlegend(lp, lt, 'upper right')
+    
     ralo = min(P.ra.min(), min([m.rabore for m in mrecent]))
     rahi = max(P.ra.max(), max([m.rabore for m in mrecent]))
     declo = min(P.dec.min(), min([m.decbore for m in mrecent]))
@@ -1016,7 +1062,7 @@ def plot_recent(opt, nom, tiles=None, markmjds=[], **kwargs):
     dr = rahi - ralo
     dd = dechi - declo
     
-    plt.axis([ralo-0.1*dr, rahi+0.1*dr, declo-0.1*dd, dechi+0.1*dd])
+    plt.axis([rahi+0.1*dr, ralo-0.1*dr, declo-0.1*dd, dechi+0.1*dd])
 
     fn = 'radec.png'
     plt.savefig(fn)
@@ -1044,7 +1090,7 @@ def main(cmdlineargs=None, get_copilot=False):
 
     # Mosaic or Decam?
     from camera import (nominal_cal, ephem_observer, default_extension,
-                        tile_path, camera_name, data_env_var)
+                        tile_path, camera_name, data_env_var, bot_name)
     nom = nominal_cal
     obs = ephem_observer()
     
@@ -1204,10 +1250,11 @@ def main(cmdlineargs=None, get_copilot=False):
 
         return 0
 
-
+    botplanfn = '%s-plan.fits' % bot_name
+    
     if opt.plot:
         plot_recent(opt, nom, tiles=tiles, markmjds=markmjds, show_plot=False,
-                    nightly=opt.nightplot)
+                    nightly=opt.nightplot, botplanfn=botplanfn)
         return 0
         
     print('Loading SFD maps...')
@@ -1232,11 +1279,12 @@ def main(cmdlineargs=None, get_copilot=False):
             sfd = None
             mp.map(bounce_process_image,
                    [(fn, rawext, nom, sfd, opt, obs, tiles) for fn in fns])
-        plot_recent(opt, nom, tiles=tiles, markmjds=markmjds, show_plot=False)
+        plot_recent(opt, nom, tiles=tiles, markmjds=markmjds, show_plot=False,
+                    botplanfn=botplanfn)
         return 0
     
 
-    copilot = Copilot(imagedir, rawext, opt, nom, sfd, obs, tiles)
+    copilot = Copilot(imagedir, rawext, opt, nom, sfd, obs, tiles, botplanfn)
 
     # for testability
     if get_copilot:
@@ -1248,7 +1296,7 @@ def main(cmdlineargs=None, get_copilot=False):
 
 class Copilot(NewFileWatcher):
     def __init__(self, imagedir, rawext,
-                 opt, nom, sfd, obs, tiles):
+                 opt, nom, sfd, obs, tiles, botplanfn):
         self.rawext = rawext
         super(Copilot, self).__init__(imagedir, backlog=True)
 
@@ -1262,7 +1310,8 @@ class Copilot(NewFileWatcher):
         self.sfd = sfd
         self.obs = obs
         self.tiles = tiles
-
+        self.botplanfn = botplanfn
+        
         # Record of exposure times we've seen
         self.exptimes = []
         
@@ -1308,7 +1357,7 @@ class Copilot(NewFileWatcher):
             markmjds.append((datetomjd(edate), 'r', 'MISSING IMAGE!'))
         
         plot_recent(self.opt, self.nom, tiles=self.tiles, markmjds=markmjds,
-                    show_plot=self.opt.show)
+                    show_plot=self.opt.show, botplanfn=self.botplanfn)
 
 if __name__ == '__main__':
     import obsdb
