@@ -12,6 +12,7 @@ import datetime
 import stat
 import os
 from collections import OrderedDict
+from glob import glob
 
 import matplotlib
 matplotlib.use('Agg')
@@ -68,7 +69,17 @@ def main(cmdlineargs=None, get_mosbot=False):
     if not (opt.passnum in [1,2,3]):
         parser.print_help()
         sys.exit(-1)
-        
+
+    #ADM first delete any existing .sh scripts to guard against 
+    #ADM the user executing an old script. Also delete forcepass
+    #ADM and nopass files
+    scriptdir = os.path.dirname(opt.scriptfn)
+    if len(scriptdir) and os.path.exists(scriptdir):
+        for file in glob(scriptdir+'/*sh'): 
+            os.remove(file)
+        for file in glob(scriptdir+'/*pass*'):
+            os.remove(file)
+
     json1fn,json2fn,json3fn = args
 
     J1 = json.loads(open(json1fn,'rb').read())
@@ -569,6 +580,14 @@ def expscript_for_json(j, status=None):
               '  echo; echo "WARNING: This exposure is happening more than an hour early!";\n' +
               '  echo "Scheduled time: %s UT";\n' % j['approx_datetime'] +
               '  echo; tput bel; sleep 0.25; tput bel; sleep 0.25; tput bel;\n' +
+              'fi\n')
+    #ADM force exit if observation is more than 4 hours late
+    ss.append('if [ $dt -gt 14400 ]; then\n' +
+              '  echo; echo "ERROR: This exposure is happening more than 4 hours late!";\n' +
+              '  echo "Scheduled time: %s UT";\n' % j['approx_datetime'] +
+              '  echo "YOU SHOULD RERUN mosbot.py TO CREATE A NEW tonight.sh FILE!";\n' +
+              '  touch quit\n' +
+              '  exit 1\n' +
               'fi\n')
     
     ra  = j['RA']
