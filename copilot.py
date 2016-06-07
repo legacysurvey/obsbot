@@ -988,33 +988,73 @@ def plot_recent(opt, nom, tiles=None, markmjds=[],
     mlast = mm.order_by('mjd_obs').last()
 
     mrecent = mm.order_by('-mjd_obs')[:10]
+
+    ccmap = dict(g='g', r='r', z='m')
+    lp,lt = [],[]
     
     plt.clf()
     I = (tiles.in_desi == 1) * (tiles.z_done == 0)
     plt.plot(tiles.ra[I], tiles.dec[I], 'k.', alpha=0.05)
     I = (tiles.in_desi == 1) * (tiles.z_done > 0)
     plt.plot(tiles.ra[I], tiles.dec[I], 'k.', alpha=0.5)
-    plt.plot([m.rabore for m in mm], [m.decbore for m in mm], 'm.')
 
+    plt.plot([m.rabore for m in mm], [m.decbore for m in mm], 'k-',
+             lw=2, alpha=0.5)
+    pr = plt.scatter([m.rabore for m in mm], [m.decbore for m in mm],
+                     color=[ccmap.get(m.band,'k') for m in mm], marker='o',
+                     s=20)
+    # for k,v in ccmap.items():
+    #     mmb = [m for m in mm if m.band == k]
+    #     if len(mmb) == 0:
+    #         continue
+    #     pr = plt.plot([m.rabore for m in mmb], [m.decbore for m in mmb], '.',
+    #                   color=v)
+    lp.append(pr)
+    lt.append('Recent')
+        
+    P.color = np.array([ccmap.get(f,'k') for f in P.filter])
     I = np.flatnonzero(P.type == '1')
     I = I[:10]
-    plt.plot(P[I].ra, P[I].dec, 'k^', alpha=0.3)
+    p1 = plt.scatter(P.ra[I], P.dec[I], c=P.color[I], marker='^', alpha=0.5,
+                     s=60)
+    plt.plot(P.ra[I], P.dec[I], 'k-', alpha=0.1)
+    lp.append(p1)
+    lt.append('Upcoming P1')
+    
     I = np.flatnonzero(P.type == '2')
     I = I[:10]
-    plt.plot(P[I].ra, P[I].dec, 'ks', alpha=0.3)
+    p2 = plt.scatter(P.ra[I], P.dec[I], c=P.color[I], marker='s', alpha=0.5,
+                     s=60)
+    plt.plot(P.ra[I], P.dec[I], 'k-', alpha=0.1)
+    lp.append(p2)
+    lt.append('Upcoming P2')
+
     I = np.flatnonzero(P.type == '3')
     I = I[:10]
-    plt.plot(P[I].ra, P[I].dec, 'kp', alpha=0.3)
+    p3 = plt.scatter(P.ra[I], P.dec[I], c=P.color[I], marker='p', alpha=0.5,
+                     s=60)
+    plt.plot(P.ra[I], P.dec[I], 'k-', alpha=0.1)
+    lp.append(p3)
+    lt.append('Upcoming P3')
 
-    plt.plot(mlast.rabore, mlast.decbore, 'mo')
+    pl = plt.plot(mlast.rabore, mlast.decbore, 'o',
+                  color=ccmap.get(mlast.band,'k'), ms=10)
+    lp.append(pl[0])
+    lt.append('Last exposure')
 
     I = np.flatnonzero(P.type == 'P')
-    plt.plot(P[I].ra, P[I].dec, 'm*-', ms=12)
-
+    plt.plot(P.ra[I], P.dec[I], 'k-', lw=3, alpha=0.5)
+    pplan = plt.scatter(P.ra[I], P.dec[I], c=P.color[I], marker='*',
+                        s=100)
+    lp.append(pplan)
+    lt.append('Planned')
+    
     plt.xlabel('RA (deg)')
     plt.ylabel('Dec (deg)')
     #plt.axis([360,0,-20,90])
 
+    plt.figlegend(lp, lt, 'upper right')
+    
     ralo = min(P.ra.min(), min([m.rabore for m in mrecent]))
     rahi = max(P.ra.max(), max([m.rabore for m in mrecent]))
     declo = min(P.dec.min(), min([m.decbore for m in mrecent]))
@@ -1022,7 +1062,7 @@ def plot_recent(opt, nom, tiles=None, markmjds=[],
     dr = rahi - ralo
     dd = dechi - declo
     
-    plt.axis([ralo-0.1*dr, rahi+0.1*dr, declo-0.1*dd, dechi+0.1*dd])
+    plt.axis([rahi+0.1*dr, ralo-0.1*dr, declo-0.1*dd, dechi+0.1*dd])
 
     fn = 'radec.png'
     plt.savefig(fn)
