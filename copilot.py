@@ -989,7 +989,7 @@ def plot_recent(opt, nom, tiles=None, markmjds=[],
 
     mrecent = mm.order_by('-mjd_obs')[:10]
 
-    ccmap = dict(g='g', r='r', z='m')
+    ccmap = dict(g='g', r='r', z='m', zd='m')
     lp,lt = [],[]
     
     plt.clf()
@@ -1001,7 +1001,7 @@ def plot_recent(opt, nom, tiles=None, markmjds=[],
     plt.plot([m.rabore for m in mm], [m.decbore for m in mm], 'k-',
              lw=2, alpha=0.5)
     pr = plt.scatter([m.rabore for m in mm], [m.decbore for m in mm],
-                     color=[ccmap.get(m.band,'k') for m in mm], marker='o',
+                     color=[ccmap.get(m.band[:1],'k') for m in mm], marker='o',
                      s=20)
     # for k,v in ccmap.items():
     #     mmb = [m for m in mm if m.band == k]
@@ -1012,7 +1012,7 @@ def plot_recent(opt, nom, tiles=None, markmjds=[],
     lp.append(pr)
     lt.append('Recent')
         
-    P.color = np.array([ccmap.get(f,'k') for f in P.filter])
+    P.color = np.array([ccmap.get(f[:1],'k') for f in P.filter])
     I = np.flatnonzero(P.type == '1')
     I = I[:10]
     p1 = plt.scatter(P.ra[I], P.dec[I], c=P.color[I], marker='^', alpha=0.5,
