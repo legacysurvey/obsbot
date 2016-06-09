@@ -967,6 +967,10 @@ def plot_recent(opt, nom, tiles=None, markmjds=[],
               mjdtodate(mjd_start), mjdtodate(mjd_end), 'UTC')
         return
 
+    if (botplanfn is not None and os.path.exists(botplanfn) and
+        tiles is not None):
+        radec_plot(botplanfn, mm, tiles)
+    
     camera = mm[0].camera
     allobs = obsdb.MeasuredCCD.objects.filter(camera=camera)
 
@@ -978,9 +982,8 @@ def plot_recent(opt, nom, tiles=None, markmjds=[],
                       mjdrange=(mjd_start, mjd_end), markmjds=markmjds,
                       **kwargs)
 
-    if botplanfn is None or (not os.path.exists(botplanfn)) or tiles is None:
-        return
 
+def radec_plot(botplanfn, mm, tiles):
     import pylab as plt
     from astrometry.util.fits import fits_table
     P = fits_table(botplanfn)
@@ -989,7 +992,7 @@ def plot_recent(opt, nom, tiles=None, markmjds=[],
 
     mrecent = mm.order_by('-mjd_obs')[:10]
 
-    ccmap = dict(g='g', r='r', z='m')
+    ccmap = dict(g='g', r='r', z='m', zd='m')
     lp,lt = [],[]
     
     plt.clf()
@@ -1001,18 +1004,12 @@ def plot_recent(opt, nom, tiles=None, markmjds=[],
     plt.plot([m.rabore for m in mm], [m.decbore for m in mm], 'k-',
              lw=2, alpha=0.5)
     pr = plt.scatter([m.rabore for m in mm], [m.decbore for m in mm],
-                     color=[ccmap.get(m.band,'k') for m in mm], marker='o',
+                     color=[ccmap.get(m.band[:1],'k') for m in mm], marker='o',
                      s=20)
-    # for k,v in ccmap.items():
-    #     mmb = [m for m in mm if m.band == k]
-    #     if len(mmb) == 0:
-    #         continue
-    #     pr = plt.plot([m.rabore for m in mmb], [m.decbore for m in mmb], '.',
-    #                   color=v)
     lp.append(pr)
     lt.append('Recent')
         
-    P.color = np.array([ccmap.get(f,'k') for f in P.filter])
+    P.color = np.array([ccmap.get(f[:1],'k') for f in P.filter])
     I = np.flatnonzero(P.type == '1')
     I = I[:10]
     p1 = plt.scatter(P.ra[I], P.dec[I], c=P.color[I], marker='^', alpha=0.5,
