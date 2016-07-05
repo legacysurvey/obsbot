@@ -849,6 +849,12 @@ class DECamMeasurer(RawMeasurer):
     def colorterm_ps1_to_observed(self, ps1stars, band):
         return ps1_to_decam(ps1stars, band)
 
+class DECamCPMeasurer(DECamMeasurer):
+    def read_raw(self, F, ext):
+        img = F[ext].read()
+        hdr = F[ext].read_header()
+        img = img.astype(np.float32)
+        return img,hdr
 
 class Mosaic3Measurer(RawMeasurer):
     def __init__(self, *args, **kwargs):
@@ -1017,6 +1023,14 @@ def measure_raw(fn, **kwargs):
     if cam == 'mosaic3':
         return measure_raw_mosaic3(fn, **kwargs)
     elif cam == 'decam':
+        if 'PLVER' in primhdr:
+            # CP-processed DECam image
+            import decam
+            nom = decam.DecamNominalCalibration()
+            ext = kwargs.pop('ext')
+            meas = DECamCPMeasurer(fn, ext, nom)
+            results = meas.run(**kwargs)
+            return results
         return measure_raw_decam(fn, **kwargs)
 
     return None
@@ -1089,6 +1103,7 @@ def read_raw_decam(F, ext):
     
     if 'DESBIAS' in hdr:
         assert(False)
+
     # DECam RAW image
 
     # Raw image size 2160 x 4146
