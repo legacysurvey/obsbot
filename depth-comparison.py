@@ -8,10 +8,13 @@ import numpy as np
 
 from legacypipe.common import *
 
+from decam import DecamNominalCalibration
+
 target_mjd = 57445.5
 #mjd_diff = 0.5
 mjd_diff = 7
 
+nom = DecamNominalCalibration()
 
 botfn = 'bot-matched.fits'
 if not os.path.exists(botfn):
@@ -79,12 +82,12 @@ for band in np.unique(bot.band):
     
     tt = 'Obsbot depth vs Pipeline depth: 2016-02-25 (%s)' % band
 
-    plt.clf()
-    plt.plot(bot.galdepth, bot.expfactor, 'b.')
-    plt.xlabel('galdepth')
-    plt.ylabel('bot expfactor')
-    plt.title(tt)
-    ps.savefig()
+    # plt.clf()
+    # plt.plot(bot.galdepth, bot.expfactor, 'b.')
+    # plt.xlabel('galdepth')
+    # plt.ylabel('bot expfactor')
+    # plt.title(tt)
+    # ps.savefig()
     
     # plt.clf()
     # plt.plot(bot.gaussgaldepth, bot.expfactor, 'b.')
@@ -93,7 +96,7 @@ for band in np.unique(bot.band):
     # ps.savefig()
     
     expfactor_depth = 1. / np.sqrt(bot.expfactor)
-    
+
     diff = np.median(expfactor_depth - bot.galdepth)
     xx = np.array([20, 25])
     
@@ -108,9 +111,31 @@ for band in np.unique(bot.band):
     plt.axis(ax)
     plt.title(tt)
     ps.savefig()
+
+    #iband = 'ugrizY'.index(band)
+    #extinction = bot.decam_extinction[:,iband]
+
+    fid = nom.fiducial_exptime(band)
+    extinction = bot.ebv * fid.A_co
     
-    diff = np.median(expfactor_depth - bot.gaussgaldepth)
+    unext_galdepth = bot.galdepth - extinction
+
+    diff = np.median(expfactor_depth - unext_galdepth)
+    xx = np.array([20, 25])
     
+    plt.clf()
+    plt.plot(unext_galdepth, expfactor_depth, 'b.')
+    plt.xlabel('Pipeline galdepth, unextincted')
+    plt.ylabel('Bot expfactor -> depth')
+    ax = plt.axis()
+    plt.plot(xx, xx+diff, 'k-', alpha=0.3)
+    plt.plot(xx, xx+diff+0.1, 'k--', alpha=0.3)
+    plt.plot(xx, xx+diff-0.1, 'k--', alpha=0.3)
+    plt.axis(ax)
+    plt.title(tt)
+    ps.savefig()
+    
+    #diff = np.median(expfactor_depth - bot.gaussgaldepth)
     # plt.clf()
     # plt.plot(bot.gaussgaldepth, expfactor_depth, 'b.')
     # plt.xlabel('gaussian galdepth')
@@ -177,7 +202,7 @@ for band in np.unique(bot.band):
     galneff = Neff(bot.seeing)
 
     plotx = 1. / (bot.galnorm_mean)**2
-    
+
     factor = np.median(galneff / plotx)
     xx = np.array([0, 1000])
     
