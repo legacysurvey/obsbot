@@ -82,69 +82,11 @@ for band in np.unique(bot.band):
     
     tt = 'Obsbot depth vs Pipeline depth: 2016-02-25 (%s)' % band
 
-    # plt.clf()
-    # plt.plot(bot.galdepth, bot.expfactor, 'b.')
-    # plt.xlabel('galdepth')
-    # plt.ylabel('bot expfactor')
-    # plt.title(tt)
-    # ps.savefig()
-    
-    # plt.clf()
-    # plt.plot(bot.gaussgaldepth, bot.expfactor, 'b.')
-    # plt.xlabel('gaussian galdepth')
-    # plt.ylabel('bot expfactor')
-    # ps.savefig()
-    
-    expfactor_depth = 1. / np.sqrt(bot.expfactor)
-    diff = np.median(expfactor_depth - bot.galdepth)
-    xx = np.array([20, 25])
-    plt.clf()
-    plt.plot(bot.galdepth, expfactor_depth, 'b.')
-    plt.xlabel('Pipeline galdepth')
-    plt.ylabel('Bot expfactor -> depth')
-    ax = plt.axis()
-    plt.plot(xx, xx+diff, 'k-', alpha=0.3)
-    plt.plot(xx, xx+diff+0.1, 'k--', alpha=0.3)
-    plt.plot(xx, xx+diff-0.1, 'k--', alpha=0.3)
-    plt.axis(ax)
-    plt.title(tt)
-    ps.savefig()
-
-    #iband = 'ugrizY'.index(band)
-    #extinction = bot.decam_extinction[:,iband]
-
     fid = nom.fiducial_exptime(band)
     extinction = bot.ebv * fid.A_co
+    zp0 = nom.zeropoint(band)
+    pixsc = nom.pixscale
 
-    atm_extinction = (bot.airmass - 1.) * fid.k_co
-    
-    unext_galdepth = bot.galdepth - extinction - atm_extinction
-
-    diff = np.median(expfactor_depth - unext_galdepth)
-    xx = np.array([20, 25])
-    
-    plt.clf()
-    plt.plot(unext_galdepth, expfactor_depth, 'b.')
-    plt.xlabel('Pipeline galdepth, unextincted')
-    plt.ylabel('Bot expfactor -> depth')
-    ax = plt.axis()
-    plt.plot(xx, xx+diff, 'k-', alpha=0.3)
-    plt.plot(xx, xx+diff+0.1, 'k--', alpha=0.3)
-    plt.plot(xx, xx+diff-0.1, 'k--', alpha=0.3)
-    plt.axis(ax)
-    plt.title(tt)
-    ps.savefig()
-    
-    #diff = np.median(expfactor_depth - bot.gaussgaldepth)
-    # plt.clf()
-    # plt.plot(bot.gaussgaldepth, expfactor_depth, 'b.')
-    # plt.xlabel('gaussian galdepth')
-    # plt.ylabel('bot expfactor -> depth')
-    # ax = plt.axis()
-    # plt.plot(xx, xx+diff, 'k-', alpha=0.3)
-    # plt.axis(ax)
-    # ps.savefig()
-    
     psfnorm_seeing = bot.pixscale_mean * 2.35 * 1. / (bot.psfnorm_mean * 2. * np.sqrt(np.pi))
     
     factor = np.median(bot.seeing / psfnorm_seeing)
@@ -162,32 +104,31 @@ for band in np.unique(bot.band):
     plt.title(tt)
     ps.savefig()
 
-    galnorm_seeing = bot.pixscale_mean * 2.35 * 1. / (bot.galnorm_mean * 2. * np.sqrt(np.pi))
-
-    #factor = np.median(bot.seeing / galnorm_seeing)
-    A = np.zeros((len(bot),2))
-    A[:,0] = 1.
-    A[:,1] = galnorm_seeing
-    b = np.linalg.lstsq(A, bot.seeing)[0]
-    print('Lstsq:', b)
-    offset = b[0]
-    slope = b[1]
-    xx = np.array([0, 5])
-    
-    plt.clf()
-    #plt.plot(bot.galnorm_mean, bot.seeing, 'b.')
-    plt.plot(galnorm_seeing, bot.seeing, 'b.')
-    plt.xlabel('Pipeline galaxy norm -> seeing')
-    plt.ylabel('Bot seeing')
-    ax = plt.axis()
-    p = plt.plot(xx, offset + xx*slope, 'k-', alpha=0.3)
-    plt.plot(xx, offset + xx*slope * 0.9, 'k--', alpha=0.3)
-    plt.plot(xx, offset + xx*slope * 1.1, 'k--', alpha=0.3)
-    plt.legend([p[0]], ['offset %0.2f, slope %0.3f' % (offset, slope)],
-               loc='lower right')
-    plt.axis(ax)
-    plt.title(tt)
-    ps.savefig()
+    # galnorm_seeing = bot.pixscale_mean * 2.35 * 1. / (bot.galnorm_mean * 2. * np.sqrt(np.pi))
+    # 
+    # A = np.zeros((len(bot),2))
+    # A[:,0] = 1.
+    # A[:,1] = galnorm_seeing
+    # b = np.linalg.lstsq(A, bot.seeing)[0]
+    # print('Lstsq:', b)
+    # offset = b[0]
+    # slope = b[1]
+    # xx = np.array([0, 5])
+    # 
+    # plt.clf()
+    # #plt.plot(bot.galnorm_mean, bot.seeing, 'b.')
+    # plt.plot(galnorm_seeing, bot.seeing, 'b.')
+    # plt.xlabel('Pipeline galaxy norm -> seeing')
+    # plt.ylabel('Bot seeing')
+    # ax = plt.axis()
+    # p = plt.plot(xx, offset + xx*slope, 'k-', alpha=0.3)
+    # plt.plot(xx, offset + xx*slope * 0.9, 'k--', alpha=0.3)
+    # plt.plot(xx, offset + xx*slope * 1.1, 'k--', alpha=0.3)
+    # plt.legend([p[0]], ['offset %0.2f, slope %0.3f' % (offset, slope)],
+    #            loc='lower right')
+    # plt.axis(ax)
+    # plt.title(tt)
+    # ps.savefig()
 
 
     # FROM OBSBOT:
@@ -201,7 +142,7 @@ for band in np.unique(bot.band):
 
     galneff = Neff(bot.seeing)
 
-    plotx = 1. / (bot.galnorm_mean)**2
+    plotx = 1. / (bot.galnorm_mean)**2 * pixsc**2
 
     factor = np.median(galneff / plotx)
     xx = np.array([0, 1000])
@@ -218,15 +159,8 @@ for band in np.unique(bot.band):
     plt.axis(ax)
     ps.savefig()
     
-
-    zp0 = nom.zeropoint(band)
-
-    pixsc = nom.pixscale
-
-    #skyflux = 10.**(bot.sky / -2.5) * bot.exptime
     skyflux = 10.**((bot.sky - zp0) / -2.5) * bot.exptime * pixsc**2
 
-    #factor = np.median(skyflux / bot.avsky)
     xx = np.array([0, 30000])
     A = np.zeros((len(skyflux),2))
     A[:,0] = 1.
@@ -322,11 +256,17 @@ for band in np.unique(bot.band):
     # in the thing we care about
     fid = nom.fiducial_exptime(band)
     extinction = bot.ebv * fid.A_co
+
+    # 2-coverage target (90% fill)
+    target_depth = dict(g=24.0, r=23.4, z=22.5)[band]
+    # -> 1-coverage depth (~ 0.37 mag)
+    target_depth -= 2.5*np.log10(np.sqrt(2.))
     
     plt.clf()
     plt.plot(bot.galdepth - extinction, galdepth - extinction, 'b.')
     plt.xlabel('Pipeline galdepth (unextincted)')
     plt.ylabel('Bot galdepth (unextincted)')
+    plt.axvline(target_depth, color='b', alpha=0.3)
     ax = plt.axis()
     plt.plot(xx, xx+diff, 'k-', alpha=0.3)
     plt.plot(xx, xx+diff+0.1, 'k--', alpha=0.3)
@@ -336,11 +276,6 @@ for band in np.unique(bot.band):
     ps.savefig()
 
     # If you had the pipeline galdepth estimate, compute expfactor.
-
-    # 2-coverage target (90% fill)
-    target_depth = dict(g=24.0, r=23.4, z=22.5)[band]
-    # -> 1-coverage depth (~ 0.37 mag)
-    target_depth -= 2.5*np.log10(np.sqrt(2.))
 
     depthfactor = 10.**(-0.4 * (bot.galdepth - target_depth))
     # airmass factor and transparency factor are already included
