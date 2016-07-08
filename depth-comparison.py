@@ -69,11 +69,70 @@ ps = PlotSequence('bot')
 
 bot.cut(bot.exptime > 30.)
 
+# FROM OBSBOT:
+r_half = 0.45 #arcsec
+pixsc = 0.262 # pixscale
+def Neff(seeing):
+    # magic 2.35: convert seeing FWHM into sigmas in arcsec.
+    return (4. * np.pi * (seeing / 2.35)**2 +
+            8.91 * r_half**2 +
+            pixsc**2/12.)
+
+def Neff2(seeing):
+    # magic 2.35: convert seeing FWHM into sigmas in arcsec.
+    pfact = 1.15
+    return ((4. * np.pi * (seeing / 2.35)**2)**(1./pfact) +
+            (8.91 * r_half**2)**(1./pfact)) ** pfact
+
+# Compute galaxy norm for a 1.3" Gaussian PSF, given FWHM seeing in arcsec
+# and pixel scale in arcsec/pixel.
+def get_galnorm(seeing, pixsc):
+    S = 32
+    W,H = S*2+1, S*2+1
+    psf_sigma = seeing / 2.35 / pixsc
+    tim = tractor.Image(data=np.zeros((H,W)), inverr=np.ones((H,W)),
+                        psf=tractor.NCircularGaussianPSF([psf_sigma], [1.]),
+                        wcs=tractor.NullWCS(pixscale=pixsc))
+    gal = SimpleGalaxy(tractor.PixPos(S,S), tractor.Flux(1.))
+    mm = Patch(0, 0, np.ones((H,W), bool))
+    galmod = gal.getModelPatch(tim, modelMask=mm).patch
+    galmod = np.maximum(0, galmod)
+    galmod /= galmod.sum()
+    return np.sqrt(np.sum(galmod**2))
+
 # HACK
 bot.cut(bot.transparency > 0.5)
 print('CUT to', len(bot), 'images')
 
 allbot = bot
+
+pixsc = nom.pixscale
+fidseeing = 1.3
+
+gauss_galnorm_nom = get_galnorm(fidseeing, pixsc)
+# correct for ~17% difference between Gaussian galnorm and real PSF
+galnorm_nom = gauss_galnorm_nom / 1.17
+
+galneff_nom = Neff(fidseeing)
+
+see = np.arange(0.7, 2.01, 0.1)
+gauss_galnorms = np.array([get_galnorm(s, pixsc) for s in see])
+galneffs = Neff(see)
+galneff2_nom = Neff2(fidseeing)
+galneffs2 = Neff2(see)
+
+plt.clf()
+p1 = plt.plot(see, (1. / gauss_galnorms**2) / (1. / gauss_galnorm_nom**2),
+              'bo-')
+p2 = plt.plot(see, galneffs / galneff_nom, 'g--')
+p2 = plt.plot(see, galneffs2 / galneff2_nom, 'go-')
+plt.legend((p1[0],p2[0]),('Galnorm (Gaussian PSF)', 'Gal Neff'), loc='upper left')
+plt.xlabel('Seeing (arcsec)')
+plt.ylabel('Exposure factor')
+ps.savefig()
+
+
+
 
 for band in np.unique(bot.band):
     band = band.strip()
@@ -86,7 +145,6 @@ for band in np.unique(bot.band):
     fid = nom.fiducial_exptime(band)
     extinction = bot.ebv * fid.A_co
     zp0 = nom.zeropoint(band)
-    pixsc = nom.pixscale
 
     psfnorm_seeing = bot.pixscale_mean * 2.35 * (1. / (bot.psfnorm_mean * 2. * np.sqrt(np.pi)))
     
@@ -99,10 +157,11 @@ for band in np.unique(bot.band):
     plt.ylabel('Bot seeing')
     ax = plt.axis()
     plt.plot(xx, xx*factor, 'k-', alpha=0.3)
-    plt.plot(xx, xx*factor*0.9, 'k--', alpha=0.3)
-    plt.plot(xx, xx*factor*1.1, 'k--', alpha=0.3)
+    p2 = plt.plot(xx, xx*factor*0.95, 'k--', alpha=0.3)
+    plt.plot(xx, xx*factor*1.05, 'k--', alpha=0.3)
     plt.axis(ax)
     plt.title(tt)
+    plt.legend([p2[0]], ['+- 5%'], loc='lower right')
     ps.savefig()
 
     # galnorm_seeing = bot.pixscale_mean * 2.35 * 1. / (bot.galnorm_mean * 2. * np.sqrt(np.pi))
@@ -132,23 +191,7 @@ for band in np.unique(bot.band):
     # ps.savefig()
 
 
-    # FROM OBSBOT:
-    r_half = 0.45 #arcsec
-    pixsc = 0.262 # pixscale
-    def Neff(seeing):
-        # magic 2.35: convert seeing FWHM into sigmas in arcsec.
-        return (4. * np.pi * (seeing / 2.35)**2 +
-                8.91 * r_half**2 +
-                pixsc**2/12.)
-
-    def Neff2(seeing):
-        # magic 2.35: convert seeing FWHM into sigmas in arcsec.
-        pfact = 1.15
-        return ((4. * np.pi * (seeing / 2.35)**2)**(1./pfact) +
-                (8.91 * r_half**2)**(1./pfact)) ** pfact
-    
     galneff = Neff(bot.seeing)
-
     plotx = 1. / (bot.galnorm_mean)**2 * pixsc**2
 
     factor = np.median(galneff / plotx)
@@ -156,86 +199,42 @@ for band in np.unique(bot.band):
     
     plt.clf()
     plt.plot(plotx, galneff, 'b.')
-    plt.xlabel('Pipeline 1 / galaxy norm^2 (arcsec^2)')
+    plt.xlabel('Pipeline Neff = 1 / galaxy norm^2 (arcsec^2)')
     plt.ylabel('Bot galaxy Neff (arcsec^2)')
     plt.title(tt)
     ax = plt.axis()
     plt.plot(xx, xx*factor, 'k-', alpha=0.3)
     plt.plot(xx, xx*factor*0.9, 'k--', alpha=0.3)
-    plt.plot(xx, xx*factor*1.1, 'k--', alpha=0.3)
+    p2 = plt.plot(xx, xx*factor*1.1, 'k--', alpha=0.3)
     plt.plot(xx, xx, 'r-', alpha=0.3)
+    plt.axhline(galneff_nom, color='b', alpha=0.3)
     plt.axis(ax)
+    plt.legend([p2[0]], ['+- 10%'], loc='lower right')
     ps.savefig()
 
     # What does the Neff imply about depth factor?
 
-    # Compute galaxy norm for a 1.3" Gaussian PSF
-    def get_galnorm(seeing, pixsc):
-        S = 32
-        W,H = S*2+1, S*2+1
-        psf_sigma = seeing / 2.35 / pixsc
-        tim = tractor.Image(data=np.zeros((H,W)), inverr=np.ones((H,W)),
-                            psf=tractor.NCircularGaussianPSF([psf_sigma], [1.]))
-        gal = SimpleGalaxy(tractor.PixPos(S,S), tractor.Flux(1.))
-        mm = Patch(0, 0, np.ones((H,W), bool))
-        galmod = gal.getModelPatch(tim, modelMask=mm).patch
-        galmod = np.maximum(0, galmod)
-        galmod /= galmod.sum()
-        return np.sqrt(np.sum(galmod**2))
-
-    gauss_galnorm_nom = get_galnorm(fid.seeing, pixsc)
-    galnorm_factor = (1. / bot.galnorm_mean**2) / (1. / gauss_galnorm_nom**2)
-    print('Nominal galnorm:', gauss_galnorm_nom)
+    galnorm_factor = (1. / bot.galnorm_mean**2) / (1. / galnorm_nom**2)
+    print('Nominal galnorm: Gaussian', gauss_galnorm_nom, 'corrected', galnorm_nom)
     print('Median galnorm:', np.median(bot.galnorm_mean))
 
-    galneff_nom = Neff(fid.seeing)
     galneff_factor = galneff / galneff_nom
     print('Nominal Neff:', galneff_nom)
     print('Median Neff:', np.median(galneff))
 
-    see = np.arange(0.7, 2.01, 0.1)
-    gauss_galnorms = np.array([get_galnorm(s, pixsc) for s in see])
-    galneffs = Neff(see)
-    galneff2_nom = Neff2(fid.seeing)
-    galneffs2 = Neff2(see)
-    
-    # plt.clf()
-    # plt.plot((1. / galnorms**2) / (1. / galnorm_nom**2),
-    #          galneffs / galneff_nom, 'bo-')
-    # plt.plot((1. / galnorms**2) / (1. / galnorm_nom**2),
-    #          galneffs2 / galneff2_nom, 'go-')
-    # plt.xlabel('Exposure factor from galnorm w/ Gaussian PSF')
-    # plt.ylabel('Exposure factor from Neff')
-    # ax = plt.axis()
-    # plt.plot(xx, xx, 'r-', alpha=0.3)
-    # plt.axis(ax)
-    # plt.title(tt)
-    # ps.savefig()
-
-    plt.clf()
-    p1 = plt.plot(see, (1. / gauss_galnorms**2) / (1. / gauss_galnorm_nom**2),
-                  'bo-')
-    p2 = plt.plot(see, galneffs2 / galneff2_nom, 'go-')
-    plt.legend((p1[0],p2[0]),('Galnorm (Gaussian PSF)', 'Gal Neff'))
-    plt.xlabel('Seeing (arcsec)')
-    plt.ylabel('Exposure factor')
-    plt.title(tt)
-    ps.savefig()
-
 
     diff = np.median(bot.galdepth - bot.gaussgaldepth)
     print('Median different between galdepth and Gaussgaldepth:', diff)
-    
-    plt.clf()
-    plt.plot(bot.gaussgaldepth, bot.galdepth, 'b.')
-    plt.xlabel('Gaussian galdepth')
-    plt.ylabel('Galdepth')
-    ax = plt.axis()
-    plt.plot(xx, xx, 'r-', alpha=0.3)
-    plt.plot(xx, xx+diff, 'k-', alpha=0.3)
-    plt.axis(ax)
-    plt.title(tt)
-    ps.savefig()
+    # plt.clf()
+    # plt.plot(bot.gaussgaldepth, bot.galdepth, 'b.')
+    # plt.xlabel('Gaussian galdepth')
+    # plt.ylabel('Galdepth')
+    # ax = plt.axis()
+    # plt.plot(xx, xx, 'r-', alpha=0.3)
+    # plt.plot(xx, xx+diff, 'k-', alpha=0.3)
+    # plt.axis(ax)
+    # plt.title(tt)
+    # ps.savefig()
 
     # Duh, Gaussian Galnorm is just a factor ~ 17% larger than Galnorm.
     # galnorm_x = 1. / 10.**((bot.galdepth / -2.5) + 9)
@@ -261,10 +260,12 @@ for band in np.unique(bot.band):
     plt.ylabel('Bot exposure factor from Neff')
     plt.title(tt)
     ax = plt.axis()
-    plt.plot(xx, xx*factor, 'k-', alpha=0.3)
-    plt.plot(xx, xx*factor*0.9, 'k--', alpha=0.3)
+    p = plt.plot(xx, xx*factor, 'k-', alpha=0.3)
+    p2 = plt.plot(xx, xx*factor*0.9, 'k--', alpha=0.3)
     plt.plot(xx, xx*factor*1.1, 'k--', alpha=0.3)
     plt.plot(xx, xx, 'r-', alpha=0.3)
+    plt.legend([p[0],p2[0]], ['slope %0.3f' % (factor), '+- 10%'],
+               loc='lower right')
     plt.axis(ax)
     ps.savefig()
 
@@ -281,17 +282,18 @@ for band in np.unique(bot.band):
     slope = b[1]
     
     plt.clf()
-    #plt.plot(bot.avsky, bot.sky, 'b.')
     plt.plot(bot.avsky, skyflux, 'b.')
-    #plt.scatter(bot.avsky, skyflux, c=bot.exptime)
     plt.xlabel('CP avsky')
     plt.ylabel('Bot sky flux')
     ax = plt.axis()
-    plt.plot(xx, offset + xx*slope, 'k-', alpha=0.3)
-    plt.plot(xx, offset + xx*slope*0.8, 'k--', alpha=0.3)
-    plt.plot(xx, offset + xx*slope*1.2, 'k--', alpha=0.3)
+    p = plt.plot(xx, offset + xx*slope, 'k-', alpha=0.3)
+    p2 = plt.plot(xx, offset + xx*slope*0.9, 'k--', alpha=0.3)
+    plt.plot(xx, offset + xx*slope*1.1, 'k--', alpha=0.3)
     plt.axis(ax)
     plt.title(tt)
+    plt.legend([p[0],p2[0]], ['offset %0.2f, slope %0.3f' % (offset, slope),
+                              '+- 10%'],
+               loc='lower right')
     ps.savefig()
     
     # Convert skyflux into a sig1 estimate
@@ -326,18 +328,54 @@ for band in np.unique(bot.band):
     #plt.scatter(bot.sig1, skysig1, c=bot.exptime)
     #plt.colorbar()
     plt.xlabel('Pipeline sig1')
-    plt.ylabel('Bot sky -> sig1')
+    plt.ylabel('Bot sig1 = f(sky, zpt)')
     ax = plt.axis()
-    plt.plot(xx, xx*factor, 'k-', alpha=0.3)
-    plt.plot(xx, (xx*factor)*0.9, 'k--', alpha=0.3)
-    plt.plot(xx, (xx*factor)*1.1, 'k--', alpha=0.3)
+    p = plt.plot(xx, xx*factor, 'k-', alpha=0.3)
+    p2 = plt.plot(xx, (xx*factor)*0.95, 'k--', alpha=0.3)
+    plt.plot(xx, (xx*factor)*1.05, 'k--', alpha=0.3)
     plt.plot(xx, xx, 'r-', alpha=0.3)
     plt.axis(ax)
+    plt.legend([p[0],p2[0]], ['slope %0.3f' % (factor), '+- 5%'],
+               loc='lower right')
     # # plt.plot(xx, offset + xx*slope, 'k-', alpha=0.3)
     # # plt.plot(xx, offset + xx*slope*0.8, 'k--', alpha=0.3)
     # # plt.plot(xx, offset + xx*slope*1.2, 'k--', alpha=0.3)
     plt.title(tt)
     ps.savefig()
+
+    # # sig1 includes effect of zeropoint...
+    # # Larger noise, longer exptime.
+    zpscale = NanoMaggies.zeropointToScale(bot.zeropoint)
+    expfactor_sig1 = (bot.sig1 * zpscale)**2
+    expfactor_sig1 *= bot.exptime / fid.exptime
+    expfactor_sig1 /= np.median(expfactor_sig1)
+    # 
+    expfactor_sky = 10.**(-0.4 * (bot.sky - fid.skybright))
+    # 
+    # print('sig1 range', bot.sig1.min(), bot.sig1.max())
+    # print('Bot sky range', bot.sky.min(), bot.sky.max())
+    # print('nom', fid.skybright)
+    # 
+
+    factor = np.median(expfactor_sky / expfactor_sig1)
+    xx = np.array([0, 10])
+
+    plt.clf()
+    plt.plot(expfactor_sig1, expfactor_sky, 'b.')
+    plt.xlabel('Pipeline exposure factor from sig1 (and zpt; arb. scale)')
+    plt.ylabel('Bot exposure factor from sky')
+    plt.title(tt)
+    ax = plt.axis()
+    p = plt.plot(xx, xx*factor, 'k-', alpha=0.3)
+    p2 = plt.plot(xx, (xx*factor)*0.9, 'k--', alpha=0.3)
+    plt.plot(xx, (xx*factor)*1.1, 'k--', alpha=0.3)
+    #plt.legend([p[0]], ['slope %0.3f' % (factor)],
+    #           loc='lower right')
+    plt.legend([p2[0]], ['+- 10%'], loc='lower right')
+    plt.axis(ax)
+    ps.savefig()
+
+    
     
     diff = np.median(bot.zeropoint - bot.ccdzpt)
     xx = np.array([20,30])
@@ -348,19 +386,37 @@ for band in np.unique(bot.band):
     plt.ylabel('Bot zeropoint')
     ax = plt.axis()
     plt.plot(xx, xx + diff, 'k-', alpha=0.3)
-    plt.plot(xx, xx + diff+0.1, 'k--', alpha=0.3)
-    plt.plot(xx, xx + diff-0.1, 'k--', alpha=0.3)
+    p2 = plt.plot(xx, xx + diff+0.05, 'k--', alpha=0.3)
+    plt.plot(xx, xx + diff-0.05, 'k--', alpha=0.3)
+    plt.legend([p2[0]], ['+- 0.05 mag'], loc='lower right')
     plt.axis(ax)
     plt.title(tt)
     ps.savefig()
 
-    galnorm = 1. / np.sqrt(galneff)
-    galsig1 = skysig1 / galnorm
-    galdepth = -2.5 * (np.log10(5. * galsig1) - 9)
+    bot_trans = 10.**(-0.4 * (zp0 - bot.zeropoint))
+    expfactor_bot_zpt = 1./bot_trans**2
+    p_trans = 10.**(-0.4 * (np.median(bot.ccdzpt) - bot.ccdzpt))
+    expfactor_p_zpt = 1./p_trans**2
 
-    diff = np.median(galdepth - bot.galdepth)
-    xx = np.array([20, 25])
-
+    factor = np.median(expfactor_bot_zpt / expfactor_p_zpt)
+    xx = np.array([0, 10])
+    
+    plt.clf()
+    plt.plot(expfactor_p_zpt, expfactor_bot_zpt, 'b.')
+    plt.xlabel('Pipeline exposure factor from zpt (arb. scale)')
+    plt.ylabel('Bot exposure factor from zeropoint')
+    plt.title(tt)
+    ax = plt.axis()
+    p = plt.plot(xx, xx*factor, 'k-', alpha=0.3)
+    p2 = plt.plot(xx, (xx*factor)*0.9, 'k--', alpha=0.3)
+    plt.plot(xx, (xx*factor)*1.1, 'k--', alpha=0.3)
+    #plt.legend([p[0]], ['slope %0.3f' % (factor)],
+    #           loc='lower right')
+    plt.legend([p2[0]], ['+- 10%'], loc='lower right')
+    plt.axis(ax)
+    ps.savefig()
+    
+    
     # unextinct both so that the plot range tells us achieved depth
     # in the quantity we care about
     fid = nom.fiducial_exptime(band)
@@ -371,19 +427,6 @@ for band in np.unique(bot.band):
     # -> 1-coverage depth (- ~0.37 mag)
     target_depth -= 2.5*np.log10(np.sqrt(2.))
     
-    plt.clf()
-    plt.plot(bot.galdepth - extinction, galdepth - extinction, 'b.')
-    plt.xlabel('Pipeline galdepth (unextincted)')
-    plt.ylabel('Bot galdepth (unextincted)')
-    plt.axvline(target_depth, color='b', alpha=0.3)
-    ax = plt.axis()
-    plt.plot(xx, xx+diff, 'k-', alpha=0.3)
-    plt.plot(xx, xx+diff+0.1, 'k--', alpha=0.3)
-    plt.plot(xx, xx+diff-0.1, 'k--', alpha=0.3)
-    plt.axis(ax)
-    plt.title(tt)
-    ps.savefig()
-
     # Using pipeline galdepth estimate, compute expfactor.
 
     depthfactor = 10.**(-0.4 * (bot.galdepth - target_depth))
@@ -399,16 +442,36 @@ for band in np.unique(bot.band):
     
     plt.clf()
     plt.plot(expfactor, bot.expfactor, 'b.')
-    plt.xlabel('Pipeline expfactor')
+    plt.xlabel('Pipeline expfactor from galdepth')
     plt.ylabel('Bot expfactor')
     ax = plt.axis()
     p = plt.plot(xx, xx*factor, 'k-', alpha=0.3)
-    plt.plot(xx, (xx*factor)*0.9, 'k--', alpha=0.3)
+    p2 = plt.plot(xx, (xx*factor)*0.9, 'k--', alpha=0.3)
     plt.plot(xx, (xx*factor)*1.1, 'k--', alpha=0.3)
     plt.plot(xx, xx, 'r-', alpha=0.3)
-    plt.legend([p[0]], ['slope %0.3f' % (factor)],
+    plt.legend([p[0],p2[0]], ['slope %0.3f' % (factor), '+- 10%'],
                loc='lower right')
     plt.axis(ax)
     plt.title(tt)
     ps.savefig()
-    
+
+    galnorm = 1. / np.sqrt(galneff)
+    galsig1 = skysig1 / galnorm
+    galdepth = -2.5 * (np.log10(5. * galsig1) - 9)
+
+    diff = np.median(galdepth - bot.galdepth)
+    xx = np.array([20, 25])
+    plt.clf()
+    plt.plot(bot.galdepth - extinction, galdepth - extinction, 'b.')
+    plt.xlabel('Pipeline galdepth (unextincted)')
+    plt.ylabel('Bot galdepth (unextincted)')
+    plt.axvline(target_depth, color='b', alpha=0.3)
+    ax = plt.axis()
+    plt.plot(xx, xx+diff, 'k-', alpha=0.3)
+    p2 = plt.plot(xx, xx+diff+0.05, 'k--', alpha=0.3)
+    plt.plot(xx, xx+diff-0.05, 'k--', alpha=0.3)
+    plt.axis(ax)
+    plt.legend([p2[0]], ['+- 0.05 mag'], loc='lower right')
+    plt.title(tt)
+    ps.savefig()
+
