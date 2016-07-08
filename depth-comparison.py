@@ -117,8 +117,10 @@ for band in np.unique(bot.band):
 
     fid = nom.fiducial_exptime(band)
     extinction = bot.ebv * fid.A_co
+
+    atm_extinction = (bot.airmass - 1.) * fid.k_co
     
-    unext_galdepth = bot.galdepth - extinction
+    unext_galdepth = bot.galdepth - extinction - atm_extinction
 
     diff = np.median(expfactor_depth - unext_galdepth)
     xx = np.array([20, 25])
@@ -218,9 +220,14 @@ for band in np.unique(bot.band):
     plt.axis(ax)
     ps.savefig()
     
-    
-    skyflux = 10.**(bot.sky / -2.5) * bot.exptime
-    
+
+    zp0 = nom.zeropoint(band)
+
+    pixsc = nom.pixscale
+
+    #skyflux = 10.**(bot.sky / -2.5) * bot.exptime
+    skyflux = 10.**((bot.sky - zp0) / -2.5) * bot.exptime * pixsc**2
+
     #factor = np.median(skyflux / bot.avsky)
     xx = np.array([0, 30000])
     A = np.zeros((len(skyflux),2))
@@ -245,10 +252,19 @@ for band in np.unique(bot.band):
     plt.title(tt)
     ps.savefig()
     
-    # # in Poisson process, mean = variance
-    # sig1sky = bot.sig1**2
+    # Convert skyflux into a sig1 estimate
+    # in Poisson process, mean = variance; total sky counts are distributed
+    # like that.
+    # ignore gain
+    skyvar = skyflux
+    skysig1 = np.sqrt(skyvar)
+    # use (bot) zeropoint to scale to nanomaggy units
+    zpscale = NanoMaggies.zeropointToScale(bot.zeropoint)
+    skysig1 /= zpscale
+    # extra factor of time from the zeropoint...
+    skysig1 /= bot.exptime
+
     # 
-    # xx = np.array([0, 1])
     # A = np.zeros((len(skyflux),2))
     # A[:,0] = 1.
     # A[:,1] = sig1sky
@@ -258,21 +274,27 @@ for band in np.unique(bot.band):
     # slope = b[1]
     # 
 
+    #diff = np.median(skysig1 - bot.sig1)
+    factor = np.median(skysig1 / bot.sig1)
+    xx = np.array([0, 1])
+    
     # sig1x = bot.sig1 * 10.**(bot.ccdzpt / 2.5)
-    # plt.clf()
-    # #plt.plot(sig1sky, skyflux, 'b.')
-    # #plt.plot(bot.sig1, skyflux, 'b.')
-    # plt.plot(sig1x, skyflux, 'b.')
-    # #plt.xlabel('Pipeline sig1 -> sky')
-    # plt.xlabel('Pipeline sig1 x zpt')
-    # plt.ylabel('Bot sky flux')
-    # # ax = plt.axis()
+    plt.clf()
+    plt.plot(bot.sig1, skysig1, 'b.')
+    #plt.scatter(bot.sig1, skysig1, c=bot.exptime)
+    #plt.colorbar()
+    plt.xlabel('Pipeline sig1')
+    plt.ylabel('Bot sky -> sig1')
+    ax = plt.axis()
+    plt.plot(xx, xx*factor, 'k-', alpha=0.3)
+    plt.plot(xx, (xx*factor)*0.9, 'k--', alpha=0.3)
+    plt.plot(xx, (xx*factor)*1.1, 'k--', alpha=0.3)
+    plt.axis(ax)
     # # plt.plot(xx, offset + xx*slope, 'k-', alpha=0.3)
     # # plt.plot(xx, offset + xx*slope*0.8, 'k--', alpha=0.3)
     # # plt.plot(xx, offset + xx*slope*1.2, 'k--', alpha=0.3)
-    # # plt.axis(ax)
-    # plt.title(tt)
-    # ps.savefig()
+    plt.title(tt)
+    ps.savefig()
     
     
     diff = np.median(bot.zeropoint - bot.ccdzpt)
