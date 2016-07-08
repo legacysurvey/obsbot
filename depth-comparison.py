@@ -96,10 +96,8 @@ for band in np.unique(bot.band):
     # ps.savefig()
     
     expfactor_depth = 1. / np.sqrt(bot.expfactor)
-
     diff = np.median(expfactor_depth - bot.galdepth)
     xx = np.array([20, 25])
-    
     plt.clf()
     plt.plot(bot.galdepth, expfactor_depth, 'b.')
     plt.xlabel('Pipeline galdepth')
@@ -311,3 +309,51 @@ for band in np.unique(bot.band):
     plt.axis(ax)
     plt.title(tt)
     ps.savefig()
+
+
+    galnorm = 1. / np.sqrt(galneff)
+    galsig1 = skysig1 / galnorm
+    galdepth = -2.5 * (np.log10(5. * galsig1) - 9)
+
+    diff = np.median(galdepth - bot.galdepth)
+    xx = np.array([20, 25])
+
+    # unextinct both so that the plot range tells us achieved depth
+    # in the thing we care about
+    fid = nom.fiducial_exptime(band)
+    extinction = bot.ebv * fid.A_co
+    
+    plt.clf()
+    plt.plot(bot.galdepth - extinction, galdepth - extinction, 'b.')
+    plt.xlabel('Pipeline galdepth (unextincted)')
+    plt.ylabel('Bot galdepth (unextincted)')
+    ax = plt.axis()
+    plt.plot(xx, xx+diff, 'k-', alpha=0.3)
+    plt.plot(xx, xx+diff+0.1, 'k--', alpha=0.3)
+    plt.plot(xx, xx+diff-0.1, 'k--', alpha=0.3)
+    plt.axis(ax)
+    plt.title(tt)
+    ps.savefig()
+
+    # If you had the pipeline galdepth estimate, compute expfactor.
+
+    # 2-coverage target (90% fill)
+    target_depth = dict(g=24.0, r=23.4, z=22.5)[band]
+    # -> 1-coverage depth (~ 0.37 mag)
+    target_depth -= 2.5*np.log10(np.sqrt(2.))
+
+    depthfactor = 10.**(-0.4 * (bot.galdepth - target_depth))
+    # airmass factor and transparency factor are already included
+    # in the zeropoint.
+    expfactor = (depthfactor**2 *
+                 10.**(0.8 * fid.A_co * bot.ebv))
+    # this is on top of the exposure time of this image / nominal
+    expfactor *= bot.exptime / fid.exptime
+
+    plt.clf()
+    plt.plot(expfactor, bot.expfactor, 'b.')
+    plt.xlabel('Pipeline expfactor')
+    plt.ylabel('Bot expfactor')
+    plt.title(tt)
+    ps.savefig()
+    
