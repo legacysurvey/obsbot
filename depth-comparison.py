@@ -1,4 +1,5 @@
 from __future__ import print_function
+import os
 
 from astrometry.util.fits import *
 from astrometry.util.plotutils import *
@@ -19,7 +20,13 @@ nom = DecamNominalCalibration()
 
 botfn = 'bot-matched.fits'
 if not os.path.exists(botfn):
-    bot = fits_table('obsbot.fits')
+    obsfn = 'obsbot.fits'
+    if not os.path.exists(obsfn):
+        cmd = 'python copilot.py --fits %s' % obsfn
+        print('Running:', cmd)
+        os.system(cmd)
+        
+    bot = fits_table(obsfn)
     bot.cut(np.abs(bot.mjd_obs - target_mjd) < mjd_diff)
     print(len(bot), 'images for MJD')
     bot.cut(np.argsort(bot.mjd_obs))
@@ -253,9 +260,12 @@ for band in np.unique(bot.band):
     
     factor = np.median(galneff_factor / galnorm_factor)
     xx = np.array([0, 10])
+
+    scatter = np.std(galneff_factor / (galnorm_factor * factor))
+    print('PSF Scatter:', scatter)
     
     plt.clf()
-    plt.plot(galnorm_factor, galneff_factor, 'b.')
+    p1 = plt.plot(galnorm_factor, galneff_factor, 'b.')
     plt.xlabel('Pipeline exposure factor from galnorm')
     plt.ylabel('Bot exposure factor from Neff')
     plt.title(tt)
@@ -264,7 +274,8 @@ for band in np.unique(bot.band):
     p2 = plt.plot(xx, xx*factor*0.9, 'k--', alpha=0.3)
     plt.plot(xx, xx*factor*1.1, 'k--', alpha=0.3)
     plt.plot(xx, xx, 'r-', alpha=0.3)
-    plt.legend([p[0],p2[0]], ['slope %0.3f' % (factor), '+- 10%'],
+    plt.legend([p[0],p2[0],p1[0]], ['slope %0.3f' % (factor), '+- 10%',
+                                    'scatter %.1f %%' % (100.*scatter)],
                loc='lower right')
     plt.axis(ax)
     ps.savefig()
@@ -360,8 +371,11 @@ for band in np.unique(bot.band):
     factor = np.median(expfactor_sky / expfactor_sig1)
     xx = np.array([0, 10])
 
+    scatter = np.std(expfactor_sky / (expfactor_sig1 * factor))
+    print('Sky Scatter:', scatter)
+    
     plt.clf()
-    plt.plot(expfactor_sig1, expfactor_sky, 'b.')
+    p1 = plt.plot(expfactor_sig1, expfactor_sky, 'b.')
     plt.xlabel('Pipeline exposure factor from sig1 (and zpt; arb. scale)')
     plt.ylabel('Bot exposure factor from sky')
     plt.title(tt)
@@ -371,7 +385,8 @@ for band in np.unique(bot.band):
     plt.plot(xx, (xx*factor)*1.1, 'k--', alpha=0.3)
     #plt.legend([p[0]], ['slope %0.3f' % (factor)],
     #           loc='lower right')
-    plt.legend([p2[0]], ['+- 10%'], loc='lower right')
+    plt.legend([p2[0], p1[0]], ['+- 10%', 'scatter %.1f %%' % (100.*scatter)],
+               loc='lower right')
     plt.axis(ax)
     ps.savefig()
 
@@ -400,9 +415,12 @@ for band in np.unique(bot.band):
 
     factor = np.median(expfactor_bot_zpt / expfactor_p_zpt)
     xx = np.array([0, 10])
+
+    scatter = np.std(expfactor_bot_zpt / (expfactor_p_zpt * factor))
+    print('Zpt Scatter:', scatter)
     
     plt.clf()
-    plt.plot(expfactor_p_zpt, expfactor_bot_zpt, 'b.')
+    p1 = plt.plot(expfactor_p_zpt, expfactor_bot_zpt, 'b.')
     plt.xlabel('Pipeline exposure factor from zpt (arb. scale)')
     plt.ylabel('Bot exposure factor from zeropoint')
     plt.title(tt)
@@ -412,7 +430,8 @@ for band in np.unique(bot.band):
     plt.plot(xx, (xx*factor)*1.1, 'k--', alpha=0.3)
     #plt.legend([p[0]], ['slope %0.3f' % (factor)],
     #           loc='lower right')
-    plt.legend([p2[0]], ['+- 10%'], loc='lower right')
+    plt.legend([p2[0], p1[0]], ['+- 10%', 'scatter %.1f %%' % (100.*scatter)],
+               loc='lower right')
     plt.axis(ax)
     ps.savefig()
     
@@ -439,9 +458,12 @@ for band in np.unique(bot.band):
 
     factor = np.median(bot.expfactor / expfactor)
     xx = np.array([0, 10])
+
+    scatter = np.std(bot.expfactor / (expfactor * factor))
+    print('Overall Scatter:', scatter)
     
     plt.clf()
-    plt.plot(expfactor, bot.expfactor, 'b.')
+    p1 = plt.plot(expfactor, bot.expfactor, 'b.')
     plt.xlabel('Pipeline expfactor from galdepth')
     plt.ylabel('Bot expfactor')
     ax = plt.axis()
@@ -449,7 +471,8 @@ for band in np.unique(bot.band):
     p2 = plt.plot(xx, (xx*factor)*0.9, 'k--', alpha=0.3)
     plt.plot(xx, (xx*factor)*1.1, 'k--', alpha=0.3)
     plt.plot(xx, xx, 'r-', alpha=0.3)
-    plt.legend([p[0],p2[0]], ['slope %0.3f' % (factor), '+- 10%'],
+    plt.legend([p[0],p2[0],p1[0]], ['slope %0.3f' % (factor), '+- 10%',
+                                    'scatter %.1f %%' % (100.*scatter)],
                loc='lower right')
     plt.axis(ax)
     plt.title(tt)
@@ -475,3 +498,80 @@ for band in np.unique(bot.band):
     plt.title(tt)
     ps.savefig()
 
+    #tfactor = bot.exptime / fid.exptime
+
+    #depthfactor = (bot.exptime / (fid.exptime * bot.expfactor))
+    equivtime = (bot.exptime / bot.expfactor)
+
+    plotx = bot.galdepth - extinction
+    
+    plt.clf()
+    #p1 = plt.plot(bot.galdepth - extinction, bot.expfactor, 'b.')
+    #p1 = plt.plot(bot.galdepth - extinction, tfactor, 'b.')
+    #p1 = plt.plot(bot.galdepth - extinction, depthfactor, 'b.')
+    #p1 = plt.plot(plotx, equivtime, 'b.')
+
+    p1 = plt.plot(equivtime, plotx, 'b.')
+
+    xl,xh = plt.xlim()
+    yl,yh = plt.ylim()
+
+    xl,xh = np.min(equivtime) * 0.9, np.max(equivtime) * 1.1
+    
+    #print('x range', xl,xh, 'y range', yl,yh)
+    
+    # plot fit line
+    # 1 mag = factor of 6.3 in exposure time
+    slope = (10.**(1./2.5))**2
+    diff = np.median(np.log(equivtime) / np.log(slope) - plotx)
+
+    # xx = np.linspace(xl, xh, 100)
+    # yy = slope**(xx + diff)
+    #plt.plot(xx, yy, 'k-', alpha=0.3)
+
+    #yy = np.linspace(yl, yh, 100)
+    yy = np.linspace(20, 25, 100)
+    xx = slope**(yy + diff)
+    plt.plot(xx, yy, 'k-', alpha=0.3)
+    p2 = plt.plot(xx, yy+0.05, 'k--', alpha=0.3)
+    plt.plot(xx, yy-0.05, 'k--', alpha=0.3)
+    
+    #plt.ylabel('Bot expfactor')
+    #plt.ylabel('Exposure time factor actually taken')
+    #plt.ylabel('Expected exposure time excess')
+    # plt.xlabel('Pipeline galdepth (unextincted) (mag)')
+    # plt.ylabel('Bot-predicted equivalent exposure time (s)')
+    plt.ylabel('Pipeline galdepth (unextincted) (mag)')
+    plt.xlabel('Bot-predicted equivalent exposure time (s)')
+
+    #plt.axvline(target_depth, color='b', alpha=0.3)
+    #plt.axhline(fid.exptime, color='b', alpha=0.3)
+    plt.axhline(target_depth, color='b', alpha=0.3)
+    plt.axvline(fid.exptime, color='b', alpha=0.3)
+    
+    # ax = plt.axis()
+    # p = plt.plot(xx, xx*factor, 'k-', alpha=0.3)
+    # p2 = plt.plot(xx, (xx*factor)*0.9, 'k--', alpha=0.3)
+    #plt.plot(xx, (xx*factor)*1.1, 'k--', alpha=0.3)
+    #plt.plot(xx, xx, 'r-', alpha=0.3)
+    #plt.legend([p[0],p2[0],p1[0]], ['slope %0.3f' % (factor), '+- 10%',
+    #                                'scatter %.1f %%' % (100.*scatter)],
+    #           loc='lower right')
+    #plt.axis(ax)
+    #ax = plt.axis()
+    #plt.ylim(0, ax[3])
+
+    # plt.yscale('log')
+    # yt = [10, 20, 50, 100, 200, 300, 400, 500]
+    # plt.yticks(yt, ['%i'%t for t in yt])
+    # plt.ylim(yl,yh)
+    plt.xscale('log')
+    xt = [10, 20, 50, 100, 200, 300, 400, 500]
+    plt.xticks(xt, ['%i'%t for t in xt])
+
+    plt.legend([p2[0]], ['+- 0.05 mag'], loc='lower right')
+
+    plt.axis([xl,xh,yl,yh])
+    
+    plt.title(tt)
+    ps.savefig()
