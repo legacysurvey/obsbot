@@ -210,13 +210,14 @@ for band in np.unique(bot.band):
     plt.ylabel('Bot galaxy Neff (arcsec^2)')
     plt.title(tt)
     ax = plt.axis()
-    plt.plot(xx, xx*factor, 'k-', alpha=0.3)
+    p1 = plt.plot(xx, xx*factor, 'k-', alpha=0.3)
     plt.plot(xx, xx*factor*0.9, 'k--', alpha=0.3)
     p2 = plt.plot(xx, xx*factor*1.1, 'k--', alpha=0.3)
     plt.plot(xx, xx, 'r-', alpha=0.3)
     plt.axhline(galneff_nom, color='b', alpha=0.3)
     plt.axis(ax)
-    plt.legend([p2[0]], ['+- 10%'], loc='lower right')
+    plt.legend([p1[0], p2[0]], ['slope %0.3f' % (factor), '+- 10%'],
+               loc='lower right')
     ps.savefig()
 
     # What does the Neff imply about depth factor?
