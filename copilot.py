@@ -501,6 +501,11 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
                 plt.text(Z.mjd_obs[i], txty, '%i ' % Z.expnum[i],
                          rotation=90, va='top', ha='center')
 
+    if not nightly:
+        yl,yh = plt.ylim()
+        plt.text(Tx.mjd_obs[-1], yl+0.03*(yh-yl),
+                 '(%.1f, %.1f)' % (dra[-1], ddec[-1]), ha='center', bbox=bbox)
+                
     plt.ylabel('dRA (blu), dDec (grn)')
     
     plt.xlabel('MJD')
@@ -798,7 +803,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
 
         fid = nom.fiducial_exptime(band)
 
-        expfactor = exposure_factor(fid, nom,
+        expfactor = exposure_factorsk(fid, nom,
                                     airmass, ebv, M['seeing'], M['skybright'],
                                     trans)
         print('Exposure factor:              %6.3f' % expfactor)
@@ -806,7 +811,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         print('Target exposure time:         %6.1f' % t_exptime)
         t_exptime = np.clip(t_exptime, fid.exptime_min, fid.exptime_max)
         print('Clipped exposure time:        %6.1f' % t_exptime)
-    
+
         if band == 'z':
             t_sat = nom.saturation_time(band, M['skybright'])
             if t_exptime > t_sat:
@@ -816,7 +821,6 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         print
 
         print('Actual exposure time taken:   %6.1f' % exptime)
-    
         print('Depth (exposure time) factor: %6.3f' % (exptime / t_exptime))
         
         # If you were going to re-plan, you would run with these args:
