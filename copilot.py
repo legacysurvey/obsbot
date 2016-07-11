@@ -803,7 +803,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
 
         fid = nom.fiducial_exptime(band)
 
-        expfactor = exposure_factorsk(fid, nom,
+        expfactor = exposure_factor(fid, nom,
                                     airmass, ebv, M['seeing'], M['skybright'],
                                     trans)
         print('Exposure factor:              %6.3f' % expfactor)
@@ -1069,14 +1069,20 @@ def radec_plot(botplanfn, mm, tiles):
     plt.savefig(fn)
     print('Wrote', fn)
     
-def skip_existing_files(imgfns, rawext):
+def skip_existing_files(imgfns, rawext, by_expnum=False):
     import obsdb
     fns = []
     for fn in imgfns:
         skipext = rawext
         if skipext is None:
             skipext = get_default_extension(fn)
-        mm = obsdb.MeasuredCCD.objects.filter(filename=fn, extension=skipext)
+        if by_expnum:
+            hdr = fitsio.read_header(fn)
+            expnum = hdr['EXPNUM']
+            print('file', fn, '-> expnum', expnum)
+            mm = obsdb.MeasuredCCD.objects.filter(expnum=expnum, extension=skipext)
+        else:
+            mm = obsdb.MeasuredCCD.objects.filter(filename=fn, extension=skipext)
         if mm.count():
             print('Found image', fn, 'in database.  Skipping.')
             continue
@@ -1139,7 +1145,9 @@ def main(cmdlineargs=None, get_copilot=False):
                       help='UTC date at which to end plot')
     
     parser.add_option('--skip', action='store_true',
-                      help='Skip images that already exist in the database')
+                      help='Skip image filenames that already exist in the database')
+    parser.add_option('--skip-expnum', action='store_true',
+                      help='Skip images (by exposure number) that already exist in the database')
 
     parser.add_option('--threads', type=int, default=None,
                       help='Run multi-threaded when processing list of files on command-line')
@@ -1270,6 +1278,8 @@ def main(cmdlineargs=None, get_copilot=False):
 
         if opt.skip:
             fns = skip_existing_files(args, rawext)
+        elif opt.skip_expnum:
+            fns = skip_existing_files(args, rawext, by_expnum=True)
         else:
             fns = args
             
