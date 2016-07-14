@@ -926,8 +926,12 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
     return rtn
 
 def bounce_process_image(X):
-    process_image(*X)
-
+    try:
+        process_image(*X)
+    except:
+        print('Failed to process image:', X)
+        import traceback
+        traceback.print_exc()
     
 def mark_twilight(camera, date):
     twi = get_twilight(camera, date)
