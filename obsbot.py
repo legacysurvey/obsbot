@@ -180,7 +180,6 @@ def exposure_factor(fid, cal,
     # Nightlystrategy.py has:
     # pfact = 1.15
     # Neff_fid = ((4.0*np.pi*sig_fid**2)**(1.0/pfact)+(8.91*r_half**2)**(1.0/pfact))**pfact
-
     
     neff_fid = Neff(fid.seeing)
     neff     = Neff(seeing)
