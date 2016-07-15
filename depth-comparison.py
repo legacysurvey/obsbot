@@ -1,5 +1,6 @@
 from __future__ import print_function
 import os
+import sys
 
 from astrometry.util.fits import *
 from astrometry.util.plotutils import *
@@ -70,6 +71,8 @@ if not os.path.exists(botfn):
     # HACK
     #ccds.cut(np.abs(ccds.mjd_obs - target_mjd) < mjd_diff)
     #print('Cut to', len(ccds), 'CCDs near target MJD')
+
+    ccds.cut(ccds.ccdzpt < 99.)
     
     ccdmap = dict([((expnum,ext),i) for i,(expnum,ext) in enumerate(zip(ccds.expnum, ccds.ccdname))])
 
@@ -146,6 +149,116 @@ def get_galnorm(seeing, pixsc):
 
 pixsc = nom.pixscale
 fidseeing = 1.3
+
+
+if True:
+    # Does averaging multiple CCDs per exposure reduce the scatter?
+    for band in np.unique(bot.band):
+        band = band.strip()
+        bot = allbot[np.array([b.strip() == band for b in allbot.band])]
+        print(len(bot), 'in', band, 'band')
+
+        from collections import Counter
+        c = Counter(bot.expnum)
+        keep_expnum = set()
+        for k,v in c.most_common():
+            print('Exposure number', k, 'appears', v, 'times')
+            if v <= 1:
+                break
+            keep_expnum.add(k)
+
+        bot.cut(np.nonzero([expnum in keep_expnum
+                            for expnum in bot.expnum])[0])
+        print('Cut to', len(bot), 'with > 1 CCD per exposure')
+        
+        bad = np.flatnonzero((bot.photometric == False))
+        print(len(bad), 'rows are non-photometric')
+        
+        tt = 'Obsbot vs Pipeline depth: %s band' % band
+    
+        fid = nom.fiducial_exptime(band)
+        extinction = bot.ebv * fid.A_co
+        plt.clf()
+        notbad = np.flatnonzero((bot.photometric == True))
+        equivtime = (bot.exptime / bot.expfactor)
+        extdepth = bot.galdepth - extinction
+
+        # 2-coverage target (90% fill)
+        target_depth = dict(g=24.0, r=23.4, z=22.5)[band]
+        # -> 1-coverage depth (- ~0.37 mag)
+        target_depth -= 2.5*np.log10(np.sqrt(2.))
+
+        p1 = plt.plot(equivtime[notbad], extdepth[notbad], 'b.', alpha=0.5)
+        (xl,xh,yl,yh) = plt.axis()
+        xl = 10.
+
+        meantime = []
+        meandepth = []
+        for expnum in keep_expnum:
+            I = np.flatnonzero(bot.expnum == expnum)
+            print(len(I), 'CCDs for expnum', expnum)
+            print('Exp factors:', bot.expfactor[I])
+            meanf = np.mean(bot.expfactor[I])
+            i = I[0]
+            meantime.append(bot.exptime[i] / meanf)
+            meandepth.append(np.mean(bot.galdepth[I] - extinction[I]))
+
+        # plot fit line (x = f(y), just to confuse you...)
+        # 1 mag = factor of 6.3 in exposure time
+        slope = (10.**(1./2.5))**2
+        diff = np.median(np.log(equivtime[notbad]) / np.log(slope) -
+                         extdepth[notbad])
+        yy = np.linspace(20, 25, 100)
+        xx = slope**(yy + diff)
+        plt.plot(xx, yy, 'k-', alpha=0.3)
+        p2 = plt.plot(xx, yy+0.05, 'k--', alpha=0.3)
+        plt.plot(xx, yy-0.05, 'k--', alpha=0.3)
+
+        plt.ylabel('Pipeline galdepth (unextincted) (mag)')
+        plt.xlabel('Bot-predicted equivalent exposure time (s)')
+
+        plt.axhline(target_depth, color='b', alpha=0.3)
+        plt.axvline(fid.exptime, color='b', alpha=0.3)
+    
+        plt.xscale('log')
+        xt = [10, 20, 50, 100, 200, 300, 400, 500]
+        plt.xticks(xt, ['%i'%t for t in xt])
+        plt.axis([xl,xh,yl,yh])
+        plt.title(tt)
+        ps.savefig()
+
+        plt.clf()
+        plt.plot(meantime, meandepth, 'bo')
+
+        plt.plot(xx, yy, 'k-', alpha=0.3)
+        p2 = plt.plot(xx, yy+0.05, 'k--', alpha=0.3)
+        plt.plot(xx, yy-0.05, 'k--', alpha=0.3)
+        plt.ylabel('Pipeline galdepth (unextincted) (mag)')
+        plt.xlabel('Bot-predicted equivalent exposure time (s)')
+        plt.axhline(target_depth, color='b', alpha=0.3)
+        plt.axvline(fid.exptime, color='b', alpha=0.3)
+        plt.xscale('log')
+        xt = [10, 20, 50, 100, 200, 300, 400, 500]
+        plt.xticks(xt, ['%i'%t for t in xt])
+        plt.axis([xl,xh,yl,yh])
+        plt.title(tt)
+        ps.savefig()
+
+        # for expnum,mnt,mnd in zip(keep_expnum, meantime, meandepth):
+        #     I = np.flatnonzero(bot.expnum == expnum)
+        #     plt.plot([mnt + np.zeros(len(I)), equivtime[I]],
+        #              [mnd + np.zeros(len(I)), extdepth[I]], 'b.-')
+        #     
+        # plt.axis([xl,xh,yl,yh])
+        # ps.savefig()
+        
+        
+    sys.exit(0)
+    
+bot = allbot
+
+
+
 
 gauss_galnorm_nom = get_galnorm(fidseeing, pixsc)
 # correct for ~17% difference between Gaussian galnorm and real PSF
@@ -540,7 +653,7 @@ for band in np.unique(bot.band):
     plt.axis(ax)
     
     # plot fit line (x = f(y), just to confuse you...)
-    # 1 mag = factor of 6.3 in exposure time
+        # 1 mag = factor of 6.3 in exposure time
     slope = (10.**(1./2.5))**2
     diff = np.median(np.log(equivtime[notbad]) / np.log(slope) - extdepth[notbad])
     yy = np.linspace(20, 25, 100)
