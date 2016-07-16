@@ -249,7 +249,9 @@ class Decbot(NewFileWatcher):
         
         threshold = 0.25
         shortfall = target - others.depth
-        I = np.flatnonzero((others.depth > 0) *
+        # depth > 1: depth value 0 means no obs; depth = 1 means
+        # non-photometric observation was taken.
+        I = np.flatnonzero((others.depth > 1) *
                            (shortfall > 0) * (shortfall < threshold))
         if len(I) > 0:
             others.cut(I)
@@ -265,7 +267,7 @@ class Decbot(NewFileWatcher):
             prevs.extend(others.depth)
             
         depth = tile.get('%s_depth' % band)
-        if depth > 0:
+        if depth > 1:
             # If this tile has had previous exposure(s), subtract that.
             shortfall = target - depth
             factor = (10.**(-shortfall / 2.5))**2
