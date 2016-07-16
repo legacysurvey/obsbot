@@ -7,6 +7,7 @@ import pylab as plt
 from legacypipe.common import LegacySurveyData
 
 from astrometry.util.fits import *
+from astrometry.libkd.spherematch import match_radec
 
 from decam import DecamNominalCalibration
 
@@ -14,10 +15,29 @@ def main():
     survey = LegacySurveyData()
     ccds = survey.get_annotated_ccds()
     print(len(ccds), 'CCDs')
+
+    O = fits_table('obstatus/decam-tiles_obstatus.fits')
+    print(len(O), 'tiles')
+    # "tileid" = row number (1-indexed)
+    assert(np.all(O.tileid == np.arange(1, len(O)+1)))
+
+    # Look at whether exposures from other programs are near our tile centers.
+    # Basically nope.
+    # plt.clf()
+    # e,K = np.unique(ccds.expnum, return_index=True)
+    # I,J,d = match_radec(O.ra, O.dec, ccds.ra_bore[K], ccds.dec_bore[K],
+    #                     1./60., nearest=True)
+    # KK = K[np.flatnonzero(ccds.tileid[K] > 0)]
+    # I,J,d2 = match_radec(O.ra, O.dec, ccds.ra_bore[KK], ccds.dec_bore[KK],
+    #                      1./60., nearest=True)
+    # ha = dict(range=(0., 60.), bins=60, histtype='step')
+    # plt.hist(d * 3600., color='b', **ha)
+    # plt.hist(d2 * 3600., color='r', **ha)
+    # plt.xlabel('Distance from tile to nearest DECam boresight (arcsec)')
+    # plt.savefig('dists.png')
+
     ccds.cut(ccds.tileid > 0)
     print(len(ccds), 'with tileid')
-    ccds.cut(ccds.photometric)
-    print(len(ccds), 'photometric')
 
     expnums,I = np.unique(ccds.expnum, return_index=True)
     print(len(expnums), 'unique exposures')
@@ -29,17 +49,33 @@ def main():
         assert(len(j) == 1)
         j = j[0]
         E.galdepth[j] = np.mean(ccds.galdepth[I])
+
+        E.photometric[j] = np.all(ccds.photometric[I])
+        if len(np.unique(ccds.photometric[I])) == 2:
+            print('Exposure', expnum, 'has photometric and non- CCDs')
     
-    O = fits_table('obstatus/decam-tiles_obstatus.fits')
-    print(len(O), 'tiles')
-    # maxdec = 34.
-    # O.cut((O.in_desi == 1) * (O.in_des == 0) *
-    #       (O.dec > -20) * (O.dec < maxdec) * (O.get('pass') <= 3))
-    # print(len(O), 'tiles
-
-    # "tileid" = row number (1-indexed)
-    assert(np.all(O.tileid == np.arange(1, len(O)+1)))
-
+    # plt.clf()
+    # plt.plot(O.ra, O.dec, 'k.')
+    # plt.axis([360,0,-25,35])
+    # plt.title('All tiles')
+    # plt.savefig('tiles-all.png')
+    # 
+    # print('in_desi:', np.unique(O.in_desi))
+    # plt.clf()
+    # J = np.flatnonzero(O.in_desi == 1)
+    # plt.plot(O.ra[J], O.dec[J], 'k.')
+    # plt.axis([360,0,-25,35])
+    # plt.title('In DESI')
+    # plt.savefig('tiles-desi.png')
+    # 
+    # print('in_des:', np.unique(O.in_des))
+    # plt.clf()
+    # J = np.flatnonzero(O.in_des == 1)
+    # plt.plot(O.ra[J], O.dec[J], 'k.')
+    # plt.axis([360,0,-25,35])
+    # plt.title('IN DES')
+    # plt.savefig('tiles-des.png')
+    
     #print('Number of exposures of each tile:')
     #print(Counter(E.tileid).most_common())
     print('Number of exposures of tiles:')
@@ -57,14 +93,15 @@ def main():
     #   ccds.galdepth = -2.5 * (np.log10(depth) - 9)
 
     # actually 5*detsig1...
-    detsig = 10.**((E.galdepth - 22.5) / -2.5)
-    detiv  = 1. / detsig**2
+    with np.errstate(divide='ignore', over='ignore'):
+        detsig = 10.**((E.galdepth - 22.5) / -2.5)
+        detiv  = 1. / detsig**2
     
     nom = DecamNominalCalibration()
     
     for band in 'grz':
-        I = np.flatnonzero(E.filter == band)
-        print(len(I), 'exposures in', band)
+        I = np.flatnonzero((E.filter == band) * E.photometric)
+        print(len(I), 'photometric exposures in', band)
         iv = np.zeros(len(O), np.float32)
         np.add.at(iv, E.tileid[I] - 1, detiv[I])
         print('galdepth range:', E.galdepth[I].min(), E.galdepth[I].max())
@@ -75,14 +112,18 @@ def main():
 
         fid = nom.fiducial_exptime(band)
         extinction = O.ebv_med * fid.A_co
-        print('Median extinction:', np.median(extinction))
         galdepth -= extinction
 
         galdepth[iv == 0] = 0.
-        
+
+        # Flag non-photometric exposures with depth = 1.
+        I = np.flatnonzero((E.filter == band) * (E.photometric == False))
+        assert(np.all(galdepth[E.tileid[I] - 1]) == 0.)
+        galdepth[E.tileid[I] - 1] = 1.
+        print('Marking', len(I), 'non-photometric exposures in', band)
+
         O.set('%s_depth' % band, galdepth)
 
-        from astrometry.libkd.spherematch import match_radec
         from astrometry.util.plotutils import antigray
         rlo,rhi = 0,360
         dlo,dhi = -20,35
@@ -92,6 +133,11 @@ def main():
         indesi = np.zeros(rr.shape, bool)
         indesi.flat[JJ] = ((O.in_desi[II] == 1) * (O.in_des[II] == 0))
 
+        J = np.flatnonzero((O.in_desi == 1) * (O.in_des == 0) *
+                           (O.dec > dlo) * (O.dec < dhi))
+        print('Median E(B-V) in DECaLS area:', np.median(O.ebv_med[J]))
+        print('Median extinction in DECaLS area, %s band:' % band, np.median(extinction[J]))
+        
         plt.figure(figsize=(10,6))
         plt.subplots_adjust(left=0.1, right=0.9)
         

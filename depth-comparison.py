@@ -151,7 +151,7 @@ pixsc = nom.pixscale
 fidseeing = 1.3
 
 
-if True:
+if False:
     # Does averaging multiple CCDs per exposure reduce the scatter?
     for band in np.unique(bot.band):
         band = band.strip()
@@ -251,7 +251,6 @@ if True:
         #     
         # plt.axis([xl,xh,yl,yh])
         # ps.savefig()
-        
         
     sys.exit(0)
     
