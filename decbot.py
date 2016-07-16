@@ -45,6 +45,10 @@ def main(cmdlineargs=None, get_decbot=False):
     parser.add_option('--exptime', type=int, default=None,
                       help='Set default exposure time, default whatever is in the JSON files, usually 80 sec')
 
+    parser.add_option('--no-adjust', dest='adjust', default=True,
+                      action='store_false',
+                      help='Do not adjust exposure time to compensate for previous tiles')
+
     parser.add_option('--nqueued', type=int, default=2,
                       help='Set maximum number of exposures in the queue; default %default')
     
@@ -157,6 +161,7 @@ class Decbot(NewFileWatcher):
         self.seqnum = 0
         self.planned_tiles = OrderedDict()
         self.upcoming = []
+        self.adjust_previous = opt.adjust
 
         # Read existing files,recording their tile names as vetoes.
         self.observed_tiles = {}
@@ -215,6 +220,93 @@ class Decbot(NewFileWatcher):
         J = self.tiles_after_now(J)
         self.plan_tiles(J, Nahead=len(J), exptime=opt.exptime)
 
+    def adjust_for_previous(self, tile, band, fid):
+        '''
+        Adjust the exposure time we should take for this image based
+        on data we've already taken.
+        '''
+        # Find the other passes for this tile, and if we've taken an
+        # exposure, think about adjusting the exposure time.  If the
+        # depth in the other exposure is more than THRESHOLD too
+        # shallow, ignore it on the assumption that we'll re-take it.
+        # If there is a previous exposure for THIS tile, reduce our
+        # exposure time accordingly.
+
+        # Find other passes
+        others = self.other_passes(tile, self.tiles)
+        others.depth = others.get('%s_depth' % band)
+
+        target = fid.single_exposure_depth
+        print('Adjusting exposure for tile', tile.tileid, 'pass', tile.get('pass'))
+        print('Other tile passes:', others.get('pass'))
+        print('Other tile depths:', others.get('%s_depth' % band))
+        print('Target depth:', target)
+
+        thisfactor = 1.0
+
+        # DEBUG
+        prevs = []
+        
+        threshold = 0.25
+        shortfall = target - others.depth
+        I = np.flatnonzero((others.depth > 0) *
+                           (shortfall > 0) * (shortfall < threshold))
+        if len(I) > 0:
+            others.cut(I)
+            print('Other tiles with acceptable shortfalls:', shortfall[I])
+            # exposure time factors required
+            factors = (10.**(-shortfall[I] / 2.5))**2
+            print('Exposure time factors:', factors)
+            extra = np.sum(1 - factors)
+            print('Total extra fraction required:', extra)
+            thisfactor += extra
+
+            # DEBUG
+            prevs.extend(others.depth)
+            
+        depth = tile.get('%s_depth' % band)
+        if depth > 0:
+            # If this tile has had previous exposure(s), subtract that.
+            shortfall = target - depth
+            factor = (10.**(-shortfall / 2.5))**2
+            print('This tile had previous depth:', depth)
+            print('Fraction of nominal exposure time:', factor)
+            thisfactor -= factor
+
+            # DEBUG
+            prevs.append(depth)
+            
+        print('Final exposure time factor:', thisfactor)
+
+        print('Previous depths:', prevs)
+        thisdepth = target + 2.5*np.log10(np.sqrt(thisfactor))
+        print('Depth expected from this image:', thisdepth)
+        prevs.append(thisdepth)
+        prevs = np.array(prevs)
+        tdepth = 2.5*np.log10(np.sqrt(np.sum((10.**(prevs / 2.5))**2)))
+        print('Total expected depth:', tdepth)
+        print('vs targets', target, target+2.5*np.log10(np.sqrt(2.)),
+              target+2.5*np.log10(np.sqrt(3.)))
+
+        return thisfactor
+
+    def other_passes(self, tile, tiles):
+        '''
+        Given tile number *tile*, return the obstatus rows for the other passes
+        on this tile center.
+
+        Returns: *otherpasses*, table object
+        '''
+        from astrometry.libkd.spherematch import match_radec
+        # Could also use the fact that the passes are offset from each other
+        # by a fixed index (15872 for decam)...
+        # Max separation is about 0.6 degrees
+        I,J,d = match_radec(tile.ra, tile.dec, tiles.ra, tiles.dec, 1.)
+        # Omit 'tile' itself...
+        K = np.flatnonzero(tiles.tileid[J] != tile.tileid)
+        J = J[K]
+        return tiles[J]
+        
     def queue_initial_exposures(self):
         # Queue exposures to start
         for i in range(self.nqueued):
@@ -383,12 +475,17 @@ class Decbot(NewFileWatcher):
             fid = self.nom.fiducial_exptime(nextband)
             expfactor = exposure_factor(fid, self.nom,
                                         airmass, ebv, seeing, nextsky, trans)
+
+            if self.adjust_previous:
+                adjfactor = self.adjust_for_previous(tile, nextband, fid)
+                expfactor *= adjfactor
+
             #print('Tile', tilename)
             #print('Exposure factor:', expfactor)
             exptime = expfactor * fid.exptime
+            #print('Exposure time:', exptime)
     
             ### HACK -- safety factor!
-            #print('Exposure time:', exptime)
             exptime *= 1.1
             exptime = int(np.ceil(exptime))
             #print('Exposure time with safety factor:', exptime)

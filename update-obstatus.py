@@ -1,7 +1,7 @@
 from __future__ import print_function
 from collections import Counter
 
-#import pylab as plt
+import pylab as plt
 
 from legacypipe.common import LegacySurveyData
 
@@ -81,22 +81,38 @@ def main():
         
         O.set('%s_depth' % band, galdepth)
 
-        # for passnum in [1,2,3]:
-        #     plt.clf()
-        #     maxdec = 34.
-        #     J = np.flatnonzero((O.in_desi == 1) * (O.in_des == 0) *
-        #                        (O.dec > -20) * (O.dec < maxdec) *
-        #                        (O.get('pass') == passnum))
-        #     plt.plot(O.ra[J], O.dec[J], 'k.', alpha=0.5)
-        #     depth = O.get('%s_depth' % band)
-        #     J = np.flatnonzero((O.get('pass') == passnum) * (depth > 0))
-        #     plt.scatter(O.ra[J], O.dec[J], c=depth[J], linewidths=0)
-        #     plt.colorbar()
-        #     plt.title('Band %s, Pass %i' % (band, passnum))
-        #     plt.xlabel('RA (deg)')
-        #     plt.ylabel('Dec (deg)')
-        #     plt.savefig('depth-%s-%i.png' % (band, passnum))
-            
+        for passnum in [1,2,3]:
+            plt.clf()
+            maxdec = 34.
+            J = np.flatnonzero((O.in_desi == 1) * (O.in_des == 0) *
+                               (O.dec > -20) * (O.dec < maxdec) *
+                               (O.get('pass') == passnum))
+            plt.plot(O.ra[J], O.dec[J], 'k.', alpha=0.5)
+            depth = O.get('%s_depth' % band)
+            J = np.flatnonzero((O.get('pass') == passnum) * (depth > 0))
+            plt.scatter(O.ra[J], O.dec[J], c=depth[J], linewidths=0)
+            plt.colorbar()
+            plt.title('Band %s, Pass %i' % (band, passnum))
+            plt.xlabel('RA (deg)')
+            plt.ylabel('Dec (deg)')
+            plt.savefig('depth-%s-%i.png' % (band, passnum))
+
+        plt.clf()
+        for passnum in [1,2,3]:
+            depth = O.get('%s_depth' % band)
+            J = np.flatnonzero((O.get('pass') == passnum) * (depth > 0))
+            depth = depth[J]
+            mlo,mhi = 21,24
+            plt.hist(np.clip(depth, mlo,mhi), bins=100, range=(mlo,mhi),
+                     histtype='step', color=' bgr'[passnum],
+                     label='Pass %i' % passnum)
+        plt.axvline(fid.single_exposure_depth, color='k')
+        plt.xlabel('Depth (mag)')
+        plt.legend(loc='upper left')
+        plt.title('DECaLS depth: %s' % band)
+        plt.savefig('depth-%s.png' % band)
+
+        
     O.writeto('decam-obstatus-depth.fits')
 
 

@@ -100,6 +100,16 @@ class NominalCalibration(object):
         '''
         fid = NominalExptime()
 
+        # 2-coverage targets (90% fill), 5-sigma extinction-corrected
+        # canonical galaxy detection.
+        target_depths = dict(g=24.0, r=23.4, z=22.5)
+
+        target_depth = target_depths[band]
+        # -> 1-coverage depth (- ~0.37 mag)
+        target_depth -= 2.5*np.log10(np.sqrt(2.))
+
+        fid.update(single_exposure_depth = target_depth)
+        
         if band == 'g':
             fid.update(
                 exptime     =  50.,
