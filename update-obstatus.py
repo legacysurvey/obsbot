@@ -1,6 +1,7 @@
 from __future__ import print_function
 from collections import Counter
 
+import matplotlib
 import pylab as plt
 
 from legacypipe.common import LegacySurveyData
@@ -81,20 +82,58 @@ def main():
         
         O.set('%s_depth' % band, galdepth)
 
+        from astrometry.libkd.spherematch import match_radec
+        from astrometry.util.plotutils import antigray
+        rlo,rhi = 0,360
+        dlo,dhi = -20,35
+        rr,dd = np.meshgrid(np.linspace(rlo,rhi,720), np.linspace(dlo,dhi,360))
+        JJ,II,d = match_radec(rr.ravel(), dd.ravel(), O.ra, O.dec, 1.5,
+                              nearest=True)
+        indesi = np.zeros(rr.shape, bool)
+        indesi.flat[JJ] = ((O.in_desi[II] == 1) * (O.in_des[II] == 0))
+
+        plt.figure(figsize=(10,6))
+        plt.subplots_adjust(left=0.1, right=0.9)
+        
         for passnum in [1,2,3]:
             plt.clf()
-            maxdec = 34.
+
             J = np.flatnonzero((O.in_desi == 1) * (O.in_des == 0) *
-                               (O.dec > -20) * (O.dec < maxdec) *
+                               (O.dec > dlo) * (O.dec < dhi) *
                                (O.get('pass') == passnum))
-            plt.plot(O.ra[J], O.dec[J], 'k.', alpha=0.5)
+            #plt.plot(O.ra[J], O.dec[J], 'k.', alpha=0.5)
+            plt.imshow(indesi, extent=[rlo,rhi,dlo,dhi], vmin=0, vmax=4,
+                       cmap=antigray, aspect='auto', interpolation='nearest',
+                       origin='lower')
             depth = O.get('%s_depth' % band)
             J = np.flatnonzero((O.get('pass') == passnum) * (depth > 0))
-            plt.scatter(O.ra[J], O.dec[J], c=depth[J], linewidths=0)
-            plt.colorbar()
+
+            target = fid.single_exposure_depth
+            cmap = cmap_discretize('RdBu', 11)
+
+            dm = 0.275
+            
+            plt.scatter(O.ra[J], O.dec[J], c=depth[J] - target, linewidths=0,
+                        cmap=cmap, vmin=-dm, vmax=+dm, zorder=-10, s=1)
+            plt.colorbar(ticks=np.arange(-0.25, 0.251, 0.05))
+
+            hh,ww = rr.shape
+            rgba = np.zeros((hh,ww,4), np.float32)
+            JJ,II,d = match_radec(rr.ravel(), dd.ravel(), O.ra[J], O.dec[J], 1.,
+                                  nearest=True)
+            Jy,Jx = np.unravel_index(JJ, rr.shape)
+            rgba[Jy,Jx,:] = cmap((np.clip(depth[J[II]] - target, -dm, dm) - (-dm)) / (dm - (-dm)))
+            plt.imshow(rgba, extent=[rlo,rhi,dlo,dhi], aspect='auto', interpolation='nearest',
+                       origin='lower')
+
+            I = np.flatnonzero((depth == 0) * (O.get('%s_done' % band) == 1) *
+                               (O.get('pass') == passnum))
+            plt.plot(O.ra[I], O.dec[I], 'g.')
+            
             plt.title('Band %s, Pass %i' % (band, passnum))
             plt.xlabel('RA (deg)')
             plt.ylabel('Dec (deg)')
+            plt.axis([rhi,rlo,dlo,dhi])
             plt.savefig('depth-%s-%i.png' % (band, passnum))
 
         plt.clf()
@@ -115,9 +154,32 @@ def main():
         
     O.writeto('decam-obstatus-depth.fits')
 
+# From http://scipy-cookbook.readthedocs.io/items/Matplotlib_ColormapTransformations.html
+def cmap_discretize(cmap, N):
+    from matplotlib.cm import get_cmap
+    from numpy import concatenate, linspace
+    """Return a discrete colormap from the continuous colormap cmap.
+
+        cmap: colormap instance, eg. cm.jet.
+        N: number of colors.
+
+    Example
+        x = resize(arange(100), (5,100))
+        djet = cmap_discretize(cm.jet, 5)
+        imshow(x, cmap=djet)
+    """
+    if type(cmap) == str:
+        cmap = get_cmap(cmap)
+    colors_i = concatenate((linspace(0, 1., N), (0.,0.,0.,0.)))
+    colors_rgba = cmap(colors_i)
+    indices = linspace(0, 1., N+1)
+    cdict = {}
+    for ki,key in enumerate(('red','green','blue')):
+        cdict[key] = [ (indices[i], colors_rgba[i-1,ki], colors_rgba[i,ki]) for i in xrange(N+1) ]
+    # Return colormap object.
+    return matplotlib.colors.LinearSegmentedColormap(cmap.name + "_%d"%N, cdict, 1024)
 
 
-    
 if __name__ == '__main__':
     main()
-    
+
