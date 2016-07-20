@@ -667,7 +667,7 @@ for band in np.unique(bot.band):
     plt.axhline(target_depth, color='b', alpha=0.3)
     plt.axvline(fid.exptime, color='b', alpha=0.3)
 
-    # max x limits symmetric around fiducial
+    # make x limits symmetric around fiducial
     mid = fid.exptime
     maxrange = max(mid / xl, xh / mid)
     xl = mid / maxrange
@@ -700,5 +700,38 @@ for band in np.unique(bot.band):
     plt.xticks([])
     
     plt.legend([p2[0]], ['+- 0.05 mag'], loc='lower right')
+    plt.title(tt)
+    ps.savefig()
+
+
+
+    plt.clf()
+    notbad = np.flatnonzero((bot.photometric == True))
+
+    tlo,thi = bot.exptime.min(), bot.exptime.max()
+    
+    loghist(bot.exptime[notbad], extdepth[notbad], nbins=(thi-tlo+1, 100),
+             range=((tlo, thi),
+                    (target_depth-1, target_depth+1)))
+    plt.axhline(target_depth, color=(0.5, 0.5, 1.0), lw=2, alpha=0.5)
+    plt.xlabel('Exposure time (s)')
+    plt.ylabel('Pipeline galdepth (extinction corrected) (mag)')
+    plt.title(tt)
+    ps.savefig()
+
+
+
+    plt.clf()
+    #plt.plot(bot.mjd_obs[notbad], extdepth[notbad], 'b.', alpha=0.5)
+    #plt.xlabel('MJD')
+    umjd,I = np.unique(bot.mjd_obs[notbad], return_inverse=True)
+    #plt.plot(np.argsort(bot.mjd_obs[notbad]), extdepth[notbad], 'b.', alpha=0.5)
+    plt.plot(I, extdepth[notbad], 'b.', alpha=0.5)
+    #plt.plot(bot.expnum[notbad], extdepth[notbad], 'b.', alpha=0.5)
+    plt.axhline(target_depth, color='b')
+    plt.xlim(min(I), max(I))
+    plt.ylim(target_depth-1, target_depth+1)
+    plt.xlabel('MJD ordering')
+    plt.ylabel('Pipeline galdepth (extinction corrected) (mag)')
     plt.title(tt)
     ps.savefig()

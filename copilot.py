@@ -1191,9 +1191,8 @@ def main(cmdlineargs=None, get_copilot=False):
     import obsdb
 
     import pylab as plt
-    plt.figure(num=1, figsize=(8,10))
     plt.figure(num=2, figsize=(8,10))
-    plt.figure(1)
+    plt.figure(num=1, figsize=(8,10))
 
     if opt.datestart is not None:
         opt.mjdstart = ephemdate_to_mjd(ephem.Date(opt.datestart))
