@@ -83,19 +83,19 @@ class MosaicNominalCalibration(NominalCalibration):
         if band == 'g':
             fid.update(
                 k_co = 0.211,
-                A_co = 3.303,
+                A_co = 3.214,
                 )
 
         elif band == 'r':
             fid.update(
                 k_co = 0.109,
-                A_co = 2.285,
+                A_co = 2.165,
                 )
 
         elif band == 'z':
             fid.update(
                 k_co = 0.10,
-                A_co = 1.263,
+                A_co = 1.592,
                 )
         else:
             raise ValueError('Unknown band "%s"' % band)
