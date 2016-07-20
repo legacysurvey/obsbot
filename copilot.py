@@ -977,7 +977,9 @@ def plot_recent(opt, nom, tiles=None, markmjds=[],
 
     if (botplanfn is not None and os.path.exists(botplanfn) and
         tiles is not None):
+        plt.figure(2)
         radec_plot(botplanfn, mm, tiles)
+        plt.figure(1)
     
     camera = mm[0].camera
     allobs = obsdb.MeasuredCCD.objects.filter(camera=camera)
@@ -1189,7 +1191,9 @@ def main(cmdlineargs=None, get_copilot=False):
     import obsdb
 
     import pylab as plt
-    plt.figure(figsize=(8,10))
+    plt.figure(num=1, figsize=(8,10))
+    plt.figure(num=2, figsize=(8,10))
+    plt.figure(1)
 
     if opt.datestart is not None:
         opt.mjdstart = ephemdate_to_mjd(ephem.Date(opt.datestart))
