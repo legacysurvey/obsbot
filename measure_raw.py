@@ -203,7 +203,7 @@ class RawMeasurer(object):
 
         try:
             kx = self.nom.fiducial_exptime(band).k_co
-        except ValueError:
+        except (ValueError, KeyError):
             print('Unknown band "%s"; no k_co available.' % band)
             kx = None
         
@@ -588,7 +588,12 @@ class RawMeasurer(object):
             
         # Compute photometric offset compared to PS1
         # as the PS1 minus observed mags
-        colorterm = self.colorterm_ps1_to_observed(stars.median, band)
+        
+        try:
+            colorterm = self.colorterm_ps1_to_observed(stars.median, band)
+        except KeyError:
+            print('Color term not found for band "%s"; assuming zero.' % band)
+            colorterm = 0.
         stars.mag += colorterm
         ps1mag = stars.mag[I]
         
