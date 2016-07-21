@@ -453,10 +453,9 @@ class Decbot(NewFileWatcher):
             # Average the measurements -- but start by copying one of
             # the measurements.
             M = MM[0].copy()
-            # FIXME -- means?  Recompute some quantities based on
-            # averages of others?  "zp" and "transparency" are
-            # probably inconsistent here, eg.
-            for key in ['skybright', 'transparency', 'seeing']: # 'rawsky', 'zp',
+            # FIXME -- means?
+            for key,nice in [('skybright','Sky'), ('transparency','Transparency'), ('seeing','Seeing')]:
+                print('Measurements of %-12s:' % nice, ', '.join(['%6.3f' % mi[key] for mi in MM]))
                 M[key] = np.mean([mi[key] for mi in MM])
         
         # Choose the pass

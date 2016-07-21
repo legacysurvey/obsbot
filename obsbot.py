@@ -32,11 +32,11 @@ def choose_pass(trans, seeing, skybright, nomsky,
     pass1ok = transok and seeingok and brightok
     pass2ok = (transok and seeingfair) or (seeingok and transfair)
     
-    print('Transparency: %s       (%6.2f vs %6.2f / %6.2f)' %
+    print('Transparency: %s       (%6.2f vs %6.2f = fair, %6.2f = good)' %
           (trans_txt, trans, transcut, transcut2))
-    print('Seeing      : %s       (%6.2f vs %6.2f / %6.2f)' %
+    print('Seeing      : %s       (%6.2f vs %6.2f = fair, %6.2f = good)' %
           (seeing_txt, seeing, seeingcut, seeingcut2))
-    print('Brightness  : %s       (%6.2f vs %6.2f)' %
+    print('Brightness  : %s       (%6.2f vs %6.2f = pass)' %
           (('pass' if brightok else 'fail'), skybright, nomsky+brightcut))
     print('Pass 1 = transparency AND seeing AND brightness: %s' % pass1ok)
     print('Pass 2 = (transparency good and seeing fair) OR (seeing good and transparency fair): %s' % pass2ok)
@@ -413,7 +413,7 @@ class NewFileWatcher(Logger):
                   (fn, self.maxFail))
             self.oldfiles.add(fn)
             return False
-            
+
         self.log('Found new file:', fn)
         try:
             self.try_open_file(fn)
