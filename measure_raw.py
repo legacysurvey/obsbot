@@ -430,8 +430,8 @@ class RawMeasurer(object):
         radius = self.maxshift / pixsc
 
         I,J,dx,dy = self.match_ps1_stars(px, py, fullx, fully, radius, stars)
-        print(len(I), 'spatial matches with large radius', self.maxshift,
-              'arcsec,', radius, 'pix')
+        #print(len(I), 'spatial matches with large radius', self.maxshift,
+        #      'arcsec,', radius, 'pix')
 
         bins = 2*int(np.ceil(radius))
         #print('Histogramming with', bins, 'bins')
@@ -485,20 +485,20 @@ class RawMeasurer(object):
 
         R = np.linalg.lstsq(A, px[I] - cx)
         resx = R[0]
-        print('Affine transformation for X:', resx)
+        #print('Affine transformation for X:', resx)
         R = np.linalg.lstsq(A, py[I] - cy)
         resy = R[0]
-        print('Affine transformation for Y:', resy)
+        #print('Affine transformation for Y:', resy)
 
         meas.update(affine = [cx, cy] + list(resx) + list(resy))
         
         if True:
             r0,d0 = stars.ra[I[0]], stars.dec[I[0]]
-            print('Pan-STARRS RA,Dec:', r0,d0)
+            #print('Pan-STARRS RA,Dec:', r0,d0)
             ok,px0,py0 = wcs.radec2pixelxy(r0, d0)
-            print('Header WCS -> x,y:', px0-1, py0-1)
+            #print('Header WCS -> x,y:', px0-1, py0-1)
             mx0,my0 = fullx[J[0]], fully[J[0]]
-            print('VS Matched star x,y:', mx0, my0)
+            #print('VS Matched star x,y:', mx0, my0)
         
         if self.debug and ps is not None:
             plt.clf()
@@ -642,12 +642,12 @@ class RawMeasurer(object):
         from scipy.stats import sigmaclip
         goodpix,lo,hi = sigmaclip(dm, low=3, high=3)
         dmagmed = np.median(goodpix)
-        print(len(goodpix), 'stars used for zeropoint median')
-        print('Using median zeropoint:')
+        #print(len(goodpix), 'stars used for zeropoint median')
+        #print('Using median zeropoint:')
         zp_med = zp0 + dmagmed
         trans_med = 10.**(-0.4 * (zp0 - zp_med - kx * (airmass - 1.)))
-        print('Zeropoint %6.3f' % zp_med)
-        print('Transparency: %.3f' % trans_med)
+        #print('Zeropoint %6.3f' % zp_med)
+        #print('Transparency: %.3f' % trans_med)
         
         dm = ps1mag - apmag2[J]
         dmag2,dsig2 = sensible_sigmaclip(dm, nsigma=2.5)
@@ -686,7 +686,6 @@ class RawMeasurer(object):
                     zp_skysub = zp0 + dmag2,
                     zp_med = zp_med,
                     zp_med_skysub = zp0 + dmagmedsky)
-        
 
         # print('Using sky-subtracted values:')
         # zp_sky = zp0 + dmag2

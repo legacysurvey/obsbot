@@ -344,7 +344,8 @@ class Decbot(NewFileWatcher):
         nq = self.rc.get_n_queued()
         now = datenow().replace(microsecond=0).isoformat()
         if nq >= self.nqueued:
-            print('%s: %i exposures in the queue, waiting until fewer than %i.' % (now, nq, self.nqueued))
+            self.log('%i exposures in the queue, waiting until fewer than %i.'%
+                     (nq, self.nqueued), uniq=True)
             return
         else:
             print('%s: %i exposures in the queue, time to queue one.' % (now, nq))
@@ -372,7 +373,7 @@ class Decbot(NewFileWatcher):
                 dec=j['dec'],
                 object=j['object'],
                 exptime=j['expTime'],
-                )
+                verbose=self.verbose)
         
         return j
     
@@ -506,7 +507,7 @@ class Decbot(NewFileWatcher):
                     exptime = t_sat
                     # Don't print this a gajillion times
                     self.log('Reduced exposure time to avoid z-band ' +
-                             'saturation: %.1f' % exptime, uniq=True)
+                             'saturation: %.1f s' % exptime, uniq=True)
             exptime = int(exptime)
     
             #print('Changing exptime from', jplan['expTime'], 'to', exptime)
