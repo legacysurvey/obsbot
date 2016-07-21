@@ -861,9 +861,9 @@ class DECamMeasurer(RawMeasurer):
         oldcrval2 = hdr['CRVAL2']
         hdr['CRVAL1'] = hmsstring2ra (self.primhdr['RA' ])
         hdr['CRVAL2'] = dmsstring2dec(self.primhdr['DEC'])
-        print(('Updated WCS CRVAL from TELRA,TELDEC = (%.4f,%.4f) to ' +
-              'RA,Dec = (%.4f,%.4f)') %
-              (oldcrval1, oldcrval2, hdr['CRVAL1'], hdr['CRVAL2']))
+        # print(('Updated WCS CRVAL from TELRA,TELDEC = (%.4f,%.4f) to ' +
+        #       'RA,Dec = (%.4f,%.4f)') %
+        #       (oldcrval1, oldcrval2, hdr['CRVAL1'], hdr['CRVAL2']))
         wcs = wcs_pv2sip_hdr(hdr)
         hdr['CRVAL1'] = oldcrval1
         hdr['CRVAL2'] = oldcrval2

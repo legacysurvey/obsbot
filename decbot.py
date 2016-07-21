@@ -460,7 +460,7 @@ class Decbot(NewFileWatcher):
         # Keep track of expected time of observations
         # FIXME -- should add margin for the images currently in the queue...
         self.obs.date = ephem.now()
-        for jplan in J:
+        for ii,jplan in enumerate(J):
             tilename = str(jplan['object'])
             # Find this tile in the tiles table.
             tile = get_tile_from_name(tilename, self.tiles)
@@ -474,8 +474,10 @@ class Decbot(NewFileWatcher):
             etile.compute(self.obs)
             airmass = get_airmass(float(etile.alt))
             #print('Airmass of planned tile:', airmass)
-            print('Tile', tilename, 'at RA,Dec (%.3f,%.3f) will have airmass %.2f at' %
-                  (jplan['RA'], jplan['dec'], airmass), self.obs.date)
+            if ii < 5:
+                print('Tile %s at RA,Dec (%.3f,%.3f) will have airmass %.2f at'
+                      % (tilename, jplan['RA'], jplan['dec'], airmass),
+                      self.obs.date)
             
             if M['band'] == nextband:
                 nextsky = skybright
