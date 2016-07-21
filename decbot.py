@@ -457,6 +457,9 @@ class Decbot(NewFileWatcher):
         
         # Update the exposure times in plan J based on measured conditions.
         print('Updating exposure times for pass', nextpass)
+        # Keep track of expected time of observations
+        # FIXME -- should add margin for the images currently in the queue...
+        self.obs.date = ephem.now()
         for jplan in J:
             tilename = str(jplan['object'])
             # Find this tile in the tiles table.
@@ -471,7 +474,9 @@ class Decbot(NewFileWatcher):
             etile.compute(self.obs)
             airmass = get_airmass(float(etile.alt))
             #print('Airmass of planned tile:', airmass)
-    
+            print('Tile', tilename, 'at RA,Dec (%.3f,%.3f) will have airmass %.2f at' %
+                  (jplan['RA'], jplan['dec'], airmass), self.obs.date)
+            
             if M['band'] == nextband:
                 nextsky = skybright
             else:
@@ -512,6 +517,8 @@ class Decbot(NewFileWatcher):
     
             #print('Changing exptime from', jplan['expTime'], 'to', exptime)
             jplan['expTime'] = exptime
+
+            self.obs.date += (exptime + self.nom.overhead) / 86400.
             
         self.plan_tiles(J)
         return True
@@ -532,12 +539,7 @@ class Decbot(NewFileWatcher):
         Nahead: int: How many exposures ahead should we plan?
         '''
 
-        # Set observing conditions for computing exposure time
-        now = ephem.now()
-        self.obs.date = now
-        
         self.upcoming = []
-
         iahead = 0
         for ii,jplan in enumerate(J):
             if iahead >= Nahead:
@@ -578,7 +580,6 @@ class Decbot(NewFileWatcher):
                 self.debug(s)
             self.planned_tiles[nextseq] = jplan
             self.upcoming.append(jplan)
-            self.obs.date += (jplan['expTime'] + self.nom.overhead) / 86400.
 
         self.write_plans()            
 
