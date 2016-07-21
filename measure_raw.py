@@ -121,13 +121,19 @@ class RawMeasurer(object):
         return slices
         
     def run(self, ps=None, focus=False, momentsize=5,
-            n_fwhm=100):
+            n_fwhm=100, verbose=True):
         import pylab as plt
         from astrometry.util.plotutils import dimshow, plothist
         from legacyanalysis.ps1cat import ps1cat
         import photutils
         import tractor
-                
+
+        if verbose:
+            printmsg = print
+        else:
+            def printmsg(*args, **kwargs):
+                pass
+
         fn = self.fn
         ext = self.ext
         pixsc = self.pixscale
@@ -187,7 +193,7 @@ class RawMeasurer(object):
         band = self.get_band(primhdr)
         exptime = primhdr['EXPTIME']
         airmass = primhdr['AIRMASS']
-        print('Band', band, 'Exptime', exptime, 'Airmass', airmass)
+        printmsg('Band', band, 'Exptime', exptime, 'Airmass', airmass)
 
         try:
             zp0 = self.nom.zeropoint(band, ext=self.ext)
@@ -214,8 +220,8 @@ class RawMeasurer(object):
 
         if zp0 is not None:
             skybr = -2.5 * np.log10(sky1/pixsc/pixsc/exptime) + zp0
-            print('Sky brightness: %8.3f mag/arcsec^2' % skybr)
-            print('Fiducial:       %8.3f mag/arcsec^2' % sky0)
+            printmsg('Sky brightness: %8.3f mag/arcsec^2' % skybr)
+            printmsg('Fiducial:       %8.3f mag/arcsec^2' % sky0)
         else:
             skybr = None
 
@@ -255,10 +261,10 @@ class RawMeasurer(object):
         detsn = self.detection_map(img, sig1, psfsig, ps)
     
         slices = self.detect_sources(detsn, self.det_thresh, ps)
-        print(len(slices), 'sources detected')
+        printmsg(len(slices), 'sources detected')
         if len(slices) < 20:
             slices = self.detect_sources(detsn, 10., ps)
-            print(len(slices), 'sources detected')
+            printmsg(len(slices), 'sources detected')
         ndetected = len(slices)
         meas.update(ndetected=ndetected)
         if ndetected == 0:
@@ -463,14 +469,14 @@ class RawMeasurer(object):
         radius2 = 3. / pixsc
         I,J,dx,dy = self.match_ps1_stars(px, py, fullx+shiftx, fully+shifty,
                                          radius2, stars)
-        print(len(J), 'matches to PS1 with small radius', 3, 'arcsec')
+        #print(len(J), 'matches to PS1 with small radius', 3, 'arcsec')
         shiftx2 = np.median(dx)
         shifty2 = np.median(dy)
         #print('Stage-1 shift', shiftx, shifty)
         #print('Stage-2 shift', shiftx2, shifty2)
         sx = shiftx + shiftx2
         sy = shifty + shifty2
-        print('Astrometric shift (%.0f, %.0f) pixels' % (sx,sy))
+        printmsg('Astrometric shift (%.0f, %.0f) pixels' % (sx,sy))
 
         #from astromalign.astrom_common import Alignment
 
@@ -569,8 +575,8 @@ class RawMeasurer(object):
         # Re-match
         I,J,dx,dy = self.match_ps1_stars(px, py, fullx+sx, fully+sy,
                                          radius2, stars)
-        print('Cut to', len(stars), 'PS1 stars with good colors; matched', len(I))
-
+        printmsg('Cut to %i PS1 stars with good colors; matched %i' %
+                 (len(stars), len(I)))
         nmatched = len(I)
 
         meas.update(dx=sx, dy=sy, nmatched=nmatched)
@@ -631,8 +637,8 @@ class RawMeasurer(object):
     
         dm = ps1mag - apmag[J]
         dmag,dsig = sensible_sigmaclip(dm, nsigma=2.5)
-        print('Mag offset: %8.3f' % dmag)
-        print('Scatter:    %8.3f' % dsig)
+        printmsg('Mag offset: %8.3f' % dmag)
+        printmsg('Scatter:    %8.3f' % dsig)
 
         if not np.isfinite(dmag) or not np.isfinite(dsig):
             print('FAILED TO GET ZEROPOINT!')
@@ -676,9 +682,9 @@ class RawMeasurer(object):
         transparency = 10.**(-0.4 * (zp0 - zp_obs - kx * (airmass - 1.)))
         meas.update(zp=zp_obs, transparency=transparency)
 
-        print('Zeropoint %6.3f' % zp_obs)
-        print('Fiducial  %6.3f' % zp0)
-        print('Transparency: %.3f' % transparency)
+        printmsg('Zeropoint %6.3f' % zp_obs)
+        printmsg('Fiducial  %6.3f' % zp0)
+        printmsg('Transparency: %.3f' % transparency)
 
         # Also return the zeropoints using the sky-subtracted mags,
         # and using median rather than clipped mean.
@@ -781,7 +787,7 @@ class RawMeasurer(object):
     
         fwhms = np.array(fwhms)
         fwhm = np.median(fwhms)
-        print('Median FWHM: %.3f' % np.median(fwhms))
+        printmsg('Median FWHM : %.3f' % np.median(fwhms))
         meas.update(seeing=fwhm)
     
         if False and ps is not None:
