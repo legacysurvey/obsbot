@@ -977,6 +977,7 @@ def plot_recent(opt, nom, tiles=None, markmjds=[],
 
     if (botplanfn is not None and os.path.exists(botplanfn) and
         tiles is not None):
+        import pylab as plt
         plt.figure(2)
         radec_plot(botplanfn, mm, tiles)
         plt.figure(1)
