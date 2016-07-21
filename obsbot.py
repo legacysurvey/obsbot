@@ -414,11 +414,11 @@ class NewFileWatcher(Logger):
             self.oldfiles.add(fn)
             return False
             
-        print('Found new file:', fn)
+        self.log('Found new file:', fn)
         try:
             self.try_open_file(fn)
         except:
-            print('Failed to open %s: maybe not fully written yet.' % fn)
+            self.log('Failed to open %s: maybe not fully written yet.' % fn)
             self.failCounter.update([fn])
             return False
 
@@ -435,9 +435,10 @@ class NewFileWatcher(Logger):
             return True
             
         except IOError:
-            print('Failed to read file: %s' % fn)
-            import traceback
-            traceback.print_exc()
+            self.log('Failed to read file: %s' % fn)
+            if self.verbose:
+                import traceback
+                traceback.print_exc()
             self.failCounter.update([fn])
             return False
 
