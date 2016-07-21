@@ -227,7 +227,7 @@ class Decbot(NewFileWatcher):
         J = self.tiles_after_now(J)
         self.plan_tiles(J, Nahead=len(J), exptime=opt.exptime)
 
-    def adjust_for_previous(self, tile, band, fid):
+    def adjust_for_previous(self, tile, band, fid, debug=False):
         '''
         Adjust the exposure time we should take for this image based
         on data we've already taken.
@@ -244,20 +244,21 @@ class Decbot(NewFileWatcher):
         others.depth = others.get('%s_depth' % band)
 
         target = fid.single_exposure_depth
-        print('Adjusting exposure for tile', tile.tileid, 'pass', tile.get('pass'))
+        if debug:
+            print('Adjusting exposure for tile', tile.tileid, 'pass',
+                  tile.get('pass'))
         I = np.flatnonzero((others.depth > 1) * (others.depth < 30))
         if len(I) == 0:
-            print('No other passes have measured depths')
+            if debug:
+                print('No other passes have measured depths')
             return 1.0
-        print('Other tile passes:', others.get('pass')[I])
-        print('Other tile depths:', others.get('%s_depth' % band)[I])
-        print('Target depth:', target)
+        if debug:
+            print('Other tile passes:', others.get('pass')[I])
+            print('Other tile depths:', others.get('%s_depth' % band)[I])
+            print('Target depth:', target)
 
         thisfactor = 1.0
 
-        # DEBUG
-        #prevs = []
-        
         threshold = 0.25
         shortfall = target - others.depth
         # depth > 1: depth value 0 means no obs; depth = 1 means
@@ -267,19 +268,21 @@ class Decbot(NewFileWatcher):
                            (shortfall > 0) * (shortfall < threshold))
         if len(I) > 0:
             others.cut(I)
-            print('Other tiles with acceptable shortfalls:', shortfall[I])
+            if debug:
+                print('Other tiles with acceptable shortfalls:', shortfall[I])
             # exposure time factors required
             factors = (10.**(-shortfall[I] / 2.5))**2
-            print('Exposure time factors:', factors)
+            if debug:
+                print('Exposure time factors:', factors)
             extra = np.sum(1 - factors)
-            print('Total extra fraction required:', extra)
+            if debug:
+                print('Total extra fraction required:', extra)
             # Split this extra required exposure time between the remaining
             # passes...
             nremain = max(1, 3 - len(I))
-            print('Extra time to be taken in this image:', extra / nremain)
+            if debug:
+                print('Extra time to be taken in this image:', extra / nremain)
             thisfactor += extra / nremain
-            # DEBUG
-            #prevs.extend(others.depth)
         else:
             print('All other tiles reached depth or need to be retaken.')
             
@@ -288,23 +291,13 @@ class Decbot(NewFileWatcher):
             # If this tile has had previous exposure(s), subtract that.
             shortfall = target - depth
             factor = (10.**(-shortfall / 2.5))**2
-            print('This tile had previous depth:', depth)
-            print('Fraction of nominal exposure time:', factor)
+            if debug:
+                print('This tile had previous depth:', depth)
+                print('Fraction of nominal exposure time:', factor)
             thisfactor -= factor
 
-            # DEBUG
-            #prevs.append(depth)
-            
-        print('Final exposure time factor:', thisfactor)
-        #print('Previous depths:', prevs)
-        # thisdepth = target + 2.5*np.log10(np.sqrt(thisfactor))
-        # print('Depth expected from this image:', thisdepth)
-        # prevs.append(thisdepth)
-        # prevs = np.array(prevs)
-        # tdepth = 2.5*np.log10(np.sqrt(np.sum((10.**(prevs / 2.5))**2)))
-        # print('Total expected depth:', tdepth)
-        # print('vs targets', target, target+2.5*np.log10(np.sqrt(2.)),
-        #       target+2.5*np.log10(np.sqrt(3.)))
+        if debug:
+            print('Final exposure time factor:', thisfactor)
 
         return thisfactor
 
@@ -532,7 +525,8 @@ class Decbot(NewFileWatcher):
                                         airmass, ebv, seeing, nextsky, trans)
 
             if self.adjust_previous:
-                adjfactor = self.adjust_for_previous(tile, nextband, fid)
+                adjfactor = self.adjust_for_previous(tile, nextband, fid,
+                                                     debug=(ii < 3))
                 expfactor *= adjfactor
 
             #print('Tile', tilename)
