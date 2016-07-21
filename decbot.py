@@ -245,19 +245,24 @@ class Decbot(NewFileWatcher):
 
         target = fid.single_exposure_depth
         print('Adjusting exposure for tile', tile.tileid, 'pass', tile.get('pass'))
-        print('Other tile passes:', others.get('pass'))
-        print('Other tile depths:', others.get('%s_depth' % band))
+        I = np.flatnonzero((others.depth > 1) * (others.depth < 30))
+        if len(I) == 0:
+            print('No other passes have measured depths')
+            return 1.0
+        print('Other tile passes:', others.get('pass')[I])
+        print('Other tile depths:', others.get('%s_depth' % band)[I])
         print('Target depth:', target)
 
         thisfactor = 1.0
 
         # DEBUG
-        prevs = []
+        #prevs = []
         
         threshold = 0.25
         shortfall = target - others.depth
         # depth > 1: depth value 0 means no obs; depth = 1 means
-        # non-photometric observation was taken.
+        # non-photometric observation was taken.  Depth=30 means data
+        # was taken but we don't know how deep it is yet.
         I = np.flatnonzero((others.depth > 1) *
                            (shortfall > 0) * (shortfall < threshold))
         if len(I) > 0:
@@ -268,10 +273,15 @@ class Decbot(NewFileWatcher):
             print('Exposure time factors:', factors)
             extra = np.sum(1 - factors)
             print('Total extra fraction required:', extra)
-            thisfactor += extra
-
+            # Split this extra required exposure time between the remaining
+            # passes...
+            nremain = max(1, 3 - len(I))
+            print('Extra time to be taken in this image:', extra / nremain)
+            thisfactor += extra / nremain
             # DEBUG
-            prevs.extend(others.depth)
+            #prevs.extend(others.depth)
+        else:
+            print('All other tiles reached depth or need to be retaken.')
             
         depth = tile.get('%s_depth' % band)
         if depth > 1:
@@ -283,19 +293,18 @@ class Decbot(NewFileWatcher):
             thisfactor -= factor
 
             # DEBUG
-            prevs.append(depth)
+            #prevs.append(depth)
             
         print('Final exposure time factor:', thisfactor)
-
-        print('Previous depths:', prevs)
-        thisdepth = target + 2.5*np.log10(np.sqrt(thisfactor))
-        print('Depth expected from this image:', thisdepth)
-        prevs.append(thisdepth)
-        prevs = np.array(prevs)
-        tdepth = 2.5*np.log10(np.sqrt(np.sum((10.**(prevs / 2.5))**2)))
-        print('Total expected depth:', tdepth)
-        print('vs targets', target, target+2.5*np.log10(np.sqrt(2.)),
-              target+2.5*np.log10(np.sqrt(3.)))
+        #print('Previous depths:', prevs)
+        # thisdepth = target + 2.5*np.log10(np.sqrt(thisfactor))
+        # print('Depth expected from this image:', thisdepth)
+        # prevs.append(thisdepth)
+        # prevs = np.array(prevs)
+        # tdepth = 2.5*np.log10(np.sqrt(np.sum((10.**(prevs / 2.5))**2)))
+        # print('Total expected depth:', tdepth)
+        # print('vs targets', target, target+2.5*np.log10(np.sqrt(2.)),
+        #       target+2.5*np.log10(np.sqrt(3.)))
 
         return thisfactor
 
@@ -434,6 +443,8 @@ class Decbot(NewFileWatcher):
         from astrometry.util.multiproc import multiproc
         mp = multiproc(self.opt.threads)
         MM = mp.map(bounce_measure_raw, args)
+        mp.close()
+        del mp
 
         # Sanity checks
         keep = []
