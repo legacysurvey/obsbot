@@ -137,6 +137,14 @@ def main():
                            (O.dec > dlo) * (O.dec < dhi))
         print('Median E(B-V) in DECaLS area:', np.median(O.ebv_med[J]))
         print('Median extinction in DECaLS area, %s band:' % band, np.median(extinction[J]))
+
+
+        I = np.flatnonzero((O.get('%s_expnum' % band) > 0) * (O.get('%s_depth' % band) == 0))
+        print('Found', len(I), 'tiles with', band, 'EXPNUM but no DEPTH; setting to DEPTH=30')
+        O.get('%s_depth' % band)[I] = 30.
+
+        # print('Exposure numbers:', O.get('%s_expnum' % band)[I])
+        # print('Dates:', O.get('%s_date' % band)[I])
         
         plt.figure(figsize=(10,6))
         plt.subplots_adjust(left=0.1, right=0.9)
