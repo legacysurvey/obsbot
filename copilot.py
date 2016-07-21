@@ -295,7 +295,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         j = i
         while j < len(TJ) and TJ.passnumber[j] == p0:
             j += 1
-        print('Exposures from [%i,%i) have pass %i' % (i, j, p0))
+        # print('Exposures from [%i,%i) have pass %i' % (i, j, p0))
         tend = TJ[j-1]
         
         y = yl + 0.1 * (yh-yl)

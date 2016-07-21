@@ -261,8 +261,43 @@ def mjd_to_ephem_date(mjd):
     # MAGIC ephem.Date(datetime.datetime(1858, 11, 17, 0, 0, 0))
     return ephem.Date(mjd -15019.5)
 
-class NewFileWatcher(object):
-    def __init__(self, dir, backlog=True, only_process_newest=False):
+class Logger(object):
+    def __init__(self, verbose=False, timestamp=True):
+        self.verbose = verbose
+        self.timestamp = timestamp
+        self.last_printed = None
+
+    def log(self, *args, **kwargs):
+        '''
+        Keyword args:
+        uniq: if True, do not print a log message if it repeats the last printed
+        log message.
+        kwargs: passed to print().
+        '''
+        import StringIO
+        uniq = kwargs.pop('uniq', False)
+        f = StringIO.StringIO()
+        print(*args, file=f, **kwargs)
+        s = f.getvalue()
+        if uniq and s == self.last_printed:
+            return
+        self.last_printed = s
+        if self.timestamp:
+            import ephem
+            now = str(ephem.now())
+            print('%s: %s' % (now, s), end='')
+        else:
+            print(s, end='')
+
+    def debug(self, *args, **kwargs):
+        if self.verbose:
+            self.log(*args, **kwargs)
+            
+class NewFileWatcher(Logger):
+    def __init__(self, dir, backlog=True, only_process_newest=False,
+                 verbose=False, timestamp=True):
+        super(NewFileWatcher, self).__init__(verbose=verbose,
+                                             timestamp=timestamp)
         self.dir = dir
         self.only_process_newest = only_process_newest
 

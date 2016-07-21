@@ -63,12 +63,15 @@ def main(cmdlineargs=None, get_decbot=False):
                       help='Hostname of CommandServer for queue control')
     parser.add_option('--remote-port', default=None, type=int,
                       help='Port number of CommandServer for queue control')
+
+    parser.add_option('--verbose', default=False, action='store_true',
+                      help='Turn on (even more) verbose logging')
     
     if cmdlineargs is None:
         opt,args = parser.parse_args()
     else:
         opt,args = parser.parse_args(cmdlineargs)
-    
+
     if len(args) != 3:
         parser.print_help()
         sys.exit(-1)
@@ -145,8 +148,9 @@ class Decbot(NewFileWatcher):
     def __init__(self, J1, J2, J3, opt, nom, obs, tiles, rc,
                  nqueued=2,
                  copilot_db=None,):
-        super(Decbot, self).__init__(opt.rawdata, backlog=False,
-                                     only_process_newest=True)
+        super(Decbot, self).__init__(
+            opt.rawdata, backlog=False, only_process_newest=True,
+            verbose=opt.verbose)
         self.timeout = None
         self.nqueued = nqueued
         self.J1 = J1
@@ -176,7 +180,7 @@ class Decbot(NewFileWatcher):
             dd = unixtime_to_ephem_date(st.st_mtime)
             if dd > sunset:
                 fns.append(fn)
-        print('Checking %i of %i existing files with timestamps after sunset' %
+                print('Checking %i of %i existing files with timestamps after sunset' %
               (len(fns), len(self.oldfiles)))
 
         if copilot_db is not None:
@@ -500,7 +504,9 @@ class Decbot(NewFileWatcher):
                 t_sat = self.nom.saturation_time(nextband, nextsky)
                 if exptime > t_sat:
                     exptime = t_sat
-                    print('Reduced exposure time to avoid z-band saturation: %.1f' % exptime)
+                    # Don't print this a gajillion times
+                    self.log('Reduced exposure time to avoid z-band ' +
+                             'saturation: %.1f' % exptime, uniq=True)
             exptime = int(exptime)
     
             #print('Changing exptime from', jplan['expTime'], 'to', exptime)
@@ -538,12 +544,12 @@ class Decbot(NewFileWatcher):
             tilename = str(jplan['object'])
             nextseq = self.seqnum + iahead
 
-            print('Considering planning tile %s for exp %i' %
-                  (tilename, nextseq))
+            self.debug('Considering planning tile %s for exp %i' %
+                       (tilename, nextseq))
 
             if tilename in self.observed_tiles:
                 oldfn = self.observed_tiles[tilename]
-                print('Tile %s was observed in file %s' % (tilename, oldfn))
+                self.debug('Tile %s was observed in file %s' % (tilename,oldfn))
                 continue
             
             # Check all planned tiles before this one for a duplicate tile.
@@ -552,9 +558,9 @@ class Decbot(NewFileWatcher):
                 t = self.planned_tiles[s]
                 if t['object'] == tilename:
                     dup = True
-                    print('Wanted to plan tile %s for exp %i '
-                          % (tilename, nextseq),
-                          'but it was already planned for exp %i' % s)
+                    self.debug('Wanted to plan tile %s for exp %i '
+                               % (tilename, nextseq),
+                               'but it was already planned for exp %i' % s)
                     break
             if dup:
                 continue
@@ -564,8 +570,7 @@ class Decbot(NewFileWatcher):
             if exptime is not None:
                 jplan['expTime'] = exptime
 
-            print('%s: updating exposure %i to tile %s' %
-                  (str(ephem.now()), nextseq, tilename))
+            self.log('updating exposure %i to tile %s' % (nextseq, tilename))
             self.planned_tiles[nextseq] = jplan
             self.upcoming.append(jplan)
             self.obs.date += (jplan['expTime'] + self.nom.overhead) / 86400.
@@ -582,7 +587,7 @@ class Decbot(NewFileWatcher):
         f.write(jstr + '\n')
         f.close()
         os.rename(tmpfn, fn)
-        print('Wrote', fn)
+        self.debug('Wrote', fn)
 
         fn = 'decbot-plan-5.json'
         tmpfn = fn + '.tmp'
@@ -592,7 +597,7 @@ class Decbot(NewFileWatcher):
         f.write(jstr + '\n')
         f.close()
         os.rename(tmpfn, fn)
-        print('Wrote', fn)
+        self.debug('Wrote', fn)
 
         # Write a FITS table of the exposures we think we've queued,
         # the ones we have planned, and the future tiles in passes 1,2,3.
@@ -622,7 +627,7 @@ class Decbot(NewFileWatcher):
         tmpfn = fn + '.tmp'
         T.writeto(tmpfn)
         os.rename(tmpfn, fn)
-        print('Wrote', fn)
+        self.debug('Wrote', fn)
     
 
 if __name__ == '__main__':
