@@ -851,8 +851,22 @@ class DECamMeasurer(RawMeasurer):
 
     def get_wcs(self, hdr):
         from astrometry.util.util import wcs_pv2sip_hdr
+        from astrometry.util.starutil_numpy import hmsstring2ra, dmsstring2dec
+        # In DECam images, the CRVAL values are set to TELRA and
+        # TELDEC, but for computing the RA,Dec offsets, we want to use
+        # RA and DEC (commanded position, not what the telescope
+        # pointing model says).
         # HACK -- convert TPV WCS header to SIP.
+        oldcrval1 = hdr['CRVAL1']
+        oldcrval2 = hdr['CRVAL2']
+        hdr['CRVAL1'] = hmsstring2ra (self.primhdr['RA' ])
+        hdr['CRVAL2'] = dmsstring2dec(self.primhdr['DEC'])
+        print(('Updated WCS CRVAL from TELRA,TELDEC = (%.4f,%.4f) to ' +
+              'RA,Dec = (%.4f,%.4f)') %
+              (oldcrval1, oldcrval2, hdr['CRVAL1'], hdr['CRVAL2']))
         wcs = wcs_pv2sip_hdr(hdr)
+        hdr['CRVAL1'] = oldcrval1
+        hdr['CRVAL2'] = oldcrval2
         #print('Converted WCS to', wcs)
         return wcs
 

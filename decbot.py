@@ -390,7 +390,7 @@ class Decbot(NewFileWatcher):
         expnum = phdr.get('EXPNUM', 0)
     
         obstype = phdr.get('OBSTYPE','').strip()
-        print('Obstype:', obstype)
+        #print('Obstype:', obstype)
         if obstype in ['zero', 'focus', 'dome flat']:
             print('Skipping obstype =', obstype)
             return False
@@ -412,12 +412,12 @@ class Decbot(NewFileWatcher):
             return False
 
         obj = phdr.get('OBJECT', '')
-        print('Object:', obj)
+        print('Object:', obj, 'exptime', exptime, 'filter', filt)
         
         # Measure the new image
         kwa = {}
         if ext is not None:
-            kwa.update(ext=ext)
+            kwa.update(ext=ext, verbose=self.verbose)
         ps = None
         M = measure_raw(fn, ps=ps, **kwa)
     
