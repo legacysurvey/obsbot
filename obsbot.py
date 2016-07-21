@@ -419,6 +419,9 @@ class NewFileWatcher(Logger):
             self.try_open_file(fn)
         except:
             self.log('Failed to open %s: maybe not fully written yet.' % fn)
+            if self.verbose:
+                import traceback
+                traceback.print_exc()
             self.failCounter.update([fn])
             return False
 

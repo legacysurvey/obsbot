@@ -762,6 +762,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
 
     # Measure the new image
     kwa = {}
+    kwa.update(verbose=opt.verbose)
     if ext is not None:
         kwa.update(ext=ext)
     if opt.n_fwhm is not None:
@@ -822,71 +823,10 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
 
         print('Actual exposure time taken:   %6.1f' % exptime)
         print('Depth (exposure time) factor: %6.3f' % (exptime / t_exptime))
-        
-        # If you were going to re-plan, you would run with these args:
-        plandict = dict(seeing=M['seeing'], transparency=trans)
-        # Assume the sky is as much brighter than canonical in each band... unlikely
-        dsky = M['skybright'] - nom.sky(M['band'])
-        for b in 'grz':
-            plandict['sb'+b] = nom.sky(b) + dsky
-        # Note that nightlystrategy.py takes UTC dates.
-        start = datenow()
-        # Start the strategy 5 minutes from now.
-        start += datetime.timedelta(0, 5*60)
-        d = start.date()
-        plandict['startdate'] = '%04i-%02i-%02i' % (d.year, d.month, d.day)
-        t = start.time()
-        plandict['starttime'] = t.strftime('%H:%M:%S')
-        # Make an hour-long plan
-        end = start + datetime.timedelta(0, 3600)
-        d = end.date()
-        plandict['enddate'] = '%04i-%02i-%02i' % (d.year, d.month, d.day)
-        t = end.time()
-        plandict['endtime'] = t.strftime('%H:%M:%S')
-    
-        # Set "--date" to be the UTC date at previous sunset.
-        # (nightlystrategy will ask for the next setting of the sun below
-        # -18-degrees from that date to define the sn_18).  We could
-        # probably also get away with subtracting, like, 12 hours from
-        # now()...
-        sun = ephem.Sun()
-        obs.date = datenow()
-        # not the proper horizon, but this doesn't matter -- just need it to
-        # be before -18-degree twilight.
-        obs.horizon = 0.
-        sunset = obs.previous_setting(sun)
-        # pyephem's Date.tuple() splits a date into y,m,d,h,m,s
-        d = sunset.tuple()
-        #print('Date at sunset, UTC:', d)
-        year,month,day = d[:3]
-        plandict['date'] = '%04i-%02i-%02i' % (year, month, day)
-    
-        # Decide the pass.
-        goodseeing = plandict['seeing'] < 1.3
-        photometric = plandict['transparency'] > 0.9
-    
-        if goodseeing and photometric:
-            passnum = 1
-        elif goodseeing or photometric:
-            passnum = 2
-        else:
-            passnum = 3
-        plandict['pass'] = passnum
-    
-        ## ??
-        plandict['portion'] = 1.0
-        
-        print('Replan command:')
-        print()
-        print('python2.7 nightlystrategy.py --seeg %(seeing).3f --seer %(seeing).3f --seez %(seeing).3f --sbg %(sbg).3f --sbr %(sbr).3f --sbz %(sbz).3f --transparency %(transparency).3f --start-date %(startdate)s --start-time %(starttime)s --end-date %(enddate)s --end-time %(endtime)s --date %(date)s --portion %(portion)f --pass %(pass)i' % plandict) 
-        print()
-    else:
-        plandict = None
-        expfactor = 0.
 
-    rtn = (M, plandict, expnum)
+    M.update(expnum=expnum)
     if not db:
-        return rtn
+        return M
 
     m.racenter  = M['ra_ccd']
     m.deccenter = M['dec_ccd']
@@ -923,7 +863,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
 
     m.save()
 
-    return rtn
+    return M
 
 def bounce_process_image(X):
     try:
@@ -1167,6 +1107,9 @@ def main(cmdlineargs=None, get_copilot=False):
     parser.add_option('--no-show', dest='show', default=True, action='store_false',
                       help='Do not show plot window, just save it.')
 
+    parser.add_option('--verbose', default=False, action='store_true',
+                      help='Turn on (even more) verbose logging')
+
     if cmdlineargs is None:
         opt,args = parser.parse_args()
     else:
@@ -1350,11 +1293,10 @@ class Copilot(NewFileWatcher):
         self.plot_recent()
 
     def process_file(self, path):
-        R = process_image(path, self.rawext, self.nom, self.sfd,
+        M = process_image(path, self.rawext, self.nom, self.sfd,
                           self.opt, self.obs, self.tiles)
-        if R is None:
+        if M is None:
             return
-        (M,p,enum) = R
         exptime = M['exptime']
         self.exptimes.append(exptime)
         # Update the length of time we think we should wait for new exposures
