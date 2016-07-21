@@ -36,7 +36,7 @@ def main(cmdlineargs=None, get_decbot=False):
                               tile_path)
     
     parser.add_option('--rawdata', help='Directory to monitor for new images: default $DECAM_DATA if set, else "rawdata"', default=None)
-    parser.add_option('--ext', help='Extension to read for computing observing conditions, default %default', default=default_extension)
+    parser.add_option('--ext', help='Extension to read for computing observing conditions, default %default.  Can give comma-separated list.', default=default_extension)
     parser.add_option('--tiles', default=tile_path,
                       help='Observation status file, default %default')
 
@@ -64,6 +64,9 @@ def main(cmdlineargs=None, get_decbot=False):
     parser.add_option('--remote-port', default=None, type=int,
                       help='Port number of CommandServer for queue control')
 
+    parser.add_option('--threads', type=int, default=1,
+                      help='Run multi-threaded when processing multiple extensions?')
+    
     parser.add_option('--verbose', default=False, action='store_true',
                       help='Turn on (even more) verbose logging')
     
@@ -383,7 +386,7 @@ class Decbot(NewFileWatcher):
 
     def process_file(self, fn):
         ext = self.opt.ext
-        print('%s: found new image %s' % (str(ephem.now()), fn))
+        #print('%s: found new image %s' % (str(ephem.now()), fn))
 
         # Read primary FITS header
         phdr = fitsio.read_header(fn)
@@ -415,18 +418,46 @@ class Decbot(NewFileWatcher):
         print('Object:', obj, 'exptime', exptime, 'filter', filt)
         
         # Measure the new image
-        kwa = {}
+        kwa = dict(verbose=self.verbose, ps=None)
+
+        # multiple extensions?
+        args = []
         if ext is not None:
-            kwa.update(ext=ext, verbose=self.verbose)
-        ps = None
-        M = measure_raw(fn, ps=ps, **kwa)
-    
+            exts = ext.split(',')
+            for ext in exts:
+                thiskwa = kwa.copy()
+                thiskwa.update(ext=ext)
+                args.append((fn, thiskwa))
+        else:
+            args.append((fn, kwa))
+
+        from astrometry.util.multiproc import multiproc
+        mp = multiproc(self.opt.threads)
+        MM = mp.map(bounce_measure_raw, args)
+
         # Sanity checks
-        ok = (M['nmatched'] >= 20) and (M.get('zp',None) is not None)
-        if not ok:
+        keep = []
+        for M in MM:
+            ok = (M['nmatched'] >= 20) and (M.get('zp',None) is not None)
+            if ok:
+                keep.append(M)
+        if len(keep) == 0:
             print('Failed sanity checks in our measurement of', fn, '-- not updating anything')
             # FIXME -- we could fall back to pass 3 here.
             return False
+        MM = keep
+        
+        if len(MM) == 1:
+            M = MM[0]
+        else:
+            # Average the measurements -- but start by copying one of
+            # the measurements.
+            M = MM[0].copy()
+            # FIXME -- means?  Recompute some quantities based on
+            # averages of others?  "zp" and "transparency" are
+            # probably inconsistent here, eg.
+            for key in ['skybright', 'transparency', 'seeing']: # 'rawsky', 'zp',
+                M[key] = np.mean([mi[key] for mi in MM])
         
         # Choose the pass
         trans  = M['transparency']
@@ -636,7 +667,16 @@ class Decbot(NewFileWatcher):
         T.writeto(tmpfn)
         os.rename(tmpfn, fn)
         self.debug('Wrote', fn)
-    
+
+def bounce_measure_raw(args):
+    (fn, kwargs) = args
+    try:
+        return measure_raw(fn, **kwargs)
+    except:
+        print('Failed to measure image:', fn, kwargs)
+        import traceback
+        traceback.print_exc()
+    return None
 
 if __name__ == '__main__':
     main()
