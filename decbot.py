@@ -571,7 +571,11 @@ class Decbot(NewFileWatcher):
             if exptime is not None:
                 jplan['expTime'] = exptime
 
-            self.log('updating exposure %i to tile %s' % (nextseq, tilename))
+            s = 'updating exposure %i to tile %s' % (nextseq, tilename)
+            if iahead <= 3:
+                self.log(s)
+            else:
+                self.debug(s)
             self.planned_tiles[nextseq] = jplan
             self.upcoming.append(jplan)
             self.obs.date += (jplan['expTime'] + self.nom.overhead) / 86400.
