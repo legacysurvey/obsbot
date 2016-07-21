@@ -38,7 +38,7 @@ class RemoteClient():
         return self.execute('clear_queue')
 
     def addexposure(self, exptime=10., exptype='object', filter='r',
-                    object=None, ra=0., dec=0.):
+                    object=None, ra=0., dec=0., verbose=False):
         import json
         if exptype == 'object':
             if object is None:
@@ -62,7 +62,8 @@ class RemoteClient():
             paramstr = json.dumps(dict(expType=exptype, object=object))
             #paramstr = 'exptype=%s' % exptype
 
-        print("Calling addexposure, parameter='%s'" % paramstr)
+        if verbose:
+            print("Calling addexposure, parameter='%s'" % paramstr)
             
         return self.execute('addexposure', parameter=paramstr)
 
