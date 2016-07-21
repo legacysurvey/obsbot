@@ -227,6 +227,17 @@ class Decbot(NewFileWatcher):
         J = self.tiles_after_now(J)
         self.plan_tiles(J, Nahead=len(J), exptime=opt.exptime)
 
+    def try_open_file(self, path):
+        ext = self.opt.ext
+        # multiple extensions?
+        exts = []
+        if ext is not None:
+            exts = ext.split(',')
+        F = fitsio.FITS(path)
+        for ext in exts:
+            info = F[ext].get_info()
+            print('Checking file', path, ': ext', ext, ':', info)
+
     def adjust_for_previous(self, tile, band, fid, debug=False):
         '''
         Adjust the exposure time we should take for this image based
