@@ -622,7 +622,8 @@ class Decbot(NewFileWatcher):
             if exptime is not None:
                 jplan['expTime'] = exptime
 
-            s = 'updating exposure %i to tile %s' % (nextseq, tilename)
+            s = ('Set exposure %i: tile %s, band %s, RA,Dec (%.3f,%.3f)' %
+                 (nextseq, tilename, jplan['filter'], jplan['RA'],jplan['dec']))
             if iahead <= 3:
                 self.log(s)
             else:
