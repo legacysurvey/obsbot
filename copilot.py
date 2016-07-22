@@ -971,12 +971,15 @@ def radec_plot(botplanfn, mm, tiles):
                      s=20)
     lp.append(pr)
     lt.append('Recent')
-        
+
+    rd = []
+    
     P.color = np.array([ccmap.get(f[:1],'k') for f in P.filter])
     I = np.flatnonzero(P.type == '1')
     I = I[:10]
     p1 = plt.scatter(P.ra[I], P.dec[I], c=P.color[I], marker='^', alpha=0.5,
                      s=60)
+    rd.append((P.ra[I], P.dec[I]))
     plt.plot(P.ra[I], P.dec[I], 'k-', alpha=0.1)
     lp.append(p1)
     lt.append('Upcoming P1')
@@ -985,6 +988,7 @@ def radec_plot(botplanfn, mm, tiles):
     I = I[:10]
     p2 = plt.scatter(P.ra[I], P.dec[I], c=P.color[I], marker='s', alpha=0.5,
                      s=60)
+    rd.append((P.ra[I], P.dec[I]))
     plt.plot(P.ra[I], P.dec[I], 'k-', alpha=0.1)
     lp.append(p2)
     lt.append('Upcoming P2')
@@ -993,17 +997,20 @@ def radec_plot(botplanfn, mm, tiles):
     I = I[:10]
     p3 = plt.scatter(P.ra[I], P.dec[I], c=P.color[I], marker='p', alpha=0.5,
                      s=60)
+    rd.append((P.ra[I], P.dec[I]))
     plt.plot(P.ra[I], P.dec[I], 'k-', alpha=0.1)
     lp.append(p3)
     lt.append('Upcoming P3')
 
     pl = plt.plot(mlast.rabore, mlast.decbore, 'o',
                   color=ccmap.get(mlast.band,'k'), ms=10)
+    rd.append(([mlast.rabore], [mlast.decbore]))
     lp.append(pl[0])
     lt.append('Last exposure')
 
     I = np.flatnonzero(P.type == 'P')
     plt.plot(P.ra[I], P.dec[I], 'k-', lw=3, alpha=0.5)
+    rd.append((P.ra[I], P.dec[I]))
     pplan = plt.scatter(P.ra[I], P.dec[I], c=P.color[I], marker='*',
                         s=100)
     lp.append(pplan)
@@ -1014,11 +1021,20 @@ def radec_plot(botplanfn, mm, tiles):
     #plt.axis([360,0,-20,90])
 
     plt.figlegend(lp, lt, 'upper right')
+
+    rr = np.hstack([r for r,d in rd])
+    dd = np.hstack([d for r,d in rd])
     
-    ralo = min(P.ra.min(), min([m.rabore for m in mrecent]))
-    rahi = max(P.ra.max(), max([m.rabore for m in mrecent]))
-    declo = min(P.dec.min(), min([m.decbore for m in mrecent]))
-    dechi = max(P.dec.max(), max([m.decbore for m in mrecent]))
+    # ralo = min(P.ra.min(), min([m.rabore for m in mrecent]))
+    # rahi = max(P.ra.max(), max([m.rabore for m in mrecent]))
+    # declo = min(P.dec.min(), min([m.decbore for m in mrecent]))
+    # dechi = max(P.dec.max(), max([m.decbore for m in mrecent]))
+
+    ralo  = rr.min()
+    rahi  = rr.max()
+    declo = dd.min()
+    dechi = dd.max()
+
     dr = rahi - ralo
     dd = dechi - declo
     
@@ -1147,7 +1163,7 @@ def main(cmdlineargs=None, get_copilot=False):
     import obsdb
 
     import pylab as plt
-    plt.figure(num=2, figsize=(8,10))
+    plt.figure(num=2, figsize=(10,6))
     plt.figure(num=1, figsize=(8,10))
 
     if opt.datestart is not None:
