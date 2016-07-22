@@ -295,7 +295,8 @@ class Decbot(NewFileWatcher):
                 print('Extra time to be taken in this image:', extra / nremain)
             thisfactor += extra / nremain
         else:
-            print('All other tiles reached depth or need to be retaken.')
+            if debug:
+                print('All other tiles reached depth or need to be retaken.')
             
         depth = tile.get('%s_depth' % band)
         if depth > 1:
