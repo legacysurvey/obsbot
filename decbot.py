@@ -236,7 +236,7 @@ class Decbot(NewFileWatcher):
         F = fitsio.FITS(path)
         for ext in exts:
             info = F[ext].get_info()
-            print('Checking file', path, ': ext', ext, ':', info)
+            self.debug('Checking file', path, ': ext', ext, ':', info)
 
     def adjust_for_previous(self, tile, band, fid, debug=False):
         '''

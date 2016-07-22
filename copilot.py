@@ -342,8 +342,9 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     else:
         plt.text(latest.mjd_obs, yl+0.03*(yh-yl),
                  '%.2f' % latest.transparency, ha='center', bbox=bbox)
-
     plt.ylim(yl, yh)
+
+    # Exposure time plot
     plt.subplot(SP,1,4)
     mx = 300
     for band,Tb in zip(bands, TT):
@@ -359,13 +360,6 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         Tb.clipped_exptime = clipped
         #Tb.depth_factor = Tb.exptime / clipped
         Tb.depth_factor = Tb.exptime / exptime
-        I = np.flatnonzero(exptime > clipped)
-        if len(I):
-            plt.plot(Tb.mjd_obs[I], exptime[I], 'v', **limitstyle(band))
-
-        I = np.flatnonzero(exptime > mx)
-        if len(I):
-            plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
 
         I = np.flatnonzero((exptime < clipped) * (exptime > 0))
         if len(I):
@@ -379,6 +373,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
 
             if not nightly:
                 yl,yh = plt.ylim()
+                yh = min(yh, mx)
                 for i in I:
                     plt.text(Tb.mjd_obs[i], Tb.exptime[i] + 0.04*(yh-yl),
                              '%.2f' % (Tb.depth_factor[i]),
@@ -388,12 +383,24 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
                 plt.ylim(yl,yh)
             
     yl,yh = plt.ylim()
+    mx = yh
+
     for band,Tb in zip(bands, TT):
         dt = dict(g=-0.5,r=+0.5,z=0)[band]
 
         fid = nom.fiducial_exptime(band)
         basetime = fid.exptime
         lo,hi = fid.exptime_min, fid.exptime_max
+        
+        exptime = basetime * Tb.expfactor
+        clipped = np.clip(exptime, lo, hi)
+        I = np.flatnonzero(exptime > clipped)
+        if len(I):
+            plt.plot(Tb.mjd_obs[I], exptime[I], 'v', **limitstyle(band))
+
+        I = np.flatnonzero(exptime > mx)
+        if len(I):
+            plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
 
         plt.axhline(basetime+dt, color=ccmap[band], alpha=0.2)
         plt.axhline(lo+dt, color=ccmap[band], ls='--', alpha=0.5)
@@ -404,7 +411,12 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
                 plt.plot(Tb.mjd_obs[I], t_sat[I], color=ccmap[band],
                          ls='-', alpha=0.5)
 
-    plt.ylim(yl,min(mx, yh))
+    if not nightly:
+        plt.text(latest.mjd_obs, yl+0.03*(yh-yl),
+                 '%i s' % int(latest.exptime), ha='center', bbox=bbox)
+                
+    #plt.ylim(yl,min(mx, yh))
+    plt.ylim(yl,yh)
     plt.ylabel('Exposure time (s)')
 
     plt.subplot(SP,1,5)
@@ -490,7 +502,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         if Tx.expnum[i] == 0:
             continue
         plt.text(Tx.mjd_obs[i], txty, '%i ' % Tx.expnum[i],
-                 rotation=90, va='center', ha='center',
+                 rotation=90, va='center', ha='center', fontsize=10,
                  bbox=dict(facecolor='white', alpha=0.8, edgecolor='none'))
         if len(Tx) <= 50:
             # Mark focus frames too
