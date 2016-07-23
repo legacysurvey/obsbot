@@ -114,10 +114,10 @@ if __name__ == '__main__':
 
     tiles = None
     if opt.obstatus is not None:
-        from table import table
+        from astrometry.util.fits import fits_table
         import pyfits
         
-        tiles = table(pyfits.getdata(opt.obstatus, 1))
+        tiles = fits_table(pyfits.getdata(opt.obstatus, 1))
         print('Read', len(tiles), 'tiles')
         tiles = tiles[(tiles.in_des == 0) * np.logical_or(
             (tiles.in_sdss == 1),
