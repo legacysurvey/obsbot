@@ -32,9 +32,9 @@ def choose_pass(trans, seeing, skybright, nomsky,
     pass1ok = transok and seeingok and brightok
     pass2ok = (transok and seeingfair) or (seeingok and transfair)
     
-    print('Transparency: %s       (%6.2f vs %6.2f = fair, %6.2f = good)' %
+    print('Transparency: %s       (%6.2f vs %6.2f = good, %6.2f = fair)' %
           (trans_txt, trans, transcut, transcut2))
-    print('Seeing      : %s       (%6.2f vs %6.2f = fair, %6.2f = good)' %
+    print('Seeing      : %s       (%6.2f vs %6.2f = good, %6.2f = fair)' %
           (seeing_txt, seeing, seeingcut, seeingcut2))
     print('Brightness  : %s       (%6.2f vs %6.2f = pass)' %
           (('pass' if brightok else 'fail'), skybright, nomsky+brightcut))
