@@ -530,9 +530,9 @@ class Decbot(NewFileWatcher):
             else:
                 band = M['band']
                 nextsky = None
-                if (self.copilot_db is not None) and
+                if ((self.copilot_db is not None) and
                     ((band == 'g' and nextband == 'r') or
-                     (band == 'r' and nextband == 'g')):
+                     (band == 'r' and nextband == 'g'))):
                     # Within the last 30 minutes, find pairs of g,r
                     # exposures within 5 minutes of each other, and
                     # take their mean mag difference (each vs
