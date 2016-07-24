@@ -721,7 +721,13 @@ class RawMeasurer(object):
             #print('fitting source at', ix,iy)
             #print('number of active pixels:', np.sum(ie > 0), 'shape', ie.shape)
 
+            # plt.clf()
+            # plt.imshow(pix, interpolation='nearest', origin='lower',
+            #            vmin=-2.*sig1, vmax=5.*sig1)
+            # plt.savefig('star-%03i.png' % i)
+
             psf = tractor.NCircularGaussianPSF([4.], [1.])
+            psf.radius = psf_r
             tim = tractor.Image(data=pix, inverr=ie, psf=psf)
             src = tractor.PointSource(tractor.PixPos(xi-xlo, yi-ylo),
                                       tractor.Flux(fluxi))
@@ -757,9 +763,9 @@ class RawMeasurer(object):
     
             for step in range(50):
                 dlnp,x,alpha = tr.optimize(**optargs)
-                #print('dlnp', dlnp)
-                #print('src', src)
-                #print('psf', psf)
+                # print('dlnp', dlnp)
+                # print('src', src)
+                # print('psf', psf)
                 if dlnp == 0:
                     break
     
