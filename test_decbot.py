@@ -118,7 +118,7 @@ class TestDecbot(unittest.TestCase):
         fn = os.path.join(self.testdatadir, 'decam-00488199-n4.fits.fz')
         decbot.process_file(fn)
 
-        self.assertEqual(decbot.seqnum, 2)
+        self.assertEqual(len(decbot.queued_tiles), 2)
         self.assertEqual(self.server.nqueued(), 2)
 
     def test_nqueue(self):
@@ -134,13 +134,13 @@ class TestDecbot(unittest.TestCase):
 
         decbot.queue_initial_exposures()
         
-        self.assertEqual(decbot.seqnum, 2)
+        self.assertEqual(len(decbot.queued_tiles), 2)
         self.assertEqual(self.server.nqueued(), 2)
         
         # Should do nothing
         decbot.heartbeat()
 
-        self.assertEqual(decbot.seqnum, 2)
+        self.assertEqual(len(decbot.queued_tiles), 2)
         self.assertEqual(self.server.nqueued(), 2)
 
         self.server.queue.pop()
@@ -149,7 +149,7 @@ class TestDecbot(unittest.TestCase):
         # NOW it should queue exposure.
         decbot.heartbeat()
 
-        self.assertEqual(decbot.seqnum, 3)
+        self.assertEqual(len(decbot.queued_tiles), 3)
         self.assertEqual(self.server.nqueued(), 2)
 
 if __name__ == '__main__':
