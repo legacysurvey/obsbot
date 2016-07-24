@@ -54,6 +54,47 @@ def db_to_fits(mm):
             T.set(field, np.array([getattr(m, field) for m in mm]))
     return T
 
+def recent_gr_sky_color(recent=30., pairs=5.):
+    '''
+    *recent*: how far back from now to look, in minutes
+    *pairs*: compare pairs of g,r exposures within this many minutes of each other.
+    '''
+    import obsdb
+    ccds = obsdb.MeasuredCCD.objects.filter(
+        mjd_obs__gte=mjdnow() - recent/(60*24),
+        band__in=['g','r'])
+    print('Found', len(ccds), 'exposures in copilot db, within', recent,
+          'minutes in g,r bands')
+    ccds = db_to_fits(ccds)
+    # Compute mean sky per exposure.
+    expnums,I = np.unique(ccds.expnum, return_index=True)
+    print(len(expnums), 'unique expnums')
+    exps = ccds[I]
+    for i,expnum in enumerate(expnums):
+        I = np.flatnonzero(ccds.expnum == expnum)
+        exps.sky[i] = np.mean(ccds.sky[I])
+    gexps = exps[np.flatnonzero(exps.band == 'g')]
+    rexps = exps[np.flatnonzero(exps.band == 'r')]
+    print(len(gexps), 'g-band exposures')
+    print(len(rexps), 'r-band exposures')
+
+    # Find pairs of g,r exposures within 5 minutes of each other?
+    # Or just difference in medians?
+    diffs = []
+    for gexp in gexps:
+        I = np.flatnonzero(np.abs(gexp.mjd_obs - rexps.mjd_obs) < pairs/(60*24))
+        print('g', gexp.expnum, 'has', len(I), 'r-band exposures w/in',
+              pairs, 'minutes')
+        if len(I):
+            diffs.append(gexp.sky - rexps.sky[I])
+    if len(diffs) == 0:
+        return (None, 0, len(gexps), len(rexp))
+    diffs = np.hstack(diffs)
+    print('All differences:', diffs)
+    diff = np.median(diffs)
+    print('Median g-r diff:', diff)
+    return (diff, len(diffs), len(gexps), len(rexps))
+
 class Duck(object):
     pass
 

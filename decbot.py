@@ -528,9 +528,33 @@ class Decbot(NewFileWatcher):
             if M['band'] == nextband:
                 nextsky = skybright
             else:
-                # Guess that the sky is as much brighter than canonical
-                # in the next band as it is in this one!
-                nextsky = ((skybright - nomsky) + self.nom.sky(nextband))
+                band = M['band']
+                nextsky = None
+                if (self.copilot_db is not None) and
+                    ((band == 'g' and nextband == 'r') or
+                     (band == 'r' and nextband == 'g')):
+                    # Within the last 30 minutes, find pairs of g,r
+                    # exposures within 5 minutes of each other, and
+                    # take their mean mag difference (each vs
+                    # canonical).  Require minimum number of pairs?
+                    from copilot import recent_gr_sky_color
+
+                    gr, ndiff, ng, nr = recent_gr_sky_color()
+                    if gr is not None:
+                        print('g-r color:', gr)
+                        print('g nominal:', self.nom.sky('g'))
+                        print('r nominal:', self.nom.sky('r'))
+                        print('measured sky in', band, '=', skybright)
+                        if nextband == 'r':
+                            nextsky = skybright - gr
+                        else:
+                            nextsky = skybright + gr
+                        print('predicted sky in', nextband, '=', nextsky)
+
+                if nextsky is None:
+                    # Guess that the sky is as much brighter than canonical
+                    # in the next band as it is in this one!
+                    nextsky = ((skybright - nomsky) + self.nom.sky(nextband))
 
             fid = self.nom.fiducial_exptime(nextband)
             expfactor = exposure_factor(fid, self.nom,
@@ -622,8 +646,10 @@ class Decbot(NewFileWatcher):
             if exptime is not None:
                 jplan['expTime'] = exptime
 
-            s = ('Set exposure %i: tile %s, band %s, RA,Dec (%.3f,%.3f)' %
-                 (nextseq, tilename, jplan['filter'], jplan['RA'],jplan['dec']))
+            s = (('Exp %i: tile %s (pass %i), band %s, RA,Dec (%.3f,%.3f), ' +
+                  'exptime %i') %
+                  (nextseq, tilename, jplan['planpass'], jplan['filter'],
+                   jplan['RA'], jplan['dec'], jplan['expTime']))
             if iahead <= 3:
                 self.log(s)
             else:
