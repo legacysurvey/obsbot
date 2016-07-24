@@ -1,8 +1,16 @@
 '''
-        # - queue new exposure from planned_tiles when we think the
-        #   current exposure is nearly done; update seqnum
-        # - update planned_tiles as new images come in
-        #   - write out a JSON plan with the upcoming tiles, as a backup.
+This program automates our DECam observing for DECaLS.
+
+It takes a set of three observing plans, one for each "pass" --
+good/fair/poor conditions on different tilings.  As new images appear
+on disk, it performs a quick-reduction to estimate the conditions and
+uses that to update the exposure time of subsequent observations so
+that we hit our depth goals.
+
+We have API access to the DECam observing queue, so the bot tries to
+keep some number (1 or 2) of exposures in the queue at all times.  It
+polls the queue, and when there is room, it submits the next planned
+exposure.
 '''
 
 from __future__ import print_function
@@ -148,6 +156,33 @@ def main(cmdlineargs=None, get_decbot=False):
 
 
 class Decbot(NewFileWatcher):
+    '''
+    How the control flow works and when stuff happens:
+
+    Startup:
+    - Decbot.queue_initial_exposures() -> Decbot.heartbeat()
+    - Obsbot.run():
+        while True:
+            sleep(5)
+            Obsbot.run_one()
+                - look for a new file, try to open it
+                - Decbot.process_file()
+                    - measure image
+                    - choose next pass
+                    - select tiles after now
+                    - update exposure times in selected pass
+                    - Decbot.plan_tiles()
+                        - drop any tiles already observed or planned
+                        - set planned_tiles
+                        - Decbot.write_plans()
+            Decbot.heartbeat()
+                - poll queue.  If full, return
+                - Decbot.queue_exposure()
+                    - reads planned_tiles, seqnum++
+                - Decbot.write_plans()
+            
+    '''
+
     def __init__(self, J1, J2, J3, opt, nom, obs, tiles, rc,
                  nqueued=2,
                  copilot_db=None,):
