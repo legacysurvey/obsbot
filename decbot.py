@@ -418,7 +418,7 @@ class Decbot(NewFileWatcher):
         return (e is not None)
 
     def forced_pass_changed(self):
-        p = get_forced_pass()
+        p,fn = get_forced_pass()
         if p == self.forced_pass:
             return False
         self.forced_pass = p
