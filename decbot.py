@@ -186,6 +186,25 @@ class Decbot(NewFileWatcher):
         - for chose pass: update exposure times
         - Decbot.write_plans()
 
+
+    Data model:
+
+    - J1, J2, J3 are the plans for passes 1,2,3 (the name "J" comes
+      from the JSON files these are read from).  We drop exposures
+      from these lists using the keep_good_tiles() function.
+      Exposures (aka tiles in the code) can be dropped if they were
+      planned for before now, or if we have already queued that tile
+      in this run of decbot.py, or if we have seen that object name in
+      a file on disk, or if it has appeared previously in this pass's
+      plan.
+
+    - nextpass -- is which pass we currently think we should be
+      running.  Therefore the next exposure to be queued will be
+      ([J1,J2,J3][nextpass-1])[0]
+
+    - latest_measurement -- our most recent measurement of the
+      conditions.  Updated when we see a new file on disk.
+
     '''
 
     def __init__(self, J1, J2, J3, opt, nom, obs, tiles, rc,
@@ -202,7 +221,9 @@ class Decbot(NewFileWatcher):
         self.opt = opt
         self.nom = nom
         self.obs = obs
+        # tiles = the decam-tiles_obstatus.fits table
         self.tiles = tiles
+        # rc = API access to the queue -- SISPI RemoteClient
         self.rc = rc
         self.copilot_db = copilot_db
         self.queued_tiles = []
@@ -603,12 +624,15 @@ class Decbot(NewFileWatcher):
             for ii,jplan in enumerate(J):
                 jplan['expTime'] = exptime
 
+        self.obs.date = ephem.now()
         for ii,jplan in enumerate(J):
             s = (('Plan tile %s (pass %i), band %s, RA,Dec (%.3f,%.3f), ' +
-                  'exptime %i') %
+                  'exptime %i.') %
                   (jplan['object'], jplan['planpass'], jplan['filter'],
                    jplan['RA'], jplan['dec'], jplan['expTime']))
             if ii <= 3:
+                airmass = self.airmass_for_tile(jplan)
+                s += '  Airmass if observed now: %.2f' % airmass
                 self.log(s)
             else:
                 self.debug(s)
