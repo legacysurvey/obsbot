@@ -212,7 +212,7 @@ class Decbot(NewFileWatcher):
                  copilot_db=None,):
         super(Decbot, self).__init__(
             opt.rawdata, backlog=False, only_process_newest=True,
-            verbose=opt.verbose)
+            ignore_missing_dir=True, verbose=opt.verbose)
         self.timeout = None
         self.nqueued = nqueued
         self.J1 = J1

@@ -301,11 +301,13 @@ class Logger(object):
             
 class NewFileWatcher(Logger):
     def __init__(self, dir, backlog=True, only_process_newest=False,
+                 ignore_missing_dir=False,
                  verbose=False, timestamp=True):
         super(NewFileWatcher, self).__init__(verbose=verbose,
                                              timestamp=timestamp)
         self.dir = dir
         self.only_process_newest = only_process_newest
+        self.ignore_missing_dir = ignore_missing_dir
 
         # How many times to re-try processing a new file
         self.maxFail = 10
@@ -350,6 +352,10 @@ class NewFileWatcher(Logger):
         pass
 
     def get_file_list(self):
+        if self.ignore_missing_dir and not os.path.exists(self.dir):
+            self.log('Directory', self.dir, 'does not exist -- waiting for it',
+                     uniq=True)
+            return []
         files = set(os.listdir(self.dir))
         return [os.path.join(self.dir, fn) for fn in files]
             
