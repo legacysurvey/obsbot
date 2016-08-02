@@ -65,6 +65,8 @@ def recent_gr_sky_color(recent=30., pairs=5.):
         band__in=['g','r'])
     print('Found', len(ccds), 'exposures in copilot db, within', recent,
           'minutes in g,r bands')
+    if len(ccds) == 0:
+        return None
     ccds = db_to_fits(ccds)
     # Compute mean sky per exposure.
     expnums,I = np.unique(ccds.expnum, return_index=True)
