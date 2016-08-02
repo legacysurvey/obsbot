@@ -686,6 +686,7 @@ class Decbot(NewFileWatcher):
             if sky is None:
                 # Guess that the sky is as much brighter than canonical
                 # in the next band as it is in this one!
+                nomsky = self.nom.sky(mband)
                 sky = ((msky - nomsky) + self.nom.sky(band))
 
         fid = self.nom.fiducial_exptime(band)
