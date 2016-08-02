@@ -40,16 +40,12 @@ def choose_pass(trans, seeing, skybright, nomsky,
           (('pass' if brightok else 'fail'), skybright, nomsky+brightcut))
     print('Pass 1 = transparency AND seeing AND brightness: %s' % pass1ok)
     print('Pass 2 = (transparency good and seeing fair) OR (seeing good and transparency fair): %s' % pass2ok)
-    
-    for p in [1,2,3]:
-        if forcedir is None:
-            break
-        path = os.path.join(forcedir, 'forcepass%i' % p)
-        print('Checking for file "%s"' % path)
-        if os.path.exists(path):
-            print('Forcing pass %i because file exists: %s' % (p, path))
-            return p
 
+    p,fn = get_forced_pass(forcedir)
+    if p is not None:
+        print('Forcing pass %i because file exists: %s' % (p, fn))
+        return p
+    
     path = os.path.join(forcedir, 'nopass1')
     if os.path.exists(path):
         print('File %s exists; not allowing pass 1' % path)
@@ -60,7 +56,17 @@ def choose_pass(trans, seeing, skybright, nomsky,
     if pass2ok:
         return 2
     return 3
+
+def get_forced_pass(forcedir=''):
+    for p in [1,2,3]:
+        path = os.path.join(forcedir, 'forcepass%i' % p)
+        #print('Checking for file "%s"' % path)
+        if os.path.exists(path):
+            #print('Forcing pass %i because file exists: %s' % (p, path))
+            return p, path
+    return None, None
     
+
 class NominalExptime(object):
     def update(self, **kwargs):
         for k,v in kwargs.items():

@@ -34,7 +34,7 @@ from measure_raw import measure_raw
 from obsbot import (
     exposure_factor, get_tile_from_name, get_airmass,
     NewFileWatcher, datenow, unixtime_to_ephem_date,
-    ephem_date_to_mjd, choose_pass)
+    ephem_date_to_mjd, choose_pass, get_forced_pass)
 
 def main(cmdlineargs=None, get_decbot=False):
     import optparse
@@ -167,20 +167,44 @@ class Decbot(NewFileWatcher):
             Obsbot.run_one()
                 - look for a new file, try to open it
                 - Decbot.process_file()
-                    - measure image
-                    - choose next pass
-                    - select tiles after now
-                    - update exposure times in selected pass
-                    - Decbot.plan_tiles()
-                        - drop any tiles already observed or planned
-                        - set planned_tiles
-                        - Decbot.write_plans()
+                    - measure image, set self.latest_measurement
+                    - Decbot.update_plans()
             Decbot.heartbeat()
-                - poll queue.  If full, return
-                - Decbot.queue_exposure()
-                    - reads planned_tiles, seqnum++
-                - Decbot.write_plans()
-            
+                - if "forcepass" state has changed:
+                    - Decbot.update_plans()
+                - poll queue.  If not empty:
+                    - Decbot.queue_exposure()
+                        - save in queued_tiles
+                - else if time after time of first exposure in any pass:
+                    - Decbot.update_plans()
+
+    Decbot.update_plans():
+        - choose next pass
+        - for each pass:
+            - drop tiles before now
+            - drop any tiles already observed or planned
+        - for chose pass: update exposure times
+        - Decbot.write_plans()
+
+
+    Data model:
+
+    - J1, J2, J3 are the plans for passes 1,2,3 (the name "J" comes
+      from the JSON files these are read from).  We drop exposures
+      from these lists using the keep_good_tiles() function.
+      Exposures (aka tiles in the code) can be dropped if they were
+      planned for before now, or if we have already queued that tile
+      in this run of decbot.py, or if we have seen that object name in
+      a file on disk, or if it has appeared previously in this pass's
+      plan.
+
+    - nextpass -- is which pass we currently think we should be
+      running.  Therefore the next exposure to be queued will be
+      ([J1,J2,J3][nextpass-1])[0]
+
+    - latest_measurement -- our most recent measurement of the
+      conditions.  Updated when we see a new file on disk.
+
     '''
 
     def __init__(self, J1, J2, J3, opt, nom, obs, tiles, rc,
@@ -197,14 +221,17 @@ class Decbot(NewFileWatcher):
         self.opt = opt
         self.nom = nom
         self.obs = obs
+        # tiles = the decam-tiles_obstatus.fits table
         self.tiles = tiles
+        # rc = API access to the queue -- SISPI RemoteClient
         self.rc = rc
         self.copilot_db = copilot_db
-        self.seqnum = 0
-        self.planned_tiles = OrderedDict()
-        self.upcoming = []
+        self.queued_tiles = []
         self.adjust_previous = opt.adjust
-
+        self.forced_pass = None
+        self.nextpass = opt.passnum
+        self.latest_measurement = None
+        
         # Read existing files,recording their tile names as vetoes.
         self.observed_tiles = {}
 
@@ -257,10 +284,19 @@ class Decbot(NewFileWatcher):
         self.new_observed_tiles(fns)
 
         # Set up initial planned_tiles
-        J = [J1,J2,J3][opt.passnum - 1]
+        self.nextpass = opt.passnum
+        self.update_plans(exptime=opt.exptime)
 
-        J = self.tiles_after_now(J)
-        self.plan_tiles(J, Nahead=len(J), exptime=opt.exptime)
+    def choose_next_pass(self):
+        M = self.latest_measurement
+        if M is not None:
+            trans  = M['transparency']
+            seeing = M['seeing']
+            skybright = M['skybright']
+            # eg, nominal = 20, sky = 19, brighter is 1 mag brighter than nom.
+            nomsky = self.nom.sky(M['band'])
+            self.nextpass = choose_pass(trans, seeing, skybright, nomsky)
+        return self.nextpass
 
     def try_open_file(self, path):
         ext = self.opt.ext
@@ -388,45 +424,58 @@ class Decbot(NewFileWatcher):
                 import traceback
                 print('Failed to read header of file', fn)
                 traceback.print_exc()
-    
-    def heartbeat(self):
+
+    def queue_if_ready(self):
         if self.rc is None:
-            return
+            return False
         # Poll the queue to see if we can queue another one.
         nq = self.rc.get_n_queued()
-        now = datenow().replace(microsecond=0).isoformat()
         if nq >= self.nqueued:
             self.log('%i exposures in the queue, waiting until fewer than %i.'%
                      (nq, self.nqueued), uniq=True)
-            return
-        else:
-            print('%s: %i exposures in the queue, time to queue one.' % (now, nq))
-
+            return False
+        self.log('%i exposures in the queue, time to queue one.' % (nq))
         e = self.queue_exposure()
-        if e is None:
-            return
-        self.write_plans()
-        
-    def queue_exposure(self):
-        if not self.seqnum in self.planned_tiles:
-            print('No more tiles in the plan (seqnum = %i)!' % self.seqnum)
-            return None
+        return (e is not None)
 
-        j = self.planned_tiles[self.seqnum]
-        self.seqnum += 1
+    def forced_pass_changed(self):
+        p,fn = get_forced_pass()
+        if p == self.forced_pass:
+            return False
+        self.forced_pass = p
+        return True
+        
+    def heartbeat(self):
+        # Check for change of 'forcepass1' files state.
+        if self.forced_pass_changed():
+            print('Forcing pass', self.forced_pass)
+            self.update_plans()
+
+        if self.queue_if_ready():
+            return
+
+        # Is "now" after the first planned tile?  If so, replan!
+        J = self.get_upcoming()
+        if len(J):
+            jj = [J[0]]
+            jj = self.tiles_after_now(jj)
+            if len(jj) == 0:
+                self.update_plans()
+
+    def queue_exposure(self):
+        J = self.get_upcoming()
+        if len(J) == 0:
+            return None
+        j = J.pop(0)
 
         if self.rc is None:
             print('Not actually queuing exposure (--no-queue):', j)
         else:
             print('Queuing exposure:', j)
-            self.rc.addexposure(
-                filter=j['filter'],
-                ra=j['RA'],
-                dec=j['dec'],
-                object=j['object'],
-                exptime=j['expTime'],
-                verbose=self.verbose)
-        
+            self.rc.addexposure(filter=j['filter'], ra=j['RA'], dec=j['dec'],
+                                object=j['object'], exptime=j['expTime'],
+                                verbose=self.verbose)
+        self.queued_tiles.append(j)
         return j
     
     def filter_new_files(self, fns):
@@ -486,14 +535,15 @@ class Decbot(NewFileWatcher):
         mp.close()
         del mp
 
-        # Sanity checks
+        # Reasonableness checks
         keep = []
         for M in MM:
             ok = (M['nmatched'] >= 20) and (M.get('zp',None) is not None)
             if ok:
                 keep.append(M)
         if len(keep) == 0:
-            print('Failed sanity checks in our measurement of', fn, '-- not updating anything')
+            print('Failed checks in our measurement of', fn,
+                  '-- not updating anything')
             # FIXME -- we could fall back to pass 3 here.
             return False
         MM = keep
@@ -505,11 +555,13 @@ class Decbot(NewFileWatcher):
             # the measurements.
             M = MM[0].copy()
             # FIXME -- means?
-            for key,nice in [('skybright','Sky'), ('transparency','Transparency'), ('seeing','Seeing')]:
-                print('Measurements of %-12s:' % nice, ', '.join(['%6.3f' % mi[key] for mi in MM]))
+            for key,nice in [('skybright','Sky'),
+                             ('transparency','Transparency'),
+                             ('seeing','Seeing')]:
+                print('Measurements of %-12s:' % nice,
+                      ', '.join(['%6.3f' % mi[key] for mi in MM]))
                 M[key] = np.mean([mi[key] for mi in MM])
         
-        # Choose the pass
         trans  = M['transparency']
         seeing = M['seeing']
         skybright = M['skybright']
@@ -525,112 +577,145 @@ class Decbot(NewFileWatcher):
         print('Sky over nom: %6.02f   (positive means brighter than nom)' %
               brighter)
 
-        nextpass = choose_pass(trans, seeing, skybright, nomsky)
-    
-        # Choose the next tile from the right JSON tile list
-        J = [self.J1,self.J2,self.J3][nextpass-1]
+        if self.copilot_db is not None and (M['band'] in ['g','r']):
+            # Within the last 30 minutes, find pairs of g,r
+            # exposures within 5 minutes of each other, and
+            # take their mean mag difference (each vs
+            # canonical).  Require minimum number of pairs?
+            from copilot import recent_gr_sky_color
 
-        J = self.tiles_after_now(J)
+            gr, ndiff, ng, nr = recent_gr_sky_color()
+            if gr is not None:
+                M['grsky'] = gr
+        
+        self.latest_measurement = M
+        self.update_plans()
+
+    def get_upcoming(self):
+        return [self.J1,self.J2,self.J3][self.nextpass-1]
+
+    def update_plans(self, exptime=None):
+        self.choose_next_pass()
+
+        self.J1 = self.keep_good_tiles(self.J1)
+        self.J2 = self.keep_good_tiles(self.J2)
+        self.J3 = self.keep_good_tiles(self.J3)
+
+        # Choose the next tile from the right JSON tile list
+        J = self.get_upcoming()
+
         if len(J) == 0:
-            print('Could not find a JSON observation in pass', nextpass,
+            print('Could not find a JSON observation in pass', self.nextpass,
                   'with approx_datetime after now =', str(ephem.now()))
             return False
-        
-        # Update the exposure times in plan J based on measured conditions.
-        print('Updating exposure times for pass', nextpass)
-        # Keep track of expected time of observations
-        # FIXME -- should add margin for the images currently in the queue...
+
+        M = self.latest_measurement
+        if M is not None:
+            # Update the exposure times in plan J based on measured conditions.
+            print('Updating exposure times for pass', self.nextpass)
+            # Keep track of expected time of observations
+            # FIXME -- should add margin for the images currently in the queue...
+            self.obs.date = ephem.now()
+            for ii,jplan in enumerate(J):
+                exptime = self.exptime_for_tile(jplan, debug=(ii < 3))
+                jplan['expTime'] = exptime
+                self.obs.date += (exptime + self.nom.overhead) / 86400.
+        elif exptime is not None: 
+            for ii,jplan in enumerate(J):
+                jplan['expTime'] = exptime
+
         self.obs.date = ephem.now()
         for ii,jplan in enumerate(J):
-            tilename = str(jplan['object'])
-            # Find this tile in the tiles table.
-            tile = get_tile_from_name(tilename, self.tiles)
-            ebv = tile.ebv_med
-            nextband = str(jplan['filter'])[0]
-            #print('Selected tile:', tilename, nextband)
-            rastr  = ra2hms (jplan['RA' ])
-            decstr = dec2dms(jplan['dec'])
-            ephemstr = str('%s,f,%s,%s,20' % (tilename, rastr, decstr))
-            etile = ephem.readdb(ephemstr)
-            etile.compute(self.obs)
-            airmass = get_airmass(float(etile.alt))
-            #print('Airmass of planned tile:', airmass)
-            if ii < 5:
-                print('Tile %s at RA,Dec (%.3f,%.3f) will have airmass %.2f at'
-                      % (tilename, jplan['RA'], jplan['dec'], airmass),
-                      self.obs.date)
-            
-            if M['band'] == nextband:
-                nextsky = skybright
+            s = (('Plan tile %s (pass %i), band %s, RA,Dec (%.3f,%.3f), ' +
+                  'exptime %i.') %
+                  (jplan['object'], jplan['planpass'], jplan['filter'],
+                   jplan['RA'], jplan['dec'], jplan['expTime']))
+            if ii <= 3:
+                airmass = self.airmass_for_tile(jplan)
+                s += '  Airmass if observed now: %.2f' % airmass
+                self.log(s)
             else:
-                band = M['band']
-                nextsky = None
-                if ((self.copilot_db is not None) and
-                    ((band == 'g' and nextband == 'r') or
-                     (band == 'r' and nextband == 'g'))):
-                    # Within the last 30 minutes, find pairs of g,r
-                    # exposures within 5 minutes of each other, and
-                    # take their mean mag difference (each vs
-                    # canonical).  Require minimum number of pairs?
-                    from copilot import recent_gr_sky_color
-
-                    gr, ndiff, ng, nr = recent_gr_sky_color()
-                    if gr is not None:
-                        print('g-r color:', gr)
-                        print('g nominal:', self.nom.sky('g'))
-                        print('r nominal:', self.nom.sky('r'))
-                        print('measured sky in', band, '=', skybright)
-                        if nextband == 'r':
-                            nextsky = skybright - gr
-                        else:
-                            nextsky = skybright + gr
-                        print('predicted sky in', nextband, '=', nextsky)
-
-                if nextsky is None:
-                    # Guess that the sky is as much brighter than canonical
-                    # in the next band as it is in this one!
-                    nextsky = ((skybright - nomsky) + self.nom.sky(nextband))
-
-            fid = self.nom.fiducial_exptime(nextband)
-            expfactor = exposure_factor(fid, self.nom,
-                                        airmass, ebv, seeing, nextsky, trans)
-
-            if self.adjust_previous:
-                adjfactor = self.adjust_for_previous(tile, nextband, fid,
-                                                     debug=(ii < 3))
-                expfactor *= adjfactor
-
-            #print('Tile', tilename)
-            #print('Exposure factor:', expfactor)
-            exptime = expfactor * fid.exptime
-            #print('Exposure time:', exptime)
-    
-            ### HACK -- safety factor!
-            exptime *= 1.1
-            exptime = int(np.ceil(exptime))
-            #print('Exposure time with safety factor:', exptime)
-
-            exptime = np.clip(exptime, fid.exptime_min, fid.exptime_max)
-            #print('Clipped exptime', exptime)
-            if nextband == 'z':
-                # Compute cap on exposure time to avoid saturation /
-                # loss of dynamic range.
-                t_sat = self.nom.saturation_time(nextband, nextsky)
-                if exptime > t_sat:
-                    exptime = t_sat
-                    # Don't print this a gajillion times
-                    self.log('Reduced exposure time to avoid z-band ' +
-                             'saturation: %.1f s' % exptime, uniq=True)
-            exptime = int(exptime)
-    
-            #print('Changing exptime from', jplan['expTime'], 'to', exptime)
-            jplan['expTime'] = exptime
-
-            self.obs.date += (exptime + self.nom.overhead) / 86400.
+                self.debug(s)
+                
+        self.write_plans()
             
-        self.plan_tiles(J)
-        return True
+    def airmass_for_tile(self, jplan):
+        '''
+        Note, uses self.obs
+        '''
+        rastr  = ra2hms (jplan['RA' ])
+        decstr = dec2dms(jplan['dec'])
+        ephemstr = str('%s,f,%s,%s,20' % ('X', rastr, decstr))
+        etile = ephem.readdb(ephemstr)
+        etile.compute(self.obs)
+        airmass = get_airmass(float(etile.alt))
+        return airmass
+    
+    def exptime_for_tile(self, jplan, debug=False):
+        tilename = str(jplan['object'])
+        # Find this tile in the tiles table.
+        tile = get_tile_from_name(tilename, self.tiles)
+        ebv = tile.ebv_med
+        band = str(jplan['filter'])[0]
+        airmass = self.airmass_for_tile(jplan)
+        
+        M = self.latest_measurement
+        trans  = M['transparency']
+        seeing = M['seeing']
+        msky = M['skybright']
+        grsky = M.get('grsky', None)
+        mband = M['band']
 
+        if mband == band:
+            sky = msky
+        else:
+            sky = None
+            if ((grsky is not None) and
+                ((mband == 'g' and band == 'r') or
+                 (mband == 'r' and band == 'g'))):
+                print('g-r color:', gr)
+                # print('g nominal:', self.nom.sky('g'))
+                # print('r nominal:', self.nom.sky('r'))
+                print('measured sky in', mband, '=', msky)
+                if band == 'r':
+                    sky = msky - grsky
+                else:
+                    sky = msky + grsky
+                    print('predicted sky in', band, '=', sky)
+                
+            if sky is None:
+                # Guess that the sky is as much brighter than canonical
+                # in the next band as it is in this one!
+                sky = ((msky - nomsky) + self.nom.sky(band))
+
+        fid = self.nom.fiducial_exptime(band)
+        expfactor = exposure_factor(fid, self.nom,
+                                    airmass, ebv, seeing, sky, trans)
+
+        if self.adjust_previous:
+            adjfactor = self.adjust_for_previous(tile, band, fid,
+                                                 debug=debug)
+            expfactor *= adjfactor
+
+        exptime = expfactor * fid.exptime
+
+        ### HACK -- safety factor!
+        exptime *= 1.1
+
+        exptime = int(np.ceil(exptime))
+        exptime = np.clip(exptime, fid.exptime_min, fid.exptime_max)
+        if band == 'z':
+            # Compute cap on exposure time to avoid saturation /
+            # loss of dynamic range.
+            t_sat = self.nom.saturation_time(band, sky)
+            if exptime > t_sat:
+                exptime = t_sat
+                # Don't print this a gajillion times
+                self.log('Reduced exposure time to avoid z-band ' +
+                         'saturation: %.1f s' % exptime, uniq=True)
+        exptime = int(exptime)
+        return exptime
+            
     def tiles_after_now(self, J):
         now = ephem.now()
         keep = []
@@ -642,63 +727,12 @@ class Decbot(NewFileWatcher):
                 keep.append(j)
         return keep
     
-    def plan_tiles(self, J, Nahead=10, exptime=None):
-        '''
-        Nahead: int: How many exposures ahead should we plan?
-        '''
-
-        self.upcoming = []
-        iahead = 0
-        for ii,jplan in enumerate(J):
-            if iahead >= Nahead:
-                break
-            tilename = str(jplan['object'])
-            nextseq = self.seqnum + iahead
-
-            self.debug('Considering planning tile %s for exp %i' %
-                       (tilename, nextseq))
-
-            if tilename in self.observed_tiles:
-                oldfn = self.observed_tiles[tilename]
-                self.debug('Tile %s was observed in file %s' % (tilename,oldfn))
-                continue
-            
-            # Check all planned tiles before this one for a duplicate tile.
-            dup = False
-            for s in range(nextseq-1, 0, -1):
-                t = self.planned_tiles[s]
-                if t['object'] == tilename:
-                    dup = True
-                    self.debug('Wanted to plan tile %s for exp %i '
-                               % (tilename, nextseq),
-                               'but it was already planned for exp %i' % s)
-                    break
-            if dup:
-                continue
-    
-            iahead += 1
-
-            if exptime is not None:
-                jplan['expTime'] = exptime
-
-            s = (('Exp %i: tile %s (pass %i), band %s, RA,Dec (%.3f,%.3f), ' +
-                  'exptime %i') %
-                  (nextseq, tilename, jplan['planpass'], jplan['filter'],
-                   jplan['RA'], jplan['dec'], jplan['expTime']))
-            if iahead <= 3:
-                self.log(s)
-            else:
-                self.debug(s)
-            self.planned_tiles[nextseq] = jplan
-            self.upcoming.append(jplan)
-
-        self.write_plans()            
-
     def write_plans(self):
         # Write upcoming plan to a JSON file
         fn = 'decbot-plan.json'
         tmpfn = fn + '.tmp'
-        jstr = json.dumps(self.upcoming, sort_keys=True,
+        upcoming = self.get_upcoming()
+        jstr = json.dumps(upcoming, sort_keys=True,
                           indent=4, separators=(',', ': '))
         f = open(tmpfn, 'w')
         f.write(jstr + '\n')
@@ -708,7 +742,7 @@ class Decbot(NewFileWatcher):
 
         fn = 'decbot-plan-5.json'
         tmpfn = fn + '.tmp'
-        jstr = json.dumps(self.upcoming[:5], sort_keys=True,
+        jstr = json.dumps(upcoming[:5], sort_keys=True,
                           indent=4, separators=(',', ': '))
         f = open(tmpfn, 'w')
         f.write(jstr + '\n')
@@ -718,19 +752,13 @@ class Decbot(NewFileWatcher):
 
         # Write a FITS table of the exposures we think we've queued,
         # the ones we have planned, and the future tiles in passes 1,2,3.
-        P = ([(self.planned_tiles[s],'Q') for s in range(self.seqnum)] +
-             [(j,'P') for j in self.upcoming])
-             
-        # Skip ones scheduled for before now
-        now = ephem.now()
+        P = ([(j,'Q') for j in self.queued_tiles] +
+             [(j,'P') for j in upcoming])
+
         for i,J in enumerate([self.J1,self.J2,self.J3]):
             passnum = i+1
-            for j in J:
-                tstart = ephem.Date(str(j['approx_datetime']))
-                if tstart < now:
-                    continue
-                P.append((j,'%i' % passnum))
-
+            P.append((j,'%i' % passnum))
+             
         J = [j for j,t in P]
         T = fits_table()
         T.type = np.array([t for j,t in P])
@@ -745,6 +773,33 @@ class Decbot(NewFileWatcher):
         T.writeto(tmpfn)
         os.rename(tmpfn, fn)
         self.debug('Wrote', fn)
+
+    def keep_good_tiles(self, J):
+        keep = []
+        now = ephem.now()
+        for j in J:
+            tstart = ephem.Date(str(j['approx_datetime']))
+            if tstart < now:
+                continue
+            tilename = str(j['object'])
+            # Was this tile seen in a file on disk? (not incl. backlog)
+            if tilename in self.observed_tiles:
+                continue
+            if object_name_in_list(j, self.queued_tiles):
+                continue
+            # Our plan files should already have this property..!
+            if object_name_in_list(j, keep):
+                continue
+            keep.append(j)
+        return keep
+
+def object_name_in_list(j, Jlist):
+    tilename = str(j['object'])
+    for tile in Jlist:
+        if str(tile['object']) == tilename:
+            return True
+    return False
+        
 
 def bounce_measure_raw(args):
     (fn, kwargs) = args
