@@ -673,7 +673,7 @@ class Decbot(NewFileWatcher):
             if ((grsky is not None) and
                 ((mband == 'g' and band == 'r') or
                  (mband == 'r' and band == 'g'))):
-                print('g-r color:', gr)
+                print('g-r color:', grsky)
                 # print('g nominal:', self.nom.sky('g'))
                 # print('r nominal:', self.nom.sky('r'))
                 print('measured sky in', mband, '=', msky)
