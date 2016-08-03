@@ -1,6 +1,8 @@
+from __future__ import print_function
+
+import os
 from django.test import TestCase
 import obsdb
-
 import numpy as np
 
 from astrometry.util.fits import fits_table
@@ -31,7 +33,8 @@ class TestDecbot2(TestCase):
             
     def test_recent(self):
         from obsbot import mjdnow
-        from copilot import get_recent_ccds
+        from copilot import (get_recent_ccds, get_recent_exposures,
+                             recent_gr_seeing)
 
         import obsbot
 
@@ -49,5 +52,29 @@ class TestDecbot2(TestCase):
         ccds = get_recent_ccds(recent = 30.)
         self.assertEqual(len(ccds), 15)
 
+        exps = get_recent_exposures(recent = 30.)
+        self.assertEqual(len(exps), 15)
+        
+        exps = get_recent_exposures(recent = 30., bands=['g','r'])
+        self.assertEqual(len(exps), 15)
 
+        gexps = get_recent_exposures(recent = 30., bands=['g'])
+        self.assertEqual(len(gexps), 6)
+
+        rexps = get_recent_exposures(recent = 30., bands=['r'])
+        self.assertEqual(len(rexps), 9)
+
+        xexps = get_recent_exposures(recent = 30., bands=[])
+        self.assertEqual(xexps, None)
+        
+        gsee, rsee, G, R = recent_gr_seeing()
+        print('gsee', gsee)
+        print('rsee', rsee)
+        print('G', G)
+        print('R', R)
+
+        self.assertLess(np.abs(gsee - 1.360), 0.001)
+        self.assertLess(np.abs(rsee - 1.374), 0.001)
+        self.assertEqual(len(G), 5)
+        self.assertEqual(len(R), 5)
         

@@ -83,7 +83,7 @@ def recent_gr_seeing(recent=30., exps=None):
         see_ratio = 1.0
 
     recent_see   = exps.seeing[-5:]
-    recent_bands = exps.bands [-5:]
+    recent_bands = exps.band  [-5:]
 
     G = exps[-5:]
     g_see = recent_see.copy()
@@ -143,7 +143,7 @@ def get_recent_ccds(recent, bands=None):
     if bands is not None:
         ccds = ccds.filter(band__in=[b for b in bands])
     print('Found', len(ccds), 'exposures in copilot db, within', recent,
-          'minutes', ('' if bands is None else ('bands ' + bands)))
+          'minutes', ('' if bands is None else ('bands ' + str(bands))))
     if len(ccds) == 0:
         return None
     ccds = db_to_fits(ccds)
