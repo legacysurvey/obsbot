@@ -1,0 +1,43 @@
+# .coveragerc to control coverage.py
+# see https://coverage.readthedocs.org/en/coverage-4.0.3/config.html
+
+# coverage erase
+# coverage run <x.py>
+# coverage report
+# coverage html
+# open coverage_html_report/index.html
+
+[run]
+branch = True
+
+# concurrency = multiprocessing
+# data_file = .coverage
+# include = 
+# omit =
+
+# These module names must be listed one per line.
+source =
+    camera_decam
+    camera_mosaic
+    copilot
+    decam
+    decbot
+    measure_raw
+    mosaic
+    mosaic_focus
+    mosbot
+    obsbot
+
+#include = camera_decam.py camera_mosaic.py copilot.py decam.py decbot.py measure_raw.py mosaic.py mosaic_focus.py mosbot.py obsbot.py
+
+omit = /usr/local/pipped/lib/python/*
+
+[report]
+
+# exclude_lines =
+#    pragma: no cover
+#    def __repr__
+
+[html]
+directory = coverage_html_report
+

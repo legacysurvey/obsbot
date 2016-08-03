@@ -96,7 +96,7 @@ class NominalCalibration(object):
         # From email from Arjun, 2016-08-03 "Scaling for g-band exposure times"
         return dict(g = 0.422,
                     r = 0.345,
-                    z = 0.194)
+                    z = 0.194)[band]
     
     def fiducial_exptime(self, band):
         '''
