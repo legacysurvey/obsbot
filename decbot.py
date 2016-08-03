@@ -588,9 +588,9 @@ class Decbot(NewFileWatcher):
             if gr is not None:
                 M['grsky'] = gr
 
-            g,r = recent_gr_seeing(M['band'])
-            if g is not None:
-                M['grsee'] = (g,r)
+            gr = recent_gr_seeing(M['band'])
+            if gr is not None:
+                M['grsee'] = gr
         
         self.latest_measurement = M
         self.update_plans()
@@ -656,6 +656,9 @@ class Decbot(NewFileWatcher):
         return airmass
     
     def exptime_for_tile(self, jplan, debug=False):
+        '''
+        Note, uses self.obs(.date) to compute airmass.
+        '''
         tilename = str(jplan['object'])
         # Find this tile in the tiles table.
         tile = get_tile_from_name(tilename, self.tiles)
@@ -670,7 +673,9 @@ class Decbot(NewFileWatcher):
         grsky = M.get('grsky', None)
         grsee = M.get('grsee', None)
         mband = M['band']
-
+        mairmass = M['airmass']
+        assert(mairmass >= 1.0 and mairmass < 4.0)
+        
         if mband == band:
             sky = msky
         else:
@@ -695,15 +700,26 @@ class Decbot(NewFileWatcher):
                 sky = ((msky - nomsky) + self.nom.sky(band))
 
         if (grsee is not None) and (band in 'gr'):
-            g_see,r_see = grsee
+            g_see,r_see,G,R = grsee
             oldsee = seeing
+            oldair = mairmass
             if band == 'r':
                 seeing = r_see
+                mairmass = np.median(R.airmass)
             else:
                 seeing = g_see
+                mairmass = np.median(G.airmass)
             print('Using g,r seeing estimate', seeing, 'rather than most',
                   'recent measurement', oldsee)
+            print('Updating airmass from', oldair, 'to', mairmass, 'used for',
+                  'seeing estimate')
 
+        seeing_wrt_airmass = self.nom.seeing_wrt_airmass(band)
+        oldsee = seeing
+        seeing += (airmass - mairmass) * seeing_wrt_airmass
+        print('Updated seeing prediction from', oldsee, 'to', seeing, 'for',
+              'airmass %.2f to %.2f' % (mairmass, airmass))
+        
         fid = self.nom.fiducial_exptime(band)
         expfactor = exposure_factor(fid, self.nom,
                                     airmass, ebv, seeing, sky, trans)

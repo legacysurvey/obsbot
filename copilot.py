@@ -54,16 +54,18 @@ def db_to_fits(mm):
             T.set(field, np.array([getattr(m, field) for m in mm]))
     return T
 
-def recent_gr_seeing(recent=30.):
+def recent_gr_seeing(recent=30., exps=None):
     '''
     *recent*: how far back from now to look, in minutes
 
     Returns:
-    (gsee, rsee) -- seeing estimates for g,r bands.
+    None if no recent exposures are found.
+    (gsee, rsee, G, R) -- seeing estimates for g,r bands; exposures used for g,r estimates.  These may include exposures from the other band!
     '''
-    exps = get_recent_exposures(recent, bands='gr')
     if exps is None:
-        return None,None
+        exps = get_recent_exposures(recent, bands='gr')
+    if exps is None:
+        return None
 
     r_exps = exps[np.flatnonzero(exps.band == 'r')]
     g_exps = exps[np.flatnonzero(exps.band == 'g')]
@@ -83,20 +85,26 @@ def recent_gr_seeing(recent=30.):
     recent_see   = exps.seeing[-5:]
     recent_bands = exps.bands [-5:]
 
+    G = exps[-5:]
     g_see = recent_see.copy()
     g_see[recent_bands == 'r'] /= see_ratio
     g = np.median(g_see)
     if g_avg is not None:
-        g = max(g, g_avg)
+        # g = max(g, g_avg)
+        if g_avg > g:
+            g = g_avg
+            G = g_exps
 
+    R = exps[-5:]
     r_see = recent_see.copy()
     r_see[recent_bands == 'g'] *= see_ratio
     r = np.median(r_see)
     if r_avg is not None:
-        r = max(r, r_avg)
+        if r_avg > r:
+            r = r_avg
+            R = r_exps
 
-    return g,r
-
+    return g,r,G,R
 
 def recent_gr_sky_color(recent=30., pairs=5.):
     '''

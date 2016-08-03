@@ -91,6 +91,12 @@ class NominalCalibration(object):
 
     def cdmatrix(self, ext):
         pass
+
+    def seeing_wrt_airmass(self, band):
+        # From email from Arjun, 2016-08-03 "Scaling for g-band exposure times"
+        return dict(g = 0.422,
+                    r = 0.345,
+                    z = 0.194)
     
     def fiducial_exptime(self, band):
         '''
