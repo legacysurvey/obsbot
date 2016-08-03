@@ -194,6 +194,11 @@ class RawMeasurer(object):
         exptime = primhdr['EXPTIME']
         airmass = primhdr['AIRMASS']
         printmsg('Band', band, 'Exptime', exptime, 'Airmass', airmass)
+        # airmass can be 'NaN'
+        airmass = float(airmass)
+        if not np.isfinite(airmass):
+            printmsg('Bad airmass:', airmass, '-- setting to 1.0')
+            airmass = 1.0
 
         try:
             zp0 = self.nom.zeropoint(band, ext=self.ext)
@@ -581,7 +586,7 @@ class RawMeasurer(object):
 
         meas.update(dx=sx, dy=sy, nmatched=nmatched)
 
-        if focus:
+        if focus or zp0 is None:
             meas.update(img=img, hdr=hdr, primhdr=primhdr,
                         fx=fx, fy=fy, px=px-trim_x0-sx, py=py-trim_y0-sy,
                         sig1=sig1, stars=stars,
@@ -589,7 +594,7 @@ class RawMeasurer(object):
                         wmoments=(wmx2,wmy2,wmxy,wtheta,wa,wb,well),
                         apflux=apflux, apflux2=apflux2)
             return meas
-            
+
         #print('Mean astrometric shift (arcsec): delta-ra=', -np.mean(dy)*0.263, 'delta-dec=', np.mean(dx)*0.263)
             
         # Compute photometric offset compared to PS1

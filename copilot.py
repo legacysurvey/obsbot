@@ -836,7 +836,10 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         if not opt.keep_plots:
             [os.remove(png) for png in pnglist]
 
-    if not np.isfinite(M['skybright']):
+    skybright = M['skybright']
+    if skybright is None:
+        skybright = 0.
+    if not np.isfinite(skybright):
         print('Negative sky measured:', M['rawsky'], '.  Bad pixcnt:',
               m.bad_pixcnt)
         m.save()
@@ -860,7 +863,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         fid = nom.fiducial_exptime(band)
 
         expfactor = exposure_factor(fid, nom,
-                                    airmass, ebv, M['seeing'], M['skybright'],
+                                    airmass, ebv, M['seeing'], skybright,
                                     trans)
         print('Exposure factor:              %6.3f' % expfactor)
         t_exptime = expfactor * fid.exptime
@@ -869,7 +872,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         print('Clipped exposure time:        %6.1f' % t_exptime)
 
         if band == 'z':
-            t_sat = nom.saturation_time(band, M['skybright'])
+            t_sat = nom.saturation_time(band, skybright)
             if t_exptime > t_sat:
                 t_exptime = t_sat
                 print('Reduced exposure time to avoid z-band saturation: %.1f' % t_exptime)
@@ -878,6 +881,8 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
 
         print('Actual exposure time taken:   %6.1f' % exptime)
         print('Depth (exposure time) factor: %6.3f' % (exptime / t_exptime))
+    else:
+        expfactor = 0.
 
     M.update(expnum=expnum)
     if not db:
@@ -892,7 +897,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
     m.zeropoint = zp
     m.transparency = trans
     m.seeing = M.get('seeing', 0.)
-    m.sky = M['skybright']
+    m.sky = skybright
     m.expfactor = expfactor
     m.dx = M.get('dx', 0)
     m.dy = M.get('dy', 0)
