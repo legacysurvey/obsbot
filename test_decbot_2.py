@@ -87,6 +87,7 @@ class TestDecbot2(TestCase):
         import obsdb
         import camera_decam as camera
         import obsbot
+        from obsbot import mjdnow
         
         # Fake the current time...
         obsbot.mjdnow_offset = 0
@@ -100,16 +101,25 @@ class TestDecbot2(TestCase):
         J3 = json.loads(open(os.path.join(self.data_dir, '2016-08-02-p3.json'))
                         .read())
         opt = Duck()
+        opt.rawdata = 'rawdata'
+        opt.verbose = False
+        opt.adjust = False
+        opt.passnum = 2
+        opt.exptime = 100
+        
         nom = camera.nominal_cal
-        obs = camera.ephem_observer
+        obs = camera.ephem_observer()
         # ???
         tiles = fits_table(camera.tile_path)
         rc = None
-        copilot_db = obsdb.MeasureCCD.objects
+        copilot_db = obsdb.MeasuredCCD.objects
         decbot = Decbot(J1, J2, J3, opt, nom, obs, tiles, rc,
                         copilot_db=copilot_db)
 
-        M = dict()
+        T = fits_table(os.path.join(self.data_dir, 'obs-test.fits'))
+        t = T[np.argmax(T.mjd_obs)]
+
+        M = dict(band=t.band.strip())
         #decbot.
         decbot.recent_gr(M)
 

@@ -596,7 +596,7 @@ class Decbot(NewFileWatcher):
         if gr is not None:
             M['grsky'] = gr
 
-        gr = recent_gr_seeing(M['band'])
+        gr = recent_gr_seeing()
         if gr is not None:
             M['grsee'] = gr
         
