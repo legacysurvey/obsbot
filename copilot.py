@@ -414,17 +414,6 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         if len(I):
             plt.plot(Tb.mjd_obs[I], Tb.exptime[I], 'o', color=ccmap[band])
 
-            if not nightly:
-                yl,yh = plt.ylim()
-                yh = min(yh, mx)
-                for i in I:
-                    plt.text(Tb.mjd_obs[i], Tb.exptime[i] + 0.04*(yh-yl),
-                             '%.2f' % (Tb.depth_factor[i]),
-                             rotation=90, ha='center', va='bottom')
-                    # '%.0f %%' % (100. * Tb.depth_factor[i]),
-                yh = max(yh, max(Tb.exptime[I] + 0.3*(yh-yl)))
-                plt.ylim(yl,yh)
-            
     yl,yh = plt.ylim()
     mx = yh
 
@@ -454,6 +443,15 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
                 plt.plot(Tb.mjd_obs[I], t_sat[I], color=ccmap[band],
                          ls='-', alpha=0.5)
 
+        if not nightly:
+            I = np.flatnonzero(Tb.exptime > 0)
+            if len(I):
+                for i in I:
+                    plt.text(Tb.mjd_obs[i], Tb.exptime[i] + 0.04*(yh-yl),
+                             '%.2f' % (Tb.depth_factor[i]),
+                             rotation=90, ha='center', va='bottom')
+                yh = max(yh, max(Tb.exptime[I] + 0.3*(yh-yl)))
+                
     if not nightly:
         plt.text(latest.mjd_obs, yl+0.03*(yh-yl),
                  '%i s' % int(latest.exptime), ha='center', bbox=bbox)
