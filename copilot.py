@@ -54,27 +54,55 @@ def db_to_fits(mm):
             T.set(field, np.array([getattr(m, field) for m in mm]))
     return T
 
+def recent_gr_seeing(band, recent=30.):
+    '''
+    *recent*: how far back from now to look, in minutes
+    *band*: which band ("g" or "r") to compute the seeing estimate for.
+    '''
+    assert(band in 'gr')
+
+    exps = get_recent_exposures(recent, bands='gr')
+    if exps is None:
+        return None
+
+    if band == 'g':
+        myband = 'g'
+        otherband = 'r'
+    else:
+        myband = 'r'
+        otherband = 'g'
+    
+    my_exps = exps[np.flatnonzero(exps.band == myband)]
+    other_exps = exps[np.flatnonzero(exps.band == otherband)]
+
+    my_avg = other_avg = None
+    if len(my_exps) >= 5:
+        my_avg = np.median(my_exps.seeing)
+    if len(other_exps) >= 5:
+        other_avg = np.median(other_exps.seeing)
+
+    if my_avg is not None and other_avg is not None:
+        see_ratio = my_avg / other_avg
+    else:
+        see_ratio = 1.0
+
+    recent_see   = exps.seeing[-5:]
+    recent_bands = exps.bands [-5:]
+    recent_see[recent_bands == otherband] *= see_ratio
+
+    recent = np.median(recent_see)
+    if my_avg is not None:
+        recent = max(recent, my_avg)
+    return recent
+
 def recent_gr_sky_color(recent=30., pairs=5.):
     '''
     *recent*: how far back from now to look, in minutes
     *pairs*: compare pairs of g,r exposures within this many minutes of each other.
     '''
-    import obsdb
-    ccds = obsdb.MeasuredCCD.objects.filter(
-        mjd_obs__gte=mjdnow() - recent/(60*24),
-        band__in=['g','r'])
-    print('Found', len(ccds), 'exposures in copilot db, within', recent,
-          'minutes in g,r bands')
-    if len(ccds) == 0:
+    exps = get_recent_exposures(recent, bands='gr')
+    if exps is None:
         return None,0,0,0
-    ccds = db_to_fits(ccds)
-    # Compute mean sky per exposure.
-    expnums,I = np.unique(ccds.expnum, return_index=True)
-    print(len(expnums), 'unique expnums')
-    exps = ccds[I]
-    for i,expnum in enumerate(expnums):
-        I = np.flatnonzero(ccds.expnum == expnum)
-        exps.sky[i] = np.mean(ccds.sky[I])
     gexps = exps[np.flatnonzero(exps.band == 'g')]
     rexps = exps[np.flatnonzero(exps.band == 'r')]
     print(len(gexps), 'g-band exposures')
@@ -85,17 +113,53 @@ def recent_gr_sky_color(recent=30., pairs=5.):
     diffs = []
     for gexp in gexps:
         I = np.flatnonzero(np.abs(gexp.mjd_obs - rexps.mjd_obs) < pairs/(60*24))
-        print('g', gexp.expnum, 'has', len(I), 'r-band exposures w/in',
-              pairs, 'minutes')
+        #print('g', gexp.expnum, 'has', len(I), 'r-band exposures w/in',
+        #      pairs, 'minutes')
         if len(I):
             diffs.append(gexp.sky - rexps.sky[I])
     if len(diffs) == 0:
         return (None, 0, len(gexps), len(rexp))
     diffs = np.hstack(diffs)
-    print('All differences:', diffs)
+    #print('All differences:', diffs)
     diff = np.median(diffs)
-    print('Median g-r diff:', diff)
+    #print('Median g-r diff:', diff)
     return (diff, len(diffs), len(gexps), len(rexps))
+
+def get_recent_ccds(recent, bands=None):
+    import obsdb
+    ccds = obsdb.MeasuredCCD.objects.filter(
+        mjd_obs__gte=mjdnow() - recent/(60*24))
+    if bands is not None:
+        ccds = ccds.filter(band__in=[b for b in bands])
+    print('Found', len(ccds), 'exposures in copilot db, within', recent,
+          'minutes', ('' if bands is None else ('bands ' + bands)))
+    if len(ccds) == 0:
+        return None
+    ccds = db_to_fits(ccds)
+    return ccds
+
+def get_recent_exposures(recent, bands=None):
+    ccds = get_recent_ccds(recent, bands=bands)
+    if ccds is None:
+        return None
+    # Find unique exposure numbers
+    expnums,I = np.unique(ccds.expnum, return_index=True)
+    print(len(expnums), 'unique expnums')
+    # Copy the CCD measurements into the exposure measurements
+    exps = ccds[I]
+    # drop columns??
+    # exps.delete_column('extension')
+
+    # Average some measurements based on all extensions per exposure
+    for i,expnum in enumerate(expnums):
+        I = np.flatnonzero(ccds.expnum == expnum)
+        exps.sky[i] = np.mean(ccds.sky[I])
+        exps.seeing[i] = np.mean(ccds.seeing[I])
+    # Sort by date
+    exps.cut(np.argsort(exps.mjd_obs))
+    return exps
+
+    
 
 class Duck(object):
     pass
