@@ -7,13 +7,17 @@ import numpy as np
 
 from astrometry.util.fits import fits_table
 
+class Duck(object):
+    quack = True
+
 class TestDecbot2(TestCase):
 
     def setUp(self):
         # fitscopy obs.fits"[mjd_obs > 57603.0 && mjd_obs < 57603.1]" \
         #      obs-test.fits
-        T = fits_table(os.path.join(os.path.dirname(__file__),
-                                    'testdata', 'obs-test.fits'))
+        self.data_dir = os.path.join(os.path.dirname(__file__), 'testdata')
+
+        T = fits_table(os.path.join(self.data_dir, 'obs-test.fits'))
         for t in T:
             kwargs = {}
             for c in ['camera', 'filename', 'extension', 'obstype',
@@ -29,7 +33,6 @@ class TestDecbot2(TestCase):
                       ]:
                 kwargs[c] = t.get(c)
             obsdb.MeasuredCCD.objects.create(**kwargs)
-
             
     def test_recent(self):
         from obsbot import mjdnow
@@ -78,3 +81,36 @@ class TestDecbot2(TestCase):
         self.assertEqual(len(G), 5)
         self.assertEqual(len(R), 5)
         
+    def test_decbot_recent(self):
+        from decbot import Decbot
+        import json
+        import obsdb
+        import camera_decam as camera
+        import obsbot
+        
+        # Fake the current time...
+        obsbot.mjdnow_offset = 0
+        nownow = mjdnow()
+        obsbot.mjdnow_offset = 57603.1 - nownow
+        
+        J1 = json.loads(open(os.path.join(self.data_dir, '2016-08-02-p1.json'))
+                        .read())
+        J2 = json.loads(open(os.path.join(self.data_dir, '2016-08-02-p2.json'))
+                        .read())
+        J3 = json.loads(open(os.path.join(self.data_dir, '2016-08-02-p3.json'))
+                        .read())
+        opt = Duck()
+        nom = camera.nominal_cal
+        obs = camera.ephem_observer
+        # ???
+        tiles = fits_table(camera.tile_path)
+        rc = None
+        copilot_db = obsdb.MeasureCCD.objects
+        decbot = Decbot(J1, J2, J3, opt, nom, obs, tiles, rc,
+                        copilot_db=copilot_db)
+
+        M = dict()
+        #decbot.
+        decbot.recent_gr(M)
+
+        print('M', M)

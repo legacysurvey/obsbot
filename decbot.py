@@ -380,7 +380,8 @@ class Decbot(NewFileWatcher):
             thisfactor -= factor
 
         if debug:
-            print('Final exposure time factor:', thisfactor)
+            print('Exposure time factor based on previous exposures:',
+                  thisfactor)
 
         return thisfactor
 
@@ -578,23 +579,27 @@ class Decbot(NewFileWatcher):
               brighter)
 
         if self.copilot_db is not None and (M['band'] in ['g','r']):
-            # Within the last 30 minutes, find pairs of g,r
-            # exposures within 5 minutes of each other, and
-            # take their mean mag difference (each vs
-            # canonical).  Require minimum number of pairs?
-            from copilot import recent_gr_sky_color, recent_gr_seeing
-
-            gr, ndiff, ng, nr = recent_gr_sky_color()
-            if gr is not None:
-                M['grsky'] = gr
-
-            gr = recent_gr_seeing(M['band'])
-            if gr is not None:
-                M['grsee'] = gr
+            self.recent_gr(M)
         
         self.latest_measurement = M
         self.update_plans()
 
+    def recent_gr(self, M):
+        '''
+        Add to the given measurement dictionary *M* estimates of
+        g and r sky and seeing based on the recent past.
+        Updates *M* in-place.
+        '''
+        from copilot import recent_gr_sky_color, recent_gr_seeing
+
+        gr, ndiff, ng, nr = recent_gr_sky_color()
+        if gr is not None:
+            M['grsky'] = gr
+
+        gr = recent_gr_seeing(M['band'])
+        if gr is not None:
+            M['grsee'] = gr
+        
     def get_upcoming(self):
         return [self.J1,self.J2,self.J3][self.nextpass-1]
 

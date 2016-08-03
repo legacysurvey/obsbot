@@ -129,7 +129,7 @@ def recent_gr_sky_color(recent=30., pairs=5.):
         if len(I):
             diffs.append(gexp.sky - rexps.sky[I])
     if len(diffs) == 0:
-        return (None, 0, len(gexps), len(rexp))
+        return (None, 0, len(gexps), len(rexps))
     diffs = np.hstack(diffs)
     #print('All differences:', diffs)
     diff = np.median(diffs)
