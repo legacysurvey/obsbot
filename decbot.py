@@ -582,11 +582,15 @@ class Decbot(NewFileWatcher):
             # exposures within 5 minutes of each other, and
             # take their mean mag difference (each vs
             # canonical).  Require minimum number of pairs?
-            from copilot import recent_gr_sky_color
+            from copilot import recent_gr_sky_color, recent_gr_seeing
 
             gr, ndiff, ng, nr = recent_gr_sky_color()
             if gr is not None:
                 M['grsky'] = gr
+
+            g,r = recent_gr_seeing(M['band'])
+            if g is not None:
+                M['grsee'] = (g,r)
         
         self.latest_measurement = M
         self.update_plans()
@@ -664,6 +668,7 @@ class Decbot(NewFileWatcher):
         seeing = M['seeing']
         msky = M['skybright']
         grsky = M.get('grsky', None)
+        grsee = M.get('grsee', None)
         mband = M['band']
 
         if mband == band:
@@ -688,6 +693,16 @@ class Decbot(NewFileWatcher):
                 # in the next band as it is in this one!
                 nomsky = self.nom.sky(mband)
                 sky = ((msky - nomsky) + self.nom.sky(band))
+
+        if (grsee is not None) and (band in 'gr'):
+            g_see,r_see = grsee
+            oldsee = seeing
+            if band == 'r':
+                seeing = r_see
+            else:
+                seeing = g_see
+            print('Using g,r seeing estimate', seeing, 'rather than most',
+                  'recent measurement', oldsee)
 
         fid = self.nom.fiducial_exptime(band)
         expfactor = exposure_factor(fid, self.nom,

@@ -54,46 +54,49 @@ def db_to_fits(mm):
             T.set(field, np.array([getattr(m, field) for m in mm]))
     return T
 
-def recent_gr_seeing(band, recent=30.):
+def recent_gr_seeing(recent=30.):
     '''
     *recent*: how far back from now to look, in minutes
-    *band*: which band ("g" or "r") to compute the seeing estimate for.
-    '''
-    assert(band in 'gr')
 
+    Returns:
+    (gsee, rsee) -- seeing estimates for g,r bands.
+    '''
     exps = get_recent_exposures(recent, bands='gr')
     if exps is None:
-        return None
+        return None,None
 
-    if band == 'g':
-        myband = 'g'
-        otherband = 'r'
-    else:
-        myband = 'r'
-        otherband = 'g'
-    
-    my_exps = exps[np.flatnonzero(exps.band == myband)]
-    other_exps = exps[np.flatnonzero(exps.band == otherband)]
+    r_exps = exps[np.flatnonzero(exps.band == 'r')]
+    g_exps = exps[np.flatnonzero(exps.band == 'g')]
 
-    my_avg = other_avg = None
-    if len(my_exps) >= 5:
-        my_avg = np.median(my_exps.seeing)
-    if len(other_exps) >= 5:
-        other_avg = np.median(other_exps.seeing)
+    r_avg = g_avg = None
+    if len(r_exps) >= 5:
+        r_avg = np.median(r_exps.seeing)
+    if len(g_exps) >= 5:
+        g_avg = np.median(g_exps.seeing)
 
-    if my_avg is not None and other_avg is not None:
-        see_ratio = my_avg / other_avg
+    if r_avg is not None and g_avg is not None:
+        see_ratio = r_avg / g_avg
+        print('Computed recent r/g seeing ratio', see_ratio)
     else:
         see_ratio = 1.0
 
     recent_see   = exps.seeing[-5:]
     recent_bands = exps.bands [-5:]
-    recent_see[recent_bands == otherband] *= see_ratio
 
-    recent = np.median(recent_see)
-    if my_avg is not None:
-        recent = max(recent, my_avg)
-    return recent
+    g_see = recent_see.copy()
+    g_see[recent_bands == 'r'] /= see_ratio
+    g = np.median(g_see)
+    if g_avg is not None:
+        g = max(g, g_avg)
+
+    r_see = recent_see.copy()
+    r_see[recent_bands == 'g'] *= see_ratio
+    r = np.median(r_see)
+    if r_avg is not None:
+        r = max(r, r_avg)
+
+    return g,r
+
 
 def recent_gr_sky_color(recent=30., pairs=5.):
     '''
