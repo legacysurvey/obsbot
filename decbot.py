@@ -709,17 +709,19 @@ class Decbot(NewFileWatcher):
             else:
                 seeing = g_see
                 mairmass = np.median(G.airmass)
-            print('Using g,r seeing estimate', seeing, 'rather than most',
-                  'recent measurement', oldsee)
-            print('Updating airmass from', oldair, 'to', mairmass, 'used for',
-                  'seeing estimate')
+            if debug:
+                print('Using g,r seeing estimate', seeing, 'rather than most',
+                      'recent measurement', oldsee)
+                print('Updating airmass from', oldair, 'to', mairmass,
+                      'used for seeing estimate')
 
         seeing_wrt_airmass = self.nom.seeing_wrt_airmass(band)
         oldsee = seeing
         seeing += (airmass - mairmass) * seeing_wrt_airmass
-        print('Updated seeing prediction from', oldsee, 'to', seeing, 'for',
-              'airmass %.2f to %.2f' % (mairmass, airmass))
-        
+        if debug:
+            print('Updated seeing prediction from', oldsee, 'to', seeing,
+                  'for airmass %.2f to %.2f' % (mairmass, airmass))
+
         fid = self.nom.fiducial_exptime(band)
         expfactor = exposure_factor(fid, self.nom,
                                     airmass, ebv, seeing, sky, trans)

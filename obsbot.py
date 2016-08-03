@@ -253,9 +253,11 @@ def get_tile_from_name(name, tiles):
 def datenow():
     return datetime.datetime.utcnow()
 
+# For testing purposes:
+mjdnow_offset = 0.
 def mjdnow():
     from astrometry.util.starutil_numpy import datetomjd
-    return datetomjd(datenow())
+    return datetomjd(datenow()) + mjdnow_offset
 
 def unixtime_to_ephem_date(unixtime):
     import ephem

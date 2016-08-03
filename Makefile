@@ -16,7 +16,8 @@ test_focus:
 
 coverage_decbot:
 	coverage erase
-	coverage run test_decbot.py
+# coverage run test_decbot.py
+	coverage run obsdb/manage.py test -p test_decbot_2.py
 	coverage report
 	coverage html
 	echo
