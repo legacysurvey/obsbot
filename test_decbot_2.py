@@ -10,6 +10,29 @@ from astrometry.util.fits import fits_table
 class Duck(object):
     quack = True
 
+import ephem
+real_ephem_now = ephem.now
+ephem_offset = 0.
+def fake_ephem_now():
+    now = real_ephem_now()
+    # print('Real ephem.now:', now, '-- adding offset', ephem_offset)
+    return now + ephem_offset
+ephem.now = fake_ephem_now
+
+
+def set_fake_mjd(target_mjd):
+    import obsbot
+    # How many ways do we get the time?
+    global ephem_offset
+    ephem_offset = 0.
+    nownow = ephem.now()
+    ephem_offset = obsbot.mjd_to_ephem_date(target_mjd) - nownow
+
+    obsbot.mjdnow_offset = 0
+    nownow = obsbot.mjdnow()
+    obsbot.mjdnow_offset = target_mjd - nownow
+
+
 class TestDecbot2(TestCase):
 
     def setUp(self):
@@ -42,12 +65,11 @@ class TestDecbot2(TestCase):
         import obsbot
 
         # Fake the current time...
-        obsbot.mjdnow_offset = 0
-        nownow = mjdnow()
-        obsbot.mjdnow_offset = 57603.1 - nownow
+        target_mjd = 57603.1
+        set_fake_mjd(target_mjd)
 
         now = mjdnow()
-        self.assertLess(np.abs(now - 57603.1), 0.001)
+        self.assertLess(np.abs(now - target_mjd), 0.001)
 
         ccds = get_recent_ccds(recent = 0.1 * 24 * 60)
         self.assertEqual(len(ccds), 73)
@@ -88,18 +110,25 @@ class TestDecbot2(TestCase):
         import camera_decam as camera
         import obsbot
         from obsbot import mjdnow
+        import ephem
         
         # Fake the current time...
-        obsbot.mjdnow_offset = 0
-        nownow = mjdnow()
-        obsbot.mjdnow_offset = 57603.1 - nownow
-        
+        set_fake_mjd(57603.1)
+
         J1 = json.loads(open(os.path.join(self.data_dir, '2016-08-02-p1.json'))
                         .read())
         J2 = json.loads(open(os.path.join(self.data_dir, '2016-08-02-p2.json'))
                         .read())
         J3 = json.loads(open(os.path.join(self.data_dir, '2016-08-02-p3.json'))
                         .read())
+
+        print('Read', len(J1), len(J2), len(J3), 'JSON plans')
+        
+        # Annotate with 'planpass' field
+        for i,J in enumerate([J1,J2,J3]):
+            for j in J:
+                j['planpass'] = i+1
+
         opt = Duck()
         opt.rawdata = 'rawdata'
         opt.verbose = False
@@ -119,8 +148,37 @@ class TestDecbot2(TestCase):
         T = fits_table(os.path.join(self.data_dir, 'obs-test.fits'))
         t = T[np.argmax(T.mjd_obs)]
 
-        M = dict(band=t.band.strip())
-        #decbot.
+        M = dict(band=t.band.strip(),
+                 transparency=t.transparency,
+                 seeing=t.seeing,
+                 skybright=t.sky,
+                 airmass=t.airmass,
+                 )
+        decbot.latest_measurement = M
         decbot.recent_gr(M)
 
         print('M', M)
+
+        self.assertEqual(M['band'], 'r')
+        gsee,rsee,G,R = M['grsee']
+        self.assertLess(np.abs(gsee - 1.360), 0.001)
+        self.assertLess(np.abs(rsee - 1.374), 0.001)
+        self.assertLess(np.abs(M['grsky'] - 0.826), 0.001)
+
+        decbot.update_plans()
+
+        self.assertEqual(len(decbot.J1), 416)
+        self.assertEqual(len(decbot.J2), 416)
+        self.assertEqual(len(decbot.J3), 416)
+        self.assertEqual(decbot.nextpass, 2)
+
+        jnext = decbot.get_upcoming()[0]
+        print('Next exposure:', jnext)
+        self.assertEqual(jnext['expTime'], 76.)
+        self.assertEqual(jnext['object'], 'DECaLS_18778_r')
+
+        jnext = decbot.get_upcoming()[1]
+        print('Next+1 exposure:', jnext)
+        self.assertEqual(jnext['expTime'], 175.)
+        self.assertEqual(jnext['object'], 'DECaLS_18778_g')
+        

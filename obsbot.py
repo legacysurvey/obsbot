@@ -272,6 +272,7 @@ def ephem_date_to_mjd(edate):
     return datetomjd(edate.datetime())
 
 def mjd_to_ephem_date(mjd):
+    import ephem
     # MAGIC ephem.Date(datetime.datetime(1858, 11, 17, 0, 0, 0))
     return ephem.Date(mjd -15019.5)
 

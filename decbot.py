@@ -263,7 +263,8 @@ class Decbot(NewFileWatcher):
                     fn = str(fn).strip()
                     fn = os.path.basename(fn)
                     dbobjs[fn] = str(obj)
-                print('Found', len(dbobjs), 'entries in the copilot database')
+                print('Checking copilot database -- found', len(dbobjs),
+                      'from tonight')
                 # Go through existing files looking for database entries.
                 keepfns = []
                 for path in fns:
@@ -688,15 +689,15 @@ class Decbot(NewFileWatcher):
             if ((grsky is not None) and
                 ((mband == 'g' and band == 'r') or
                  (mband == 'r' and band == 'g'))):
-                print('g-r color:', grsky)
-                # print('g nominal:', self.nom.sky('g'))
-                # print('r nominal:', self.nom.sky('r'))
-                print('measured sky in', mband, '=', msky)
+                if debug:
+                    print('g-r color:', grsky)
+                    print('measured sky in', mband, '=', msky)
                 if band == 'r':
                     sky = msky - grsky
                 else:
                     sky = msky + grsky
-                    print('predicted sky in', band, '=', sky)
+                    if debug:
+                        print('predicted sky in', band, '=', sky)
                 
             if sky is None:
                 # Guess that the sky is as much brighter than canonical
