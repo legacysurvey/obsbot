@@ -16,13 +16,13 @@ test_focus:
 
 coverage_decbot:
 	coverage erase
-# coverage run test_decbot.py
-	coverage run obsdb/manage.py test -p test_decbot_2.py
+	coverage run test_decbot.py
+	coverage run -a obsdb/manage.py test -p test_decbot_2.py
 	coverage report
 	coverage html
-	echo
-	echo "Now you might want to:"
-	echo "  open coverage_html_report/index.html"
-	echo
+	@echo
+	@echo "Now you might want to:"
+	@echo "  open coverage_html_report/index.html"
+	@echo
 
 .PHONY: coverage_decbot

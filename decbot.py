@@ -141,7 +141,7 @@ def main(cmdlineargs=None, get_decbot=False):
     # Try loading copilot's database
     try:
         import obsdb
-        from camera import database_filename
+        from camera_decam import database_filename
         obsdb.django_setup(database_filename=database_filename)
         copilot_db = obsdb.MeasuredCCD.objects
     except:
