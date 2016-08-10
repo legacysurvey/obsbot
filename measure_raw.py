@@ -121,13 +121,19 @@ class RawMeasurer(object):
         return slices
         
     def run(self, ps=None, focus=False, momentsize=5,
-            n_fwhm=100):
+            n_fwhm=100, verbose=True):
         import pylab as plt
         from astrometry.util.plotutils import dimshow, plothist
         from legacyanalysis.ps1cat import ps1cat
         import photutils
         import tractor
-                
+
+        if verbose:
+            printmsg = print
+        else:
+            def printmsg(*args, **kwargs):
+                pass
+
         fn = self.fn
         ext = self.ext
         pixsc = self.pixscale
@@ -187,7 +193,12 @@ class RawMeasurer(object):
         band = self.get_band(primhdr)
         exptime = primhdr['EXPTIME']
         airmass = primhdr['AIRMASS']
-        print('Band', band, 'Exptime', exptime, 'Airmass', airmass)
+        printmsg('Band', band, 'Exptime', exptime, 'Airmass', airmass)
+        # airmass can be 'NaN'
+        airmass = float(airmass)
+        if not np.isfinite(airmass):
+            printmsg('Bad airmass:', airmass, '-- setting to 1.0')
+            airmass = 1.0
 
         try:
             zp0 = self.nom.zeropoint(band, ext=self.ext)
@@ -203,7 +214,7 @@ class RawMeasurer(object):
 
         try:
             kx = self.nom.fiducial_exptime(band).k_co
-        except ValueError:
+        except (ValueError, KeyError):
             print('Unknown band "%s"; no k_co available.' % band)
             kx = None
         
@@ -214,8 +225,8 @@ class RawMeasurer(object):
 
         if zp0 is not None:
             skybr = -2.5 * np.log10(sky1/pixsc/pixsc/exptime) + zp0
-            print('Sky brightness: %8.3f mag/arcsec^2' % skybr)
-            print('Fiducial:       %8.3f mag/arcsec^2' % sky0)
+            printmsg('Sky brightness: %8.3f mag/arcsec^2' % skybr)
+            printmsg('Fiducial:       %8.3f mag/arcsec^2' % sky0)
         else:
             skybr = None
 
@@ -255,10 +266,10 @@ class RawMeasurer(object):
         detsn = self.detection_map(img, sig1, psfsig, ps)
     
         slices = self.detect_sources(detsn, self.det_thresh, ps)
-        print(len(slices), 'sources detected')
+        printmsg(len(slices), 'sources detected')
         if len(slices) < 20:
             slices = self.detect_sources(detsn, 10., ps)
-            print(len(slices), 'sources detected')
+            printmsg(len(slices), 'sources detected')
         ndetected = len(slices)
         meas.update(ndetected=ndetected)
         if ndetected == 0:
@@ -430,8 +441,8 @@ class RawMeasurer(object):
         radius = self.maxshift / pixsc
 
         I,J,dx,dy = self.match_ps1_stars(px, py, fullx, fully, radius, stars)
-        print(len(I), 'spatial matches with large radius', self.maxshift,
-              'arcsec,', radius, 'pix')
+        #print(len(I), 'spatial matches with large radius', self.maxshift,
+        #      'arcsec,', radius, 'pix')
 
         bins = 2*int(np.ceil(radius))
         #print('Histogramming with', bins, 'bins')
@@ -463,14 +474,14 @@ class RawMeasurer(object):
         radius2 = 3. / pixsc
         I,J,dx,dy = self.match_ps1_stars(px, py, fullx+shiftx, fully+shifty,
                                          radius2, stars)
-        print(len(J), 'matches to PS1 with small radius', 3, 'arcsec')
+        #print(len(J), 'matches to PS1 with small radius', 3, 'arcsec')
         shiftx2 = np.median(dx)
         shifty2 = np.median(dy)
         #print('Stage-1 shift', shiftx, shifty)
         #print('Stage-2 shift', shiftx2, shifty2)
         sx = shiftx + shiftx2
         sy = shifty + shifty2
-        print('Astrometric shift (%.0f, %.0f) pixels' % (sx,sy))
+        printmsg('Astrometric shift (%.0f, %.0f) pixels' % (sx,sy))
 
         #from astromalign.astrom_common import Alignment
 
@@ -485,20 +496,20 @@ class RawMeasurer(object):
 
         R = np.linalg.lstsq(A, px[I] - cx)
         resx = R[0]
-        print('Affine transformation for X:', resx)
+        #print('Affine transformation for X:', resx)
         R = np.linalg.lstsq(A, py[I] - cy)
         resy = R[0]
-        print('Affine transformation for Y:', resy)
+        #print('Affine transformation for Y:', resy)
 
         meas.update(affine = [cx, cy] + list(resx) + list(resy))
         
         if True:
             r0,d0 = stars.ra[I[0]], stars.dec[I[0]]
-            print('Pan-STARRS RA,Dec:', r0,d0)
+            #print('Pan-STARRS RA,Dec:', r0,d0)
             ok,px0,py0 = wcs.radec2pixelxy(r0, d0)
-            print('Header WCS -> x,y:', px0-1, py0-1)
+            #print('Header WCS -> x,y:', px0-1, py0-1)
             mx0,my0 = fullx[J[0]], fully[J[0]]
-            print('VS Matched star x,y:', mx0, my0)
+            #print('VS Matched star x,y:', mx0, my0)
         
         if self.debug and ps is not None:
             plt.clf()
@@ -569,13 +580,13 @@ class RawMeasurer(object):
         # Re-match
         I,J,dx,dy = self.match_ps1_stars(px, py, fullx+sx, fully+sy,
                                          radius2, stars)
-        print('Cut to', len(stars), 'PS1 stars with good colors; matched', len(I))
-
+        printmsg('Cut to %i PS1 stars with good colors; matched %i' %
+                 (len(stars), len(I)))
         nmatched = len(I)
 
         meas.update(dx=sx, dy=sy, nmatched=nmatched)
 
-        if focus:
+        if focus or zp0 is None:
             meas.update(img=img, hdr=hdr, primhdr=primhdr,
                         fx=fx, fy=fy, px=px-trim_x0-sx, py=py-trim_y0-sy,
                         sig1=sig1, stars=stars,
@@ -583,12 +594,17 @@ class RawMeasurer(object):
                         wmoments=(wmx2,wmy2,wmxy,wtheta,wa,wb,well),
                         apflux=apflux, apflux2=apflux2)
             return meas
-            
+
         #print('Mean astrometric shift (arcsec): delta-ra=', -np.mean(dy)*0.263, 'delta-dec=', np.mean(dx)*0.263)
             
         # Compute photometric offset compared to PS1
         # as the PS1 minus observed mags
-        colorterm = self.colorterm_ps1_to_observed(stars.median, band)
+        
+        try:
+            colorterm = self.colorterm_ps1_to_observed(stars.median, band)
+        except KeyError:
+            print('Color term not found for band "%s"; assuming zero.' % band)
+            colorterm = 0.
         stars.mag += colorterm
         ps1mag = stars.mag[I]
         
@@ -626,8 +642,8 @@ class RawMeasurer(object):
     
         dm = ps1mag - apmag[J]
         dmag,dsig = sensible_sigmaclip(dm, nsigma=2.5)
-        print('Mag offset: %8.3f' % dmag)
-        print('Scatter:    %8.3f' % dsig)
+        printmsg('Mag offset: %8.3f' % dmag)
+        printmsg('Scatter:    %8.3f' % dsig)
 
         if not np.isfinite(dmag) or not np.isfinite(dsig):
             print('FAILED TO GET ZEROPOINT!')
@@ -637,12 +653,12 @@ class RawMeasurer(object):
         from scipy.stats import sigmaclip
         goodpix,lo,hi = sigmaclip(dm, low=3, high=3)
         dmagmed = np.median(goodpix)
-        print(len(goodpix), 'stars used for zeropoint median')
-        print('Using median zeropoint:')
+        #print(len(goodpix), 'stars used for zeropoint median')
+        #print('Using median zeropoint:')
         zp_med = zp0 + dmagmed
         trans_med = 10.**(-0.4 * (zp0 - zp_med - kx * (airmass - 1.)))
-        print('Zeropoint %6.3f' % zp_med)
-        print('Transparency: %.3f' % trans_med)
+        #print('Zeropoint %6.3f' % zp_med)
+        #print('Transparency: %.3f' % trans_med)
         
         dm = ps1mag - apmag2[J]
         dmag2,dsig2 = sensible_sigmaclip(dm, nsigma=2.5)
@@ -671,9 +687,9 @@ class RawMeasurer(object):
         transparency = 10.**(-0.4 * (zp0 - zp_obs - kx * (airmass - 1.)))
         meas.update(zp=zp_obs, transparency=transparency)
 
-        print('Zeropoint %6.3f' % zp_obs)
-        print('Fiducial  %6.3f' % zp0)
-        print('Transparency: %.3f' % transparency)
+        printmsg('Zeropoint %6.3f' % zp_obs)
+        printmsg('Fiducial  %6.3f' % zp0)
+        printmsg('Transparency: %.3f' % transparency)
 
         # Also return the zeropoints using the sky-subtracted mags,
         # and using median rather than clipped mean.
@@ -681,7 +697,6 @@ class RawMeasurer(object):
                     zp_skysub = zp0 + dmag2,
                     zp_med = zp_med,
                     zp_med_skysub = zp0 + dmagmedsky)
-        
 
         # print('Using sky-subtracted values:')
         # zp_sky = zp0 + dmag2
@@ -711,7 +726,13 @@ class RawMeasurer(object):
             #print('fitting source at', ix,iy)
             #print('number of active pixels:', np.sum(ie > 0), 'shape', ie.shape)
 
+            # plt.clf()
+            # plt.imshow(pix, interpolation='nearest', origin='lower',
+            #            vmin=-2.*sig1, vmax=5.*sig1)
+            # plt.savefig('star-%03i.png' % i)
+
             psf = tractor.NCircularGaussianPSF([4.], [1.])
+            psf.radius = psf_r
             tim = tractor.Image(data=pix, inverr=ie, psf=psf)
             src = tractor.PointSource(tractor.PixPos(xi-xlo, yi-ylo),
                                       tractor.Flux(fluxi))
@@ -747,9 +768,9 @@ class RawMeasurer(object):
     
             for step in range(50):
                 dlnp,x,alpha = tr.optimize(**optargs)
-                #print('dlnp', dlnp)
-                #print('src', src)
-                #print('psf', psf)
+                # print('dlnp', dlnp)
+                # print('src', src)
+                # print('psf', psf)
                 if dlnp == 0:
                     break
     
@@ -777,7 +798,7 @@ class RawMeasurer(object):
     
         fwhms = np.array(fwhms)
         fwhm = np.median(fwhms)
-        print('Median FWHM: %.3f' % np.median(fwhms))
+        printmsg('Median FWHM : %.3f' % np.median(fwhms))
         meas.update(seeing=fwhm)
     
         if False and ps is not None:
@@ -841,8 +862,22 @@ class DECamMeasurer(RawMeasurer):
 
     def get_wcs(self, hdr):
         from astrometry.util.util import wcs_pv2sip_hdr
+        from astrometry.util.starutil_numpy import hmsstring2ra, dmsstring2dec
+        # In DECam images, the CRVAL values are set to TELRA and
+        # TELDEC, but for computing the RA,Dec offsets, we want to use
+        # RA and DEC (commanded position, not what the telescope
+        # pointing model says).
         # HACK -- convert TPV WCS header to SIP.
+        oldcrval1 = hdr['CRVAL1']
+        oldcrval2 = hdr['CRVAL2']
+        hdr['CRVAL1'] = hmsstring2ra (self.primhdr['RA' ])
+        hdr['CRVAL2'] = dmsstring2dec(self.primhdr['DEC'])
+        # print(('Updated WCS CRVAL from TELRA,TELDEC = (%.4f,%.4f) to ' +
+        #       'RA,Dec = (%.4f,%.4f)') %
+        #       (oldcrval1, oldcrval2, hdr['CRVAL1'], hdr['CRVAL2']))
         wcs = wcs_pv2sip_hdr(hdr)
+        hdr['CRVAL1'] = oldcrval1
+        hdr['CRVAL2'] = oldcrval2
         #print('Converted WCS to', wcs)
         return wcs
 

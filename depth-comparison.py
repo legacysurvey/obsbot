@@ -1,8 +1,10 @@
 from __future__ import print_function
 import os
+import sys
 
 from astrometry.util.fits import *
 from astrometry.util.plotutils import *
+from astrometry.util.starutil_numpy import mjdtodate
 
 import pylab as plt
 import numpy as np
@@ -12,9 +14,11 @@ from legacypipe.common import *
 from decam import DecamNominalCalibration
 import tractor
 
-target_mjd = 57445.5
+#target_mjd = 57445.5
 #mjd_diff = 0.5
-mjd_diff = 7
+#mjd_diff = 7
+
+ps = PlotSequence('bot')
 
 nom = DecamNominalCalibration()
 
@@ -27,8 +31,32 @@ if not os.path.exists(botfn):
         os.system(cmd)
         
     bot = fits_table(obsfn)
-    bot.cut(np.abs(bot.mjd_obs - target_mjd) < mjd_diff)
-    print(len(bot), 'images for MJD')
+
+    date = np.array(map(mjdtodate, bot.mjd_obs))
+
+    # plt.clf()
+    # for i,band in enumerate('grz'):
+    #     I = np.flatnonzero(np.array([b.strip() == band for b in bot.band]))
+    #     plt.plot(date[I], np.zeros(len(I))+i, '.', color=dict(z='m').get(band,band))
+    # plt.xlabel('Date')
+    # plt.ylabel('band')
+    # xt,xl = plt.xticks()
+    # print('Ticks', xt)
+    # print('Labels', xl)
+    # plt.xticks(xt, ['']*len(xt), rotation=90)
+    # ml,mh = np.min(bot.mjd_obs[bot.mjd_obs > 0])-10, np.max(bot.mjd_obs)+10
+    # xl,xh = mjdtodate(ml), mjdtodate(mh)
+    # plt.xlim(xl,xh)
+    # plt.twiny()
+    # plt.xlim(ml,mh)
+    # plt.xlabel('MJD')
+    # plt.ylim(-0.5, 2.5)
+    # ps.savefig()
+
+    bot.cut(bot.mjd_obs != 0)
+    
+    #bot.cut(np.abs(bot.mjd_obs - target_mjd) < mjd_diff)
+    #print(len(bot), 'images for MJD')
     bot.cut(np.argsort(bot.mjd_obs))
     for x in zip(bot.mjd_obs, bot.filename, bot.expnum):
         print(x)
@@ -41,9 +69,13 @@ if not os.path.exists(botfn):
     ccds = survey.get_annotated_ccds()
     
     # HACK
-    ccds.cut(np.abs(ccds.mjd_obs - target_mjd) < mjd_diff)
-    print('Cut to', len(ccds), 'CCDs near target MJD')
+    #ccds.cut(np.abs(ccds.mjd_obs - target_mjd) < mjd_diff)
+    #print('Cut to', len(ccds), 'CCDs near target MJD')
+
+    ccds.cut(ccds.ccdzpt < 99.)
     
+    ccdmap = dict([((expnum,ext),i) for i,(expnum,ext) in enumerate(zip(ccds.expnum, ccds.ccdname))])
+
     #ccds.index = np.arange(len(ccds))
     imatched = []
     matched = []
@@ -51,12 +83,17 @@ if not os.path.exists(botfn):
     for i,(expnum,ccdname,f) in enumerate(
             zip(bot.expnum, bot.extension, bot.band)):
         print('expnum', expnum, 'ccdname', ccdname, 'filter', f)
-        thisccd = ccds[(ccds.expnum == expnum) * (ccds.ccdname == ccdname)]
-        print('    found', len(thisccd))
-        assert(len(thisccd) <= 1)
+        try:
+            iccd = ccdmap[(expnum, ccdname)]
+        except KeyError:
+            continue
+        thisccd = ccds[np.array([iccd])]
+        #thisccd = ccds[(ccds.expnum == expnum) * (ccds.ccdname == ccdname)]
+        #print('    found', len(thisccd))
+        #assert(len(thisccd) <= 1)
         matched.append(thisccd)
-        if len(thisccd) == 1:
-            imatched.append(i)
+        #if len(thisccd) == 1:
+        imatched.append(i)
     matched = merge_tables(matched)
     print('Found', len(matched), 'CCDs in survey CCDs file')
     imatched = np.array(imatched)
@@ -72,9 +109,12 @@ print('Filters:', np.unique(bot.band))
 print('Exptimes:', np.unique(bot.exptime))
 print('Transparencies:', np.unique(bot.transparency)[:10])
 
-ps = PlotSequence('bot')
-
 bot.cut(bot.exptime > 30.)
+# HACK
+bot.cut(bot.transparency > 0.5)
+print('CUT to', len(bot), 'images')
+
+allbot = bot
 
 # FROM OBSBOT:
 r_half = 0.45 #arcsec
@@ -107,14 +147,117 @@ def get_galnorm(seeing, pixsc):
     galmod /= galmod.sum()
     return np.sqrt(np.sum(galmod**2))
 
-# HACK
-bot.cut(bot.transparency > 0.5)
-print('CUT to', len(bot), 'images')
-
-allbot = bot
-
 pixsc = nom.pixscale
 fidseeing = 1.3
+
+
+if False:
+    # Does averaging multiple CCDs per exposure reduce the scatter?
+    for band in np.unique(bot.band):
+        band = band.strip()
+        bot = allbot[np.array([b.strip() == band for b in allbot.band])]
+        print(len(bot), 'in', band, 'band')
+
+        from collections import Counter
+        c = Counter(bot.expnum)
+        keep_expnum = set()
+        for k,v in c.most_common():
+            print('Exposure number', k, 'appears', v, 'times')
+            if v <= 1:
+                break
+            keep_expnum.add(k)
+
+        bot.cut(np.nonzero([expnum in keep_expnum
+                            for expnum in bot.expnum])[0])
+        print('Cut to', len(bot), 'with > 1 CCD per exposure')
+        
+        bad = np.flatnonzero((bot.photometric == False))
+        print(len(bad), 'rows are non-photometric')
+        
+        tt = 'Obsbot vs Pipeline depth: %s band' % band
+    
+        fid = nom.fiducial_exptime(band)
+        extinction = bot.ebv * fid.A_co
+        plt.clf()
+        notbad = np.flatnonzero((bot.photometric == True))
+        equivtime = (bot.exptime / bot.expfactor)
+        extdepth = bot.galdepth - extinction
+
+        # 2-coverage target (90% fill)
+        target_depth = dict(g=24.0, r=23.4, z=22.5)[band]
+        # -> 1-coverage depth (- ~0.37 mag)
+        target_depth -= 2.5*np.log10(np.sqrt(2.))
+
+        p1 = plt.plot(equivtime[notbad], extdepth[notbad], 'b.', alpha=0.5)
+        (xl,xh,yl,yh) = plt.axis()
+        xl = 10.
+
+        meantime = []
+        meandepth = []
+        for expnum in keep_expnum:
+            I = np.flatnonzero(bot.expnum == expnum)
+            print(len(I), 'CCDs for expnum', expnum)
+            print('Exp factors:', bot.expfactor[I])
+            meanf = np.mean(bot.expfactor[I])
+            i = I[0]
+            meantime.append(bot.exptime[i] / meanf)
+            meandepth.append(np.mean(bot.galdepth[I] - extinction[I]))
+
+        # plot fit line (x = f(y), just to confuse you...)
+        # 1 mag = factor of 6.3 in exposure time
+        slope = (10.**(1./2.5))**2
+        diff = np.median(np.log(equivtime[notbad]) / np.log(slope) -
+                         extdepth[notbad])
+        yy = np.linspace(20, 25, 100)
+        xx = slope**(yy + diff)
+        plt.plot(xx, yy, 'k-', alpha=0.3)
+        p2 = plt.plot(xx, yy+0.05, 'k--', alpha=0.3)
+        plt.plot(xx, yy-0.05, 'k--', alpha=0.3)
+
+        plt.ylabel('Pipeline galdepth (unextincted) (mag)')
+        plt.xlabel('Bot-predicted equivalent exposure time (s)')
+
+        plt.axhline(target_depth, color='b', alpha=0.3)
+        plt.axvline(fid.exptime, color='b', alpha=0.3)
+    
+        plt.xscale('log')
+        xt = [10, 20, 50, 100, 200, 300, 400, 500]
+        plt.xticks(xt, ['%i'%t for t in xt])
+        plt.axis([xl,xh,yl,yh])
+        plt.title(tt)
+        ps.savefig()
+
+        plt.clf()
+        plt.plot(meantime, meandepth, 'bo')
+
+        plt.plot(xx, yy, 'k-', alpha=0.3)
+        p2 = plt.plot(xx, yy+0.05, 'k--', alpha=0.3)
+        plt.plot(xx, yy-0.05, 'k--', alpha=0.3)
+        plt.ylabel('Pipeline galdepth (unextincted) (mag)')
+        plt.xlabel('Bot-predicted equivalent exposure time (s)')
+        plt.axhline(target_depth, color='b', alpha=0.3)
+        plt.axvline(fid.exptime, color='b', alpha=0.3)
+        plt.xscale('log')
+        xt = [10, 20, 50, 100, 200, 300, 400, 500]
+        plt.xticks(xt, ['%i'%t for t in xt])
+        plt.axis([xl,xh,yl,yh])
+        plt.title(tt)
+        ps.savefig()
+
+        # for expnum,mnt,mnd in zip(keep_expnum, meantime, meandepth):
+        #     I = np.flatnonzero(bot.expnum == expnum)
+        #     plt.plot([mnt + np.zeros(len(I)), equivtime[I]],
+        #              [mnd + np.zeros(len(I)), extdepth[I]], 'b.-')
+        #     
+        # plt.axis([xl,xh,yl,yh])
+        # ps.savefig()
+        
+    sys.exit(0)
+    
+bot = allbot
+
+
+
 
 gauss_galnorm_nom = get_galnorm(fidseeing, pixsc)
 # correct for ~17% difference between Gaussian galnorm and real PSF
@@ -146,8 +289,11 @@ for band in np.unique(bot.band):
 
     bot = allbot[np.array([b.strip() == band for b in allbot.band])]
     print(len(bot), 'in', band, 'band')
+
+    bad = np.flatnonzero((bot.photometric == False))
+    print(len(bad), 'rows are non-photometric')
     
-    tt = 'Obsbot vs Pipeline depth: 2016-02-25 to 2016-03-02 (%s)' % band
+    tt = 'Obsbot vs Pipeline depth: %s band' % band
 
     fid = nom.fiducial_exptime(band)
     extinction = bot.ebv * fid.A_co
@@ -160,6 +306,7 @@ for band in np.unique(bot.band):
     
     plt.clf()
     plt.plot(psfnorm_seeing, bot.seeing, 'b.')
+    plt.plot(psfnorm_seeing[bad], bot.seeing[bad], 'r.')
     plt.xlabel('Pipeline PSF norm -> seeing')
     plt.ylabel('Bot seeing')
     ax = plt.axis()
@@ -206,6 +353,7 @@ for band in np.unique(bot.band):
     
     plt.clf()
     plt.plot(plotx, galneff, 'b.')
+    plt.plot(plotx[bad], galneff[bad], 'r.')
     plt.xlabel('Pipeline Neff = 1 / galaxy norm^2 (arcsec^2)')
     plt.ylabel('Bot galaxy Neff (arcsec^2)')
     plt.title(tt)
@@ -267,6 +415,7 @@ for band in np.unique(bot.band):
     
     plt.clf()
     p1 = plt.plot(galnorm_factor, galneff_factor, 'b.')
+    plt.plot(galnorm_factor[bad], galneff_factor[bad], 'r.')
     plt.xlabel('Pipeline exposure factor from galnorm')
     plt.ylabel('Bot exposure factor from Neff')
     plt.title(tt)
@@ -295,6 +444,7 @@ for band in np.unique(bot.band):
     
     plt.clf()
     plt.plot(bot.avsky, skyflux, 'b.')
+    plt.plot(bot.avsky[bad], skyflux[bad], 'r.')
     plt.xlabel('CP avsky')
     plt.ylabel('Bot sky flux')
     ax = plt.axis()
@@ -325,6 +475,7 @@ for band in np.unique(bot.band):
     
     plt.clf()
     plt.plot(bot.sig1, skysig1, 'b.')
+    plt.plot(bot.sig1[bad], skysig1[bad], 'r.')
     plt.xlabel('Pipeline sig1')
     plt.ylabel('Bot sig1 = f(sky, zpt)')
     ax = plt.axis()
@@ -355,6 +506,7 @@ for band in np.unique(bot.band):
     
     plt.clf()
     p1 = plt.plot(expfactor_sig1, expfactor_sky, 'b.')
+    plt.plot(expfactor_sig1[bad], expfactor_sky[bad], 'r.')
     plt.xlabel('Pipeline exposure factor from sig1 (and zpt; arb. scale)')
     plt.ylabel('Bot exposure factor from sky')
     plt.title(tt)
@@ -373,6 +525,7 @@ for band in np.unique(bot.band):
 
     plt.clf()
     plt.plot(bot.ccdzpt, bot.zeropoint, 'b.')
+    plt.plot(bot.ccdzpt[bad], bot.zeropoint[bad], 'r.')
     plt.xlabel('Pipeline zeropoint')
     plt.ylabel('Bot zeropoint')
     ax = plt.axis()
@@ -397,6 +550,7 @@ for band in np.unique(bot.band):
     
     plt.clf()
     p1 = plt.plot(expfactor_p_zpt, expfactor_bot_zpt, 'b.')
+    plt.plot(expfactor_p_zpt[bad], expfactor_bot_zpt[bad], 'r.')
     plt.xlabel('Pipeline exposure factor from zpt (arb. scale)')
     plt.ylabel('Bot exposure factor from zeropoint')
     plt.title(tt)
@@ -438,6 +592,7 @@ for band in np.unique(bot.band):
     
     plt.clf()
     p1 = plt.plot(expfactor, bot.expfactor, 'b.')
+    plt.plot(expfactor[bad], bot.expfactor[bad], 'r.')
     plt.xlabel('Pipeline expfactor from galdepth')
     plt.ylabel('Bot expfactor')
     ax = plt.axis()
@@ -460,6 +615,8 @@ for band in np.unique(bot.band):
     xx = np.array([20, 25])
     plt.clf()
     plt.plot(bot.galdepth - extinction, galdepth - extinction, 'b.')
+    plt.plot((bot.galdepth - extinction)[bad], (galdepth - extinction)[bad],
+             'r.')
     plt.xlabel('Pipeline galdepth (unextincted)')
     plt.ylabel('Bot galdepth (unextincted)')
     plt.axvline(target_depth, color='b', alpha=0.3)
@@ -477,33 +634,104 @@ for band in np.unique(bot.band):
     extdepth = bot.galdepth - extinction
     
     plt.clf()
-    p1 = plt.plot(equivtime, extdepth, 'b.')
 
-    xl,xh = plt.xlim()
+    notbad = np.flatnonzero((bot.photometric == True))
+
+    p1 = plt.plot(equivtime[notbad], extdepth[notbad], 'b.', alpha=0.5)
+
     yl,yh = plt.ylim()
-    xl,xh = np.min(equivtime) * 0.9, np.max(equivtime) * 1.1
+    xl,xh = np.min(equivtime[notbad]) * 0.9, np.max(equivtime[notbad]) * 1.1
+    
+    I = np.flatnonzero(reduce(np.logical_or,
+                              [bot.exptime == fid.exptime,
+                               bot.exptime == fid.exptime_min,
+                               bot.exptime == fid.exptime_max]))
+    plt.plot(equivtime[I], extdepth[I], 'g.')
+
+    plt.plot(equivtime[bad], extdepth[bad], 'r.')
+    plt.axis(ax)
     
     # plot fit line (x = f(y), just to confuse you...)
-    # 1 mag = factor of 6.3 in exposure time
+        # 1 mag = factor of 6.3 in exposure time
     slope = (10.**(1./2.5))**2
-    diff = np.median(np.log(equivtime) / np.log(slope) - extdepth)
+    diff = np.median(np.log(equivtime[notbad]) / np.log(slope) - extdepth[notbad])
     yy = np.linspace(20, 25, 100)
     xx = slope**(yy + diff)
     plt.plot(xx, yy, 'k-', alpha=0.3)
     p2 = plt.plot(xx, yy+0.05, 'k--', alpha=0.3)
     plt.plot(xx, yy-0.05, 'k--', alpha=0.3)
-    
+
     plt.ylabel('Pipeline galdepth (unextincted) (mag)')
     plt.xlabel('Bot-predicted equivalent exposure time (s)')
 
     plt.axhline(target_depth, color='b', alpha=0.3)
     plt.axvline(fid.exptime, color='b', alpha=0.3)
+
+    # make x limits symmetric around fiducial
+    mid = fid.exptime
+    maxrange = max(mid / xl, xh / mid)
+    xl = mid / maxrange
+    xh = mid * maxrange
+
+    # y too
+    mid = target_depth
+    maxrange = max(mid - yl, yh - mid)
+    yl = mid - maxrange
+    yh = mid + maxrange*0.8
+
+    # 
+    targettime = slope**(target_depth + diff)
+    print('Exposure time to hit nominal depth:', targettime)
+    plt.axvline(targettime, color='k', alpha=0.1)
+    plt.text(targettime, (yl+mid)/2, '%.1f s' % targettime, color='k', ha='left', va='center')
     
     plt.xscale('log')
     xt = [10, 20, 50, 100, 200, 300, 400, 500]
     plt.xticks(xt, ['%i'%t for t in xt])
-
-    plt.legend([p2[0]], ['+- 0.05 mag'], loc='lower right')
     plt.axis([xl,xh,yl,yh])
+    
+    plt.twiny()
+    bins = np.arange(20., 25., 0.05)
+    n,b,p = plt.hist(extdepth[notbad], bins=bins, orientation='horizontal',
+                     histtype='step', color='b')
+    #plt.xlim(0, np.max(n)*4)
+    plt.xlim(np.max(n)*4, 0)
+    plt.ylim(yl,yh)
+    plt.xticks([])
+    
+    plt.legend([p2[0]], ['+- 0.05 mag'], loc='lower right')
+    plt.title(tt)
+    ps.savefig()
+
+
+
+    plt.clf()
+    notbad = np.flatnonzero((bot.photometric == True))
+
+    tlo,thi = bot.exptime.min(), bot.exptime.max()
+    
+    loghist(bot.exptime[notbad], extdepth[notbad], nbins=(thi-tlo+1, 100),
+             range=((tlo, thi),
+                    (target_depth-1, target_depth+1)))
+    plt.axhline(target_depth, color=(0.5, 0.5, 1.0), lw=2, alpha=0.5)
+    plt.xlabel('Exposure time (s)')
+    plt.ylabel('Pipeline galdepth (extinction corrected) (mag)')
+    plt.title(tt)
+    ps.savefig()
+
+
+
+    plt.clf()
+    #plt.plot(bot.mjd_obs[notbad], extdepth[notbad], 'b.', alpha=0.5)
+    #plt.xlabel('MJD')
+    umjd,I = np.unique(bot.mjd_obs[notbad], return_inverse=True)
+    #plt.plot(np.argsort(bot.mjd_obs[notbad]), extdepth[notbad], 'b.', alpha=0.5)
+    plt.plot(I, extdepth[notbad], 'b.', alpha=0.5)
+    #plt.plot(bot.expnum[notbad], extdepth[notbad], 'b.', alpha=0.5)
+    plt.axhline(target_depth, color='b')
+    plt.xlim(min(I), max(I))
+    plt.ylim(target_depth-1, target_depth+1)
+    plt.xlabel('MJD ordering')
+    plt.ylabel('Pipeline galdepth (extinction corrected) (mag)')
     plt.title(tt)
     ps.savefig()

@@ -37,22 +37,23 @@ class DecamNominalCalibration(NominalCalibration):
         return science
 
     def _fiducial_exptime(self, fid, band):
+
         if band == 'g':
             fid.update(
-                k_co = 0.178,
-                A_co = 3.303,
+                k_co = 0.17,
+                A_co = 3.214,
                 )
 
         elif band == 'r':
             fid.update(
-                k_co = 0.094,
-                A_co = 2.285,
+                k_co = 0.10,
+                A_co = 2.165,
                 )
 
         elif band == 'z':
             fid.update(
                 k_co = 0.060,
-                A_co = 1.263,
+                A_co = 1.592,
                 )
         else:
             raise ValueError('Unknown band "%s"' % band)

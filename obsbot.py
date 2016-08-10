@@ -32,24 +32,20 @@ def choose_pass(trans, seeing, skybright, nomsky,
     pass1ok = transok and seeingok and brightok
     pass2ok = (transok and seeingfair) or (seeingok and transfair)
     
-    print('Transparency: %s       (%6.2f vs %6.2f / %6.2f)' %
+    print('Transparency: %s       (%6.2f vs %6.2f = good, %6.2f = fair)' %
           (trans_txt, trans, transcut, transcut2))
-    print('Seeing      : %s       (%6.2f vs %6.2f / %6.2f)' %
+    print('Seeing      : %s       (%6.2f vs %6.2f = good, %6.2f = fair)' %
           (seeing_txt, seeing, seeingcut, seeingcut2))
-    print('Brightness  : %s       (%6.2f vs %6.2f)' %
+    print('Brightness  : %s       (%6.2f vs %6.2f = pass)' %
           (('pass' if brightok else 'fail'), skybright, nomsky+brightcut))
     print('Pass 1 = transparency AND seeing AND brightness: %s' % pass1ok)
     print('Pass 2 = (transparency good and seeing fair) OR (seeing good and transparency fair): %s' % pass2ok)
-    
-    for p in [1,2,3]:
-        if forcedir is None:
-            break
-        path = os.path.join(forcedir, 'forcepass%i' % p)
-        print('Checking for file "%s"' % path)
-        if os.path.exists(path):
-            print('Forcing pass %i because file exists: %s' % (p, path))
-            return p
 
+    p,fn = get_forced_pass(forcedir)
+    if p is not None:
+        print('Forcing pass %i because file exists: %s' % (p, fn))
+        return p
+    
     path = os.path.join(forcedir, 'nopass1')
     if os.path.exists(path):
         print('File %s exists; not allowing pass 1' % path)
@@ -60,7 +56,17 @@ def choose_pass(trans, seeing, skybright, nomsky,
     if pass2ok:
         return 2
     return 3
+
+def get_forced_pass(forcedir=''):
+    for p in [1,2,3]:
+        path = os.path.join(forcedir, 'forcepass%i' % p)
+        #print('Checking for file "%s"' % path)
+        if os.path.exists(path):
+            #print('Forcing pass %i because file exists: %s' % (p, path))
+            return p, path
+    return None, None
     
+
 class NominalExptime(object):
     def update(self, **kwargs):
         for k,v in kwargs.items():
@@ -85,6 +91,12 @@ class NominalCalibration(object):
 
     def cdmatrix(self, ext):
         pass
+
+    def seeing_wrt_airmass(self, band):
+        # From email from Arjun, 2016-08-03 "Scaling for g-band exposure times"
+        return dict(g = 0.422,
+                    r = 0.345,
+                    z = 0.194)[band]
     
     def fiducial_exptime(self, band):
         '''
@@ -100,17 +112,27 @@ class NominalCalibration(object):
         '''
         fid = NominalExptime()
 
+        # 2-coverage targets (90% fill), 5-sigma extinction-corrected
+        # canonical galaxy detection.
+        target_depths = dict(g=24.0, r=23.4, z=22.5)
+
+        target_depth = target_depths[band]
+        # -> 1-coverage depth (- ~0.37 mag)
+        target_depth -= 2.5*np.log10(np.sqrt(2.))
+
+        fid.update(single_exposure_depth = target_depth)
+        
         if band == 'g':
             fid.update(
-                exptime     =  50.,
-                exptime_max = 250.,
-                exptime_min =  40.,
+                exptime     =  70.,
+                exptime_max = 175.,
+                exptime_min =  56.,
                 )
 
         elif band == 'r':
             fid.update(
                 exptime     =  50.,
-                exptime_max = 250.,
+                exptime_max = 125.,
                 exptime_min =  40.,
                 )
 
@@ -180,7 +202,6 @@ def exposure_factor(fid, cal,
     # Nightlystrategy.py has:
     # pfact = 1.15
     # Neff_fid = ((4.0*np.pi*sig_fid**2)**(1.0/pfact)+(8.91*r_half**2)**(1.0/pfact))**pfact
-
     
     neff_fid = Neff(fid.seeing)
     neff     = Neff(seeing)
@@ -232,9 +253,11 @@ def get_tile_from_name(name, tiles):
 def datenow():
     return datetime.datetime.utcnow()
 
+# For testing purposes:
+mjdnow_offset = 0.
 def mjdnow():
     from astrometry.util.starutil_numpy import datetomjd
-    return datetomjd(datenow())
+    return datetomjd(datenow()) + mjdnow_offset
 
 def unixtime_to_ephem_date(unixtime):
     import ephem
@@ -252,10 +275,47 @@ def mjd_to_ephem_date(mjd):
     # MAGIC ephem.Date(datetime.datetime(1858, 11, 17, 0, 0, 0))
     return ephem.Date(mjd -15019.5)
 
-class NewFileWatcher(object):
-    def __init__(self, dir, backlog=True, only_process_newest=False):
+class Logger(object):
+    def __init__(self, verbose=False, timestamp=True):
+        self.verbose = verbose
+        self.timestamp = timestamp
+        self.last_printed = None
+
+    def log(self, *args, **kwargs):
+        '''
+        Keyword args:
+        uniq: if True, do not print a log message if it repeats the last printed
+        log message.
+        kwargs: passed to print().
+        '''
+        import StringIO
+        uniq = kwargs.pop('uniq', False)
+        f = StringIO.StringIO()
+        print(*args, file=f, **kwargs)
+        s = f.getvalue()
+        if uniq and s == self.last_printed:
+            return
+        self.last_printed = s
+        if self.timestamp:
+            import ephem
+            now = str(ephem.now())
+            print('%s: %s' % (now, s), end='')
+        else:
+            print(s, end='')
+
+    def debug(self, *args, **kwargs):
+        if self.verbose:
+            self.log(*args, **kwargs)
+            
+class NewFileWatcher(Logger):
+    def __init__(self, dir, backlog=True, only_process_newest=False,
+                 ignore_missing_dir=False,
+                 verbose=False, timestamp=True):
+        super(NewFileWatcher, self).__init__(verbose=verbose,
+                                             timestamp=timestamp)
         self.dir = dir
         self.only_process_newest = only_process_newest
+        self.ignore_missing_dir = ignore_missing_dir
 
         # How many times to re-try processing a new file
         self.maxFail = 10
@@ -300,6 +360,10 @@ class NewFileWatcher(object):
         pass
 
     def get_file_list(self):
+        if self.ignore_missing_dir and not os.path.exists(self.dir):
+            self.log('Directory', self.dir, 'does not exist -- waiting for it',
+                     uniq=True)
+            return []
         files = set(os.listdir(self.dir))
         return [os.path.join(self.dir, fn) for fn in files]
             
@@ -369,12 +433,15 @@ class NewFileWatcher(object):
                   (fn, self.maxFail))
             self.oldfiles.add(fn)
             return False
-            
-        print('Found new file:', fn)
+
+        self.log('Found new file:', fn)
         try:
             self.try_open_file(fn)
         except:
-            print('Failed to open %s: maybe not fully written yet.' % fn)
+            self.log('Failed to open %s: maybe not fully written yet.' % fn)
+            if self.verbose:
+                import traceback
+                traceback.print_exc()
             self.failCounter.update([fn])
             return False
 
@@ -391,9 +458,10 @@ class NewFileWatcher(object):
             return True
             
         except IOError:
-            print('Failed to read file: %s' % fn)
-            import traceback
-            traceback.print_exc()
+            self.log('Failed to read file: %s' % fn)
+            if self.verbose:
+                import traceback
+                traceback.print_exc()
             self.failCounter.update([fn])
             return False
 

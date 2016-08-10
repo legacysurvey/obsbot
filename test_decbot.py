@@ -3,6 +3,7 @@ import unittest
 import os
 import datetime
 import time
+
 # module is named 'queue' in python3
 from Queue import Queue, Empty
 import json
@@ -37,7 +38,7 @@ class TestQueue(Pyro.core.ObjBase):
 
     def nqueued(self):
         return self.exposures.qsize()
-            
+
     def pop(self):
         try:
             return self.exposures.get_nowait()
@@ -47,7 +48,7 @@ class TestQueue(Pyro.core.ObjBase):
     def reset(self):
         self.commands = []
         self.exposures = Queue()
-        
+
 import threading
 class TestServer(object):
     def __init__(self):
@@ -59,14 +60,14 @@ class TestServer(object):
         self.thread = threading.Thread(target=self)
         self.thread.daemon = True
         self.thread.start()
-        
+
     def __call__(self):
         print('TestServer Running at URL', self.url)
         self.daemon.requestLoop()
 
     def nqueued(self):
         return self.queue.nqueued()
-        
+
 class TestDecbot(unittest.TestCase):
 
     def setUp(self):
@@ -75,8 +76,6 @@ class TestDecbot(unittest.TestCase):
         self.server = TestServer()
         print('URL type:', type(self.server.url))
 
-        import tempfile
-
         fn1 = os.path.join(self.testdatadir, 'decals-pass1.json')
         fn2 = os.path.join(self.testdatadir, 'decals-pass2.json')
         fn3 = os.path.join(self.testdatadir, 'decals-pass3.json')
@@ -84,11 +83,11 @@ class TestDecbot(unittest.TestCase):
         tmpfn1 = fn1 + '.tmp'
         tmpfn2 = fn2 + '.tmp'
         tmpfn3 = fn3 + '.tmp'
-        
+
         for fn,tmpfn in ((fn1,tmpfn1),(fn2,tmpfn2),(fn3,tmpfn3)):
             import json
             import ephem
-            
+
             J = json.loads(open(fn, 'r').read())
             t0 = ephem.Date(str(J[0]['approx_datetime']))
             print('First exposure:', t0)
@@ -105,7 +104,7 @@ class TestDecbot(unittest.TestCase):
             f.close()
 
         self.jsonfiles = [tmpfn1, tmpfn2, tmpfn3]
-            
+
     def test_new_file(self):
         from decbot import main
         args = self.jsonfiles
@@ -114,33 +113,33 @@ class TestDecbot(unittest.TestCase):
 
         decbot = main(cmdlineargs=args, get_decbot=True)
         decbot.queue_initial_exposures()
-        
+
         fn = os.path.join(self.testdatadir, 'decam-00488199-n4.fits.fz')
         decbot.process_file(fn)
 
-        self.assertEqual(decbot.seqnum, 2)
+        self.assertEqual(len(decbot.queued_tiles), 2)
         self.assertEqual(self.server.nqueued(), 2)
 
     def test_nqueue(self):
         self.server.queue.reset()
-        
+
         from decbot import main
         args = self.jsonfiles
         args += ['--remote-server', self.server.url.address]
         args += ['--remote-port',   str(self.server.url.port)]
-        
+
         print('Creating Decbot...')
         decbot = main(cmdlineargs=args, get_decbot=True)
 
         decbot.queue_initial_exposures()
-        
-        self.assertEqual(decbot.seqnum, 2)
+
+        self.assertEqual(len(decbot.queued_tiles), 2)
         self.assertEqual(self.server.nqueued(), 2)
-        
+
         # Should do nothing
         decbot.heartbeat()
 
-        self.assertEqual(decbot.seqnum, 2)
+        self.assertEqual(len(decbot.queued_tiles), 2)
         self.assertEqual(self.server.nqueued(), 2)
 
         self.server.queue.pop()
@@ -149,7 +148,46 @@ class TestDecbot(unittest.TestCase):
         # NOW it should queue exposure.
         decbot.heartbeat()
 
-        self.assertEqual(decbot.seqnum, 3)
+        self.assertEqual(len(decbot.queued_tiles), 3)
+        self.assertEqual(self.server.nqueued(), 2)
+
+    def test_ignore_missing_dir(self):
+        self.server.queue.reset()
+
+        from decbot import main
+        args = self.jsonfiles
+        args += ['--remote-server', self.server.url.address]
+        args += ['--remote-port',   str(self.server.url.port)]
+
+        import tempfile
+        dirnm = tempfile.mkdtemp()
+        os.rmdir(dirnm)
+        args += ['--rawdata', dirnm]
+
+        print('Creating Decbot...')
+        decbot = main(cmdlineargs=args, get_decbot=True)
+
+        decbot.queue_initial_exposures()
+
+        self.assertEqual(len(decbot.queued_tiles), 2)
+        self.assertEqual(self.server.nqueued(), 2)
+
+        decbot.heartbeat()
+
+        os.mkdir(dirnm)
+
+        decbot.heartbeat()
+
+        fn = os.path.join(self.testdatadir, 'decam-00488199-n4.fits.fz')
+        destfn = os.path.join(dirnm, 'new.fits.fz')
+        os.symlink(fn, destfn)
+
+        self.server.queue.pop()
+        self.assertEqual(self.server.nqueued(), 1)
+
+        decbot.heartbeat()
+
+        self.assertEqual(len(decbot.queued_tiles), 3)
         self.assertEqual(self.server.nqueued(), 2)
 
 if __name__ == '__main__':
