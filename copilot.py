@@ -1173,9 +1173,17 @@ def skip_existing_files(imgfns, rawext, by_expnum=False):
         if skipext is None:
             skipext = get_default_extension(fn)
         if by_expnum:
-            hdr = fitsio.read_header(fn)
-            expnum = hdr['EXPNUM']
-            print('file', fn, '-> expnum', expnum)
+            expnum = 0
+            # check if we've seen this file before (in the database)
+            m = obsdb.MeasuredCCD.objects.filter(filename = fn)
+            if len(m):
+                # find unique expnums, take last in case of zeros
+                expnum = np.unique([mi.expnum for mi in m])[-1]
+                print('file', fn, 'found in database -- expnum', expnum)
+            if expnum == 0:
+                hdr = fitsio.read_header(fn)
+                expnum = hdr['EXPNUM']
+                print('file', fn, '-> expnum', expnum)
             mm = obsdb.MeasuredCCD.objects.filter(expnum=expnum, extension=skipext)
         else:
             mm = obsdb.MeasuredCCD.objects.filter(filename=fn, extension=skipext)
