@@ -383,7 +383,11 @@ class NewFileWatcher(Logger):
         latest = None
         newestfile = None
         for fn in newfiles:
-            st = os.stat(fn)
+            try:
+                st = os.stat(fn)
+            except OSError as e:
+                print('Failed to stat filename', fn, ':', e)
+                continue
             t = st.st_mtime
             if latest is None or t > latest:
                 newestfile = fn
