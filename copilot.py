@@ -467,6 +467,9 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     mx = 300
     for band,Tb in zip(bands, TT):
         fid = nom.fiducial_exptime(band)
+        if fid is None:
+            # Band not 'g','r', or 'z'
+            continue
         basetime = fid.exptime
         lo,hi = fid.exptime_min, fid.exptime_max
         exptime = basetime * Tb.expfactor
@@ -493,11 +496,13 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     mx = yh
 
     for band,Tb in zip(bands, TT):
-        dt = dict(g=-0.5,r=+0.5,z=0)[band]
-
         fid = nom.fiducial_exptime(band)
+        if fid is None:
+            continue
         basetime = fid.exptime
         lo,hi = fid.exptime_min, fid.exptime_max
+
+        dt = dict(g=-0.5,r=+0.5).get(band, 0.)
         
         exptime = basetime * Tb.expfactor
         clipped = np.clip(exptime, lo, hi)

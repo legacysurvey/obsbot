@@ -110,6 +110,8 @@ class NominalCalibration(object):
 
         
         '''
+        if not band in 'grz':
+            return None
         fid = NominalExptime()
 
         # 2-coverage targets (90% fill), 5-sigma extinction-corrected
