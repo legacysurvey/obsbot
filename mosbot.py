@@ -466,9 +466,10 @@ class Mosbot(NewFileWatcher):
             exptime = np.clip(exptime, fid.exptime_min, fid.exptime_max)
             print('Clipped exptime', exptime)
             if nextband == 'z':
+                gain=1.8
                 # Compute cap on exposure time to avoid saturation /
                 # loss of dynamic range.
-                t_sat = self.nom.saturation_time(nextband, nextsky)
+                t_sat = self.nom.saturation_time(nextband, nextsky, gain)
                 if exptime > t_sat:
                     exptime = t_sat
                     print('Reduced exposure time to avoid z-band saturation: %.1f' % exptime)

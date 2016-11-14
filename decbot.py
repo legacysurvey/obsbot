@@ -747,7 +747,8 @@ class Decbot(NewFileWatcher):
         if band == 'z':
             # Compute cap on exposure time to avoid saturation /
             # loss of dynamic range.
-            t_sat = self.nom.saturation_time(band, sky)
+            gain=4.
+            t_sat = self.nom.saturation_time(band, sky, gain)
             if exptime > t_sat:
                 exptime = t_sat
                 # Don't print this a gajillion times
