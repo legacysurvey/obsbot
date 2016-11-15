@@ -946,6 +946,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         print('Exposure factor:              %6.3f' % expfactor)
         t_exptime = expfactor * fid.exptime
         print('Target exposure time:         %6.1f' % t_exptime)
+        t_unclipped = t_exptime
         t_exptime = np.clip(t_exptime, fid.exptime_min, fid.exptime_max)
         print('Clipped exposure time:        %6.1f' % t_exptime)
 
@@ -959,6 +960,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
 
         print('Actual exposure time taken:   %6.1f' % exptime)
         print('Depth (exposure time) factor: %6.3f' % (exptime / t_exptime))
+        print('Depth factor (on un-clipped exposure time): %6.3f' % (exptime / t_unclipped))
     else:
         expfactor = 0.
 
