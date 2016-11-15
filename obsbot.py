@@ -107,6 +107,13 @@ class NominalCalibration(object):
         - A_co
         - seeing
         - exptime, exptime_min, exptime_max
+
+        
+        '''
+        if not band in 'grz':
+            return None
+        fid = NominalExptime()
+
         # 2-coverage targets (90% fill), 5-sigma extinction-corrected
         # canonical galaxy detection.
         target_depths = dict(g=24.0, r=23.4, z=22.5)
@@ -153,14 +160,11 @@ class NominalCalibration(object):
     def _fiducial_exptime(self, fid, band):
         return fid
 
-    def saturation_time(self, band, skybright, gain):
+    def saturation_time(self, band, skybright):
         skyflux = 10. ** ((skybright - self.zeropoint(band)) / -2.5)
         skyflux *= self.pixscale**2
         # print('Predicted sky flux per pixel per second: %.1f' %skyflux)
-        if len(gain):
-             t_sat = 30000. / skyflux*gain
-        else:
-             t_sat = 30000. / skyflux
+        t_sat = 30000. / skyflux
         return t_sat
 
             
