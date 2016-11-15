@@ -9,6 +9,7 @@ class MosaicNominalCalibration(NominalCalibration):
     def __init__(self):
         self.pixscale = mosaic_nominal_pixscale
         self.overhead = 30
+        self.gain = 1.8
         
         self.zp0 = dict(
             g = 26.930,

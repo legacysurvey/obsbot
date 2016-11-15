@@ -163,7 +163,10 @@ class NominalCalibration(object):
     def saturation_time(self, band, skybright):
         skyflux = 10. ** ((skybright - self.zeropoint(band)) / -2.5)
         skyflux *= self.pixscale**2
-        # print('Predicted sky flux per pixel per second: %.1f' %skyflux)
+        # print('Predicted sky flux per pixel per second: %.1f electrons' %skyflux)
+        # Divide by (nominal) gain to get from electrons back to ADU
+        skyflux /= self.gain
+        # MAGIC 30,000 ADU target
         t_sat = 30000. / skyflux
         return t_sat
 

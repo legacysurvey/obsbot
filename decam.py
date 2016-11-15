@@ -9,6 +9,7 @@ class DecamNominalCalibration(NominalCalibration):
     def __init__(self):
         self.pixscale = decam_nominal_pixscale
         self.overhead = 30
+        self.gain = 4.0
 
         self.zp0 = dict(
             g = 26.610,
