@@ -170,8 +170,6 @@ class Decbot(NewFileWatcher):
                     - measure image, set self.latest_measurement
                     - Decbot.update_plans()
             Decbot.heartbeat()
-                - if "forcepass" state has changed:
-                    - Decbot.update_plans()
                 - poll queue.  If not empty:
                     - Decbot.queue_exposure()
                         - save in queued_tiles
@@ -183,7 +181,7 @@ class Decbot(NewFileWatcher):
         - for each pass:
             - drop tiles before now
             - drop any tiles already observed or planned
-        - for chose pass: update exposure times
+            - update exposure times
         - Decbot.write_plans()
 
 
@@ -228,7 +226,6 @@ class Decbot(NewFileWatcher):
         self.copilot_db = copilot_db
         self.queued_tiles = []
         self.adjust_previous = opt.adjust
-        self.forced_pass = None
         self.nextpass = opt.passnum
         self.latest_measurement = None
         
@@ -440,33 +437,27 @@ class Decbot(NewFileWatcher):
         e = self.queue_exposure()
         return (e is not None)
 
-    def forced_pass_changed(self):
-        p,fn = get_forced_pass()
-        if p == self.forced_pass:
-            return False
-        self.forced_pass = p
-        return True
-        
     def heartbeat(self):
-        # Check for change of 'forcepass1' files state.
-        if self.forced_pass_changed():
-            print('Forcing pass', self.forced_pass)
-            self.update_plans()
-
         if self.queue_if_ready():
             return
 
-        # Is "now" after the first planned tile?  If so, replan!
-        J = self.get_upcoming()
-        if len(J):
-            jj = [J[0]]
-            jj = self.tiles_after_now(jj)
-            if len(jj) == 0:
-                self.update_plans()
+        # Is "now" after the next tile in any pass?  If so, replan!
+        replan = False
+        for J in [self.J1, self.J2, self.J3]:
+            if len(J):
+                # Is the first planned tile scheduled for before now?
+                jj = [J[0]]
+                jj = self.tiles_after_now(jj)
+                if len(jj) == 0:
+                    replan = True
+        if replan:
+            self.update_plans()
 
     def queue_exposure(self):
+        self.choose_next_pass()
         J = self.get_upcoming()
         if len(J) == 0:
+            print('Time to queue an exposure, but none are left in the plans!')
             return None
         j = J.pop(0)
 
@@ -605,47 +596,49 @@ class Decbot(NewFileWatcher):
         return [self.J1,self.J2,self.J3][self.nextpass-1]
 
     def update_plans(self, exptime=None):
+        # Sets self.nextpass
         self.choose_next_pass()
 
         self.J1 = self.keep_good_tiles(self.J1)
         self.J2 = self.keep_good_tiles(self.J2)
         self.J3 = self.keep_good_tiles(self.J3)
 
-        # Choose the next tile from the right JSON tile list
-        J = self.get_upcoming()
+        # Update plans (exposure times) for all three passes
+        for j,J in enumerate([self.J1, self.J2, self.J3]):
+            passnum = j+1
 
-        if len(J) == 0:
-            print('Could not find a JSON observation in pass', self.nextpass,
-                  'with approx_datetime after now =', str(ephem.now()))
-            return False
+            if len(J) == 0:
+                print('Could not find a JSON observation in pass', passnum,
+                      'with approx_datetime after now =', str(ephem.now()))
+                return False
 
-        M = self.latest_measurement
-        if M is not None:
-            # Update the exposure times in plan J based on measured conditions.
-            print('Updating exposure times for pass', self.nextpass)
-            # Keep track of expected time of observations
-            # FIXME -- should add margin for the images currently in the queue...
+            M = self.latest_measurement
+            if M is not None:
+                # Update the exposure times in plan J based on measured conditions.
+                print('Updating exposure times for pass', passnum)
+                # Keep track of expected time of observations
+                # FIXME -- should add margin for the images currently in the queue...
+                self.obs.date = ephem.now()
+                for ii,jplan in enumerate(J):
+                    exptime = self.exptime_for_tile(jplan, debug=(ii < 3))
+                    jplan['expTime'] = exptime
+                    self.obs.date += (exptime + self.nom.overhead) / 86400.
+            elif exptime is not None: 
+                for ii,jplan in enumerate(J):
+                    jplan['expTime'] = exptime
+
             self.obs.date = ephem.now()
             for ii,jplan in enumerate(J):
-                exptime = self.exptime_for_tile(jplan, debug=(ii < 3))
-                jplan['expTime'] = exptime
-                self.obs.date += (exptime + self.nom.overhead) / 86400.
-        elif exptime is not None: 
-            for ii,jplan in enumerate(J):
-                jplan['expTime'] = exptime
-
-        self.obs.date = ephem.now()
-        for ii,jplan in enumerate(J):
-            s = (('Plan tile %s (pass %i), band %s, RA,Dec (%.3f,%.3f), ' +
-                  'exptime %i.') %
-                  (jplan['object'], jplan['planpass'], jplan['filter'],
-                   jplan['RA'], jplan['dec'], jplan['expTime']))
-            if ii <= 3:
-                airmass = self.airmass_for_tile(jplan)
-                s += '  Airmass if observed now: %.2f' % airmass
-                self.log(s)
-            else:
-                self.debug(s)
+                s = (('Plan tile %s (pass %i), band %s, RA,Dec (%.3f,%.3f), ' +
+                      'exptime %i.') %
+                      (jplan['object'], jplan['planpass'], jplan['filter'],
+                       jplan['RA'], jplan['dec'], jplan['expTime']))
+                if ii <= 3:
+                    airmass = self.airmass_for_tile(jplan)
+                    s += '  Airmass if observed now: %.2f' % airmass
+                    self.log(s)
+                else:
+                    self.debug(s)
                 
         self.write_plans()
             
