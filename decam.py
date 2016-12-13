@@ -10,6 +10,7 @@ class DecamNominalCalibration(NominalCalibration):
         self.pixscale = decam_nominal_pixscale
         self.overhead = 30
         self.gain = 4.0
+        self.saturation_adu = 30000
 
         self.zp0 = dict(
             g = 26.610,

@@ -10,6 +10,7 @@ class MosaicNominalCalibration(NominalCalibration):
         self.pixscale = mosaic_nominal_pixscale
         self.overhead = 30
         self.gain = 1.8
+        self.saturation_adu = 20000
         
         self.zp0 = dict(
             g = 26.930,

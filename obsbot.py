@@ -166,8 +166,8 @@ class NominalCalibration(object):
         # print('Predicted sky flux per pixel per second: %.1f electrons' %skyflux)
         # Divide by (nominal) gain to get from electrons back to ADU
         skyflux /= self.gain
-        # MAGIC 30,000 ADU target
-        t_sat = 30000. / skyflux
+        # 30k for DECam, 20k for Mosaic3
+        t_sat = self.saturation_adu / skyflux
         return t_sat
 
             
