@@ -1,0 +1,46 @@
+; to create database file:
+; python copilot.py --fits obs.fits
+
+
+
+if n_elements(o) eq 0 then o=mrdfits('obs.fits',1)
+wh=where(o.mjd_obs gt 57730,ct)
+o=o[wh]
+;for i=0,ct-1 do print,o[i].filename,o[i].expfactor,1/o[i].expfactor
+
+;fid=fiducial_exptime(band)
+;exptime=basetime*Tbexpfactor
+;t_sat=saturation_time(sky)
+;depth_factor = Tbexptime / exptime
+
+basetime=100.
+
+ exptime     = 100.
+ exptime_max = 250.
+ exptime_min =  80.
+ skybright=o.sky
+
+r_half=0.45
+ps=0.265
+
+neff=(4. * !pi * (o.seeing / 2.35)^2 + $
+                8.91 * r_half^2 + $
+                ps^2/12.)
+
+neff_fid=(4. * !pi * (1.3 / 2.35)^2 + $
+                8.91 * r_half^2 + $
+                ps^2/12.)
+
+k_co=0.10
+a_co=1.263
+
+  scaling = (1./o.transparency^2 * $
+               10.^(0.8 * k_co * (o.airmass - 1.)) * $
+               10.^(0.8 * A_co * o.ebv) * $
+               (neff / neff_fid) * $
+               10.^(-0.4 * (o.sky - 18.46)))
+
+depth_factor=(o.exptime)/(scaling*basetime)
+
+for i=0,ct-1 do begin &$
+     if depth_factor[i] lt 0.3 then print,o[i].filename,depth_factor[i]
