@@ -833,8 +833,17 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         import obsdb
         if ext is None:
             ext = get_default_extension(fn)
-        m,created = obsdb.MeasuredCCD.objects.get_or_create(
-            filename=fn, extension=ext)
+        #m,created = obsdb.MeasuredCCD.objects.get_or_create(
+        #    filename=fn, extension=ext)
+
+        try:
+            m = obsdb.MeasuredCCD.objects.filter(
+                filename=fn, extension=ext)
+            # Arbitrarily take first object.
+            m = m[0]
+        except obsdb.MeasuredCCD.DoesNotExist:
+            m = obsdb.MeasuredCCD(filename=fn, extension=ext)
+            m.save()
 
         if skip:
             # Also try searching by expnum and ext.
