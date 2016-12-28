@@ -531,7 +531,7 @@ class Decbot(NewFileWatcher):
         # Reasonableness checks
         keep = []
         for M in MM:
-            ok = (M['nmatched'] >= 20) and (M.get('zp',None) is not None)
+            ok = (M is not None) and (M['nmatched'] >= 20) and (M.get('zp',None) is not None)
             if ok:
                 keep.append(M)
         if len(keep) == 0:
