@@ -836,12 +836,12 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         #m,created = obsdb.MeasuredCCD.objects.get_or_create(
         #    filename=fn, extension=ext)
 
-        try:
-            m = obsdb.MeasuredCCD.objects.filter(
-                filename=fn, extension=ext)
-            # Arbitrarily take first object.
-            m = m[0]
-        except obsdb.MeasuredCCD.DoesNotExist:
+        mlist = obsdb.MeasuredCCD.objects.filter(
+            filename=fn, extension=ext)
+        # Arbitrarily take first object if more than one found
+        if mlist.count() > 0:
+            m = mlist[0]
+        else:
             m = obsdb.MeasuredCCD(filename=fn, extension=ext)
             m.save()
 
