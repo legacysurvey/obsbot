@@ -1,6 +1,7 @@
 ; to create database file:
 ; python copilot.py --fits obs.fits
 
+if n_elements(verbose) eq 0 then verbose=0
 
 
 if n_elements(o) eq 0 then o=mrdfits('obs.fits',1)
@@ -42,5 +43,7 @@ a_co=1.263
 
 depth_factor=(o.exptime)/(scaling*basetime)
 
+
 for i=0,ct-1 do begin &$
-     if depth_factor[i] lt 0.3 then print,o[i].filename,depth_factor[i]
+     if (depth_factor[i] lt 0.3) OR (verbose gt 0) then print,o[i].filename,depth_factor[i] &$
+endfor
