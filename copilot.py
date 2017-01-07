@@ -337,8 +337,10 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     plt.axhline(0.8, color='k', alpha=0.1)
 
     if nightly:
-        plt.text(latest.mjd_obs, yl+0.03*(yh-yl),
-                 'Median: %.2f' % np.median(T.seeing), ha='right', bbox=bbox)
+        I = np.flatnonzero(T.seeing > 0)
+        if len(I):
+            plt.text(latest.mjd_obs, yl+0.03*(yh-yl),
+                     'Median: %.2f' % np.median(T.seeing[I]), ha='right', bbox=bbox)
     else:
         plt.text(latest.mjd_obs, yl+0.03*(yh-yl),
                  '%.2f' % latest.seeing, ha='center', bbox=bbox)
@@ -369,7 +371,11 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     nomskies = []
     medskies = []
     for band,Tb in zip(bands, TT):
-        sky0 = nom.sky(band)
+        try:
+            sky0 = nom.sky(band)
+        except KeyError:
+            # unknown filter
+            continue
         T.dsky[T.band == band] = Tb.sky - sky0
         I = np.flatnonzero(Tb.sky > 0)
         if len(I):
@@ -454,8 +460,10 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     yl,yh = min(0.89, max(mn, yl)), min(mx, max(yh, 1.01))
 
     if nightly:
-        plt.text(latest.mjd_obs, yl+0.03*(yh-yl),
-                'Median: %.2f' % np.median(T.transparency),
+        I = np.flatnonzero(T.transparency > 0)
+        if len(I):
+            plt.text(latest.mjd_obs, yl+0.03*(yh-yl),
+                     'Median: %.2f' % np.median(T.transparency[I]),
                 ha='right', bbox=bbox)
     else:
         plt.text(latest.mjd_obs, yl+0.03*(yh-yl),
