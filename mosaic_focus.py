@@ -187,19 +187,22 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
         names = ('PSF X fwhm (arcsec)', 'PSF Y fwhm (arcsec)')
         fitvals = []
         for name,Y in zip(names, [allcxx, allcyy]):
+            # Gather up the seeing measurements for each focus value
+            # and compute the median and 16th & 84th percentiles as a
+            # measurement + error estimate: Ymn and Ysig.
             X,I = np.unique(allfocus, return_inverse=True)
             Ymn,Ysig = np.zeros(len(X)), np.zeros(len(X))
             for i in range(len(X)):
                 J = np.flatnonzero(I == i)
                 yi = Y[J]
                 y1,ymn,y2 = np.percentile(yi, [16,50,84])
-                ysig = (y1 - y2) / 2
+                ysig = (y2 - y1) / 2
                 Ymn [i] = ymn
                 Ysig[i] = ysig
 
+            # Rescale xx to ~[-1,1]
             xmed = np.median(X)
             dx = (np.max(X) - np.min(X)) / 2.
-            # Rescale xx in [-1,1]
             xx = (X - xmed) / dx
             A = np.zeros((len(xx),3))
             A[:,0] = 1.
@@ -210,7 +213,7 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
             b = Ymn * wt
             R = np.linalg.lstsq(A, b)
             s = R[0]
-            #print('Least-squares quadratic:', s)
+            print('Least-squares quadratic:', s)
             mn,mx = allfocus.min(),allfocus.max()
             d = mx-mn
             mn -= 0.1 * d
@@ -220,8 +223,10 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
             qq = s[0] + rx*s[1] + rx**2*s[2]
             # minimum
             fbest = -s[1] / (2. * s[2])
+            seebest = s[0] + fbest * s[1] + fbest**2 * s[2]
+            print('Best seeing value:', seebest)
             fbest = fbest * dx + xmed
-            fitvals.append((X, Ymn, Ysig, s, xx, qq, fbest))
+            fitvals.append((X, Ymn, Ysig, s, xx, qq, fbest, seebest))
             print('Focus position from %s: %.1f' % (name, fbest))
             FF.append(fbest)
 
@@ -239,7 +244,7 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
         def pixvar2seeing(var):
             return np.sqrt(var) * 2.35 * self.pixscale
         
-        for i,(name,Y,(X,Ymn,Ysig, s, xx, qq, fbest)) in enumerate(zip(
+        for i,(name,Y,(X,Ymn,Ysig, s, xx, qq, fbest, seebest)) in enumerate(zip(
                 names, (allcxx, allcyy), fitvals)):
 
             if plotfn is not None:
@@ -248,7 +253,7 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
                 plt.clf()
 
             if i in [0,1]:
-                seeings.append(s[0])
+                seeings.append(seebest)
                 plt.errorbar(X, pixvar2seeing(Ymn), yerr=pixvar2seeing(Ysig),
                              fmt='o', color='g')
                 plt.plot(allfocus, pixvar2seeing(Y), 'b.', alpha=0.25)
@@ -301,7 +306,7 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
             plt.xlabel('')
             plt.subplot(3,1,2)
             plt.xlabel('')
-            plt.suptitle('Focus (expnum = %i): Focus %.0f, Seeing %.1f, Band %s' %
+            plt.suptitle('Focus (expnum = %i): Focus %.0f, Seeing (from fit) %.2f, Band %s' %
                          (self.primhdr.get('EXPNUM', 0), fmean, meanseeing, band))
             plt.savefig(plotfn)
         else:
