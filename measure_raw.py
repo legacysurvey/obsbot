@@ -214,10 +214,10 @@ class RawMeasurer(object):
 
         try:
             kx = self.nom.fiducial_exptime(band).k_co
-        except (ValueError, KeyError):
+        except:
             print('Unknown band "%s"; no k_co available.' % band)
             kx = None
-        
+
         # Find the sky value and noise level
         sky,sig1 = self.get_sky_and_sigma(img)
 
