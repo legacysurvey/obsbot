@@ -1048,7 +1048,7 @@ def mark_twilight(camera, date):
     return mark
     
 def plot_recent(opt, nom, tiles=None, markmjds=[],
-                botplanfn=None, **kwargs):
+                botplanfn=None, nightly=False, **kwargs):
     import obsdb
 
     if opt.mjdend is None:
@@ -1076,29 +1076,34 @@ def plot_recent(opt, nom, tiles=None, markmjds=[],
         tiles is not None):
         import pylab as plt
         plt.figure(2)
-        radec_plot(botplanfn, mm, tiles)
+        radec_plot(botplanfn, mm, tiles, nightly, mjd_start)
         plt.figure(1)
-    
+    elif nightly:
+        radec_plot(None, mm, tiles, nightly, mjd_start)
+
     camera = mm[0].camera
     allobs = obsdb.MeasuredCCD.objects.filter(camera=camera)
 
     plotfn = opt.plot_filename
 
     markmjds.extend(mark_twilight(camera, ephem.Date(mjdtodate(mjd_end))))
-    
+
     plot_measurements(mm, plotfn, nom, allobs=allobs,
                       mjdrange=(mjd_start, mjd_end), markmjds=markmjds,
-                      **kwargs)
+                      nightly=nightly, **kwargs)
 
 
-def radec_plot(botplanfn, mm, tiles):
+def radec_plot(botplanfn, mm, tiles, nightly, mjdstart):
     import pylab as plt
     from astrometry.util.fits import fits_table
-    P = fits_table(botplanfn)
-    
-    mlast = mm.order_by('mjd_obs').last()
-
-    mrecent = mm.order_by('-mjd_obs')[:10]
+    if botplanfn is None:
+        P = None
+    else:
+        P = fits_table(botplanfn)
+        
+    msorted = list(mm.order_by('mjd_obs'))
+    mlast   = msorted[-1]
+    mrecent = msorted[-10:]
 
     ccmap = dict(g='g', r='r', z='m', zd='m')
     lp,lt = [],[]
@@ -1109,43 +1114,47 @@ def radec_plot(botplanfn, mm, tiles):
     I = (tiles.in_desi == 1) * (tiles.z_done > 0)
     plt.plot(tiles.ra[I], tiles.dec[I], 'k.', alpha=0.5)
 
-    plt.plot([m.rabore for m in mm], [m.decbore for m in mm], 'k-',
+    plt.plot([m.rabore for m in msorted], [m.decbore for m in msorted], 'k-',
              lw=2, alpha=0.5)
-    pr = plt.scatter([m.rabore for m in mm], [m.decbore for m in mm],
-                     color=[ccmap.get(m.band[:1],'k') for m in mm], marker='o',
-                     s=20)
+    pr = plt.scatter([m.rabore for m in msorted], [m.decbore for m in msorted],
+                     color=[ccmap.get(m.band[:1],'k') for m in msorted],
+                     marker='o', s=20)
     lp.append(pr)
     lt.append('Recent')
 
     rd = []
+    if nightly:
+        rd.append((np.array([m.rabore for m in msorted]),
+                   np.array([m.decbore for m in msorted])))
     
-    P.color = np.array([ccmap.get(f[:1],'k') for f in P.filter])
-    I = np.flatnonzero(P.type == '1')
-    I = I[:10]
-    p1 = plt.scatter(P.ra[I], P.dec[I], c=P.color[I], marker='^', alpha=0.5,
-                     s=60)
-    rd.append((P.ra[I], P.dec[I]))
-    plt.plot(P.ra[I], P.dec[I], 'k-', alpha=0.1)
-    lp.append(p1)
-    lt.append('Upcoming P1')
+    if not nightly:
+        P.color = np.array([ccmap.get(f[:1],'k') for f in P.filter])
+        I = np.flatnonzero(P.type == '1')
+        I = I[:10]
+        p1 = plt.scatter(P.ra[I], P.dec[I], c=P.color[I], marker='^', alpha=0.5,
+                         s=60)
+        rd.append((P.ra[I], P.dec[I]))
+        plt.plot(P.ra[I], P.dec[I], 'k-', alpha=0.1)
+        lp.append(p1)
+        lt.append('Upcoming P1')
+        
+        I = np.flatnonzero(P.type == '2')
+        I = I[:10]
+        p2 = plt.scatter(P.ra[I], P.dec[I], c=P.color[I], marker='s', alpha=0.5,
+                         s=60)
+        rd.append((P.ra[I], P.dec[I]))
+        plt.plot(P.ra[I], P.dec[I], 'k-', alpha=0.1)
+        lp.append(p2)
+        lt.append('Upcoming P2')
     
-    I = np.flatnonzero(P.type == '2')
-    I = I[:10]
-    p2 = plt.scatter(P.ra[I], P.dec[I], c=P.color[I], marker='s', alpha=0.5,
-                     s=60)
-    rd.append((P.ra[I], P.dec[I]))
-    plt.plot(P.ra[I], P.dec[I], 'k-', alpha=0.1)
-    lp.append(p2)
-    lt.append('Upcoming P2')
-
-    I = np.flatnonzero(P.type == '3')
-    I = I[:10]
-    p3 = plt.scatter(P.ra[I], P.dec[I], c=P.color[I], marker='p', alpha=0.5,
-                     s=60)
-    rd.append((P.ra[I], P.dec[I]))
-    plt.plot(P.ra[I], P.dec[I], 'k-', alpha=0.1)
-    lp.append(p3)
-    lt.append('Upcoming P3')
+        I = np.flatnonzero(P.type == '3')
+        I = I[:10]
+        p3 = plt.scatter(P.ra[I], P.dec[I], c=P.color[I], marker='p', alpha=0.5,
+                         s=60)
+        rd.append((P.ra[I], P.dec[I]))
+        plt.plot(P.ra[I], P.dec[I], 'k-', alpha=0.1)
+        lp.append(p3)
+        lt.append('Upcoming P3')
 
     pl = plt.plot(mlast.rabore, mlast.decbore, 'o',
                   color=ccmap.get(mlast.band,'k'), ms=10)
@@ -1153,28 +1162,23 @@ def radec_plot(botplanfn, mm, tiles):
     lp.append(pl[0])
     lt.append('Last exposure')
 
-    I = np.flatnonzero(P.type == 'P')
-    plt.plot(P.ra[I], P.dec[I], 'k-', lw=3, alpha=0.5)
-    rd.append((P.ra[I], P.dec[I]))
-    pplan = plt.scatter(P.ra[I], P.dec[I], c=P.color[I], marker='*',
-                        s=100)
-    lp.append(pplan)
-    lt.append('Planned')
+    if not nightly:
+        I = np.flatnonzero(P.type == 'P')
+        plt.plot(P.ra[I], P.dec[I], 'k-', lw=3, alpha=0.5)
+        rd.append((P.ra[I], P.dec[I]))
+        pplan = plt.scatter(P.ra[I], P.dec[I], c=P.color[I], marker='*',
+                            s=100)
+        lp.append(pplan)
+        lt.append('Planned')
     
     plt.xlabel('RA (deg)')
     plt.ylabel('Dec (deg)')
-    #plt.axis([360,0,-20,90])
 
     plt.figlegend(lp, lt, 'upper right')
 
     rr = np.hstack([r for r,d in rd])
     dd = np.hstack([d for r,d in rd])
     
-    # ralo = min(P.ra.min(), min([m.rabore for m in mrecent]))
-    # rahi = max(P.ra.max(), max([m.rabore for m in mrecent]))
-    # declo = min(P.dec.min(), min([m.decbore for m in mrecent]))
-    # dechi = max(P.dec.max(), max([m.decbore for m in mrecent]))
-
     ralo  = rr.min()
     rahi  = rr.max()
     declo = dd.min()
@@ -1185,6 +1189,11 @@ def radec_plot(botplanfn, mm, tiles):
     
     plt.axis([rahi+0.1*dr, ralo-0.1*dr, declo-0.1*dd, dechi+0.1*dd])
 
+    if nightly:
+        ## HACK -- subtract 0.5 for UTC to local calendar date at start of night.
+        date = mjdtodate(mjdstart - 0.5)
+        plt.title('%i-%02i-%02i' % (date.year, date.month, date.day))
+    
     fn = 'radec.png'
     plt.savefig(fn)
     print('Wrote', fn)
