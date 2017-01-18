@@ -878,7 +878,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         show_plot = opt.show
         if show_plot:
             import pylab as plt
-            plt.figure(2, figsize=(8,10))
+            plt.figure(3, figsize=(8,10))
             plt.subplots_adjust(top=0.95)
         if ext is None:
             ext = get_default_extension(fn)
@@ -896,7 +896,6 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
                 plt.draw()
                 plt.show(block=False)
                 plt.pause(0.001)
-                plt.figure(1)
         skip = True
         
     if skip:
@@ -1077,7 +1076,6 @@ def plot_recent(opt, nom, tiles=None, markmjds=[],
         import pylab as plt
         plt.figure(2)
         radec_plot(botplanfn, mm, tiles, nightly, mjd_start)
-        plt.figure(1)
     elif nightly:
         radec_plot(None, mm, tiles, nightly, mjd_start)
 
@@ -1088,6 +1086,7 @@ def plot_recent(opt, nom, tiles=None, markmjds=[],
 
     markmjds.extend(mark_twilight(camera, ephem.Date(mjdtodate(mjd_end))))
 
+    plt.figure(1)
     plot_measurements(mm, plotfn, nom, allobs=allobs,
                       mjdrange=(mjd_start, mjd_end), markmjds=markmjds,
                       nightly=nightly, **kwargs)
@@ -1325,7 +1324,11 @@ def main(cmdlineargs=None, get_copilot=False):
     import obsdb
 
     import pylab as plt
+    # Mosaic focus plot
+    # figure 3
+    # RA,Dec plot
     plt.figure(num=2, figsize=(10,6))
+    # Copilot plot
     plt.figure(num=1, figsize=(8,10))
 
     if opt.datestart is not None:

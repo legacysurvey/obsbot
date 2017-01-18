@@ -467,8 +467,8 @@ class NewFileWatcher(Logger):
             self.lastNewFile = self.lastTimeout = datenow()
             return True
             
-        except IOError:
-            self.log('Failed to read file: %s' % fn)
+        except IOError as e:
+            self.log('Failed to process file: %s (%s)' % (fn, str(e)))
             if self.verbose:
                 import traceback
                 traceback.print_exc()
