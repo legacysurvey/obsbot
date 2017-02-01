@@ -110,6 +110,7 @@ class TestMosbot(unittest.TestCase):
             'airmass': 1.019,
             'skybright': 19.372964228396995,
             'transparency': 0.94911683705518535,
+            'zp': 26.348159194305978,
             'seeing': 0.9776841626480679,
             'band': 'z'})
 
@@ -133,4 +134,8 @@ class TestMosbot(unittest.TestCase):
 
         
 if __name__ == '__main__':
+    import obsdb
+    from camera_mosaic import database_filename
+    obsdb.django_setup(database_filename=database_filename)
+
     unittest.main()

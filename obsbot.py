@@ -491,7 +491,8 @@ class NewFileWatcher(Logger):
 
 # Code shared between mosbot.py and decbot.py
 class Obsbot(NewFileWatcher):
-    def adjust_for_previous(self, tile, band, fid, debug=False):
+    def adjust_for_previous(self, tile, band, fid, debug=False,
+                            get_others=False):
         '''
         Adjust the exposure time we should take for this image based
         on data we've already taken.
@@ -520,6 +521,8 @@ class Obsbot(NewFileWatcher):
         if len(I) == 0:
             if debug:
                 print('No other passes have measured depths')
+            if get_others:
+                return 1.0,others
             return 1.0
         if debug:
             print('Other tile passes:', others.get('pass')[I])
@@ -569,6 +572,8 @@ class Obsbot(NewFileWatcher):
             print('Exposure time factor based on previous exposures:',
                   thisfactor)
 
+        if get_others:
+            return thisfactor,others
         return thisfactor
 
     def other_passes(self, tile, tiles):
@@ -581,7 +586,9 @@ class Obsbot(NewFileWatcher):
         from astrometry.libkd.spherematch import match_radec
         # Could also use the fact that the passes are offset from each other
         # by a fixed index (15872 for decam)...
-        # Max separation is about 0.6 degrees
+        # Max separation is about 0.6 degrees for DECam...
+        #### FIXME for Mosaic this is much smaller... and the three passes
+        #### for a tile are not necessarily relatively close to each other.
         I,J,d = match_radec(tile.ra, tile.dec, tiles.ra, tiles.dec, 1.)
         # Omit 'tile' itself...
         K = np.flatnonzero(tiles.tileid[J] != tile.tileid)

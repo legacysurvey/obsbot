@@ -291,6 +291,19 @@ def main():
             J = np.flatnonzero((O.get('pass') == passnum) *
                                (depth > 1) * (depth < 30))
             depth = depth[J]
+
+            print('Pass', passnum)
+            print('Fiducial single-exposure-depth:', fid.single_exposure_depth)
+            print(sum(depth < fid.single_exposure_depth - 0.25), 'of', len(depth), 'tiles are more than 0.25 mag shallow')
+
+            odepth = O.get('%s_depth' % band)
+            K = np.flatnonzero((O.get('%s_done' % band) == 0) * (O.get('pass') == passnum) *
+                               (odepth > 1) * (odepth < 30))
+            print(sum(odepth[K] < fid.single_exposure_depth - 0.25), 'of', len(odepth[K]), 'DONE=0 tiles are more than 0.25 mag shallow')
+            K = np.flatnonzero((O.get('%s_done' % band) == 1) * (O.get('pass') == passnum) *
+                               (odepth > 1) * (odepth < 30))
+            print(sum(odepth[K] < fid.single_exposure_depth - 0.25), 'of', len(odepth[K]), 'DONE=1 tiles are more than 0.25 mag shallow')
+            
             mlo,mhi = 21,24
             plt.hist(np.clip(depth, mlo,mhi), bins=100, range=(mlo,mhi),
                      histtype='step', color=' bgr'[passnum],

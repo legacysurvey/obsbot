@@ -1,6 +1,51 @@
 from django.db import models
 import numpy as np
 
+class ComputedExptime(models.Model):
+    starttime = models.FloatField()
+    seqnum = models.IntegerField()
+
+    tileid = models.IntegerField(default=0)
+    passnumber = models.IntegerField(default=0)
+    band = models.CharField(max_length=16, default='')
+    airmass = models.FloatField(default=0)
+    ebv = models.FloatField(default=0)
+
+    # properties of the just-measured image being used to determine exptime
+    meas_band = models.CharField(max_length=16, default='')
+    zeropoint = models.FloatField(default=0)
+    transparency = models.FloatField(default=0)
+    seeing = models.FloatField(default=0)
+    sky = models.FloatField(default=0)
+    expfactor = models.FloatField(default=0)
+
+    # other passes -- via ForeignKey many-to-one
+
+    adjfactor = models.FloatField(default=0)
+
+    exptime_unclipped = models.FloatField(default=0)
+    exptime_clipped = models.FloatField(default=0)
+    exptime_satclipped = models.FloatField(default=0)
+    exptime = models.FloatField(default=0)
+
+class OtherPasses(models.Model):
+    exposure = models.ForeignKey(ComputedExptime)
+
+    tileid = models.IntegerField(default=0)
+    passnumber = models.IntegerField(default=0)
+    depth = models.FloatField(default=0)
+
+
+class DatabaseRouter(object):
+    def db_for_read(self, model, **hints):
+        # print('DatabaseRouter.db_for_read:', model)
+        if model in [ComputedExptime, OtherPasses]:
+            # print('Returned "exptime"')
+            return 'exptime'
+        return None
+    db_for_write = db_for_read
+
+
 class MeasuredCCD(models.Model):
     camera = models.CharField(
         max_length=32,
@@ -66,3 +111,7 @@ class MeasuredCCD(models.Model):
     affine_dyy = models.FloatField(default=0)
     affine_x0 = models.FloatField(default=0)
     affine_y0 = models.FloatField(default=0)
+
+
+
+
