@@ -486,3 +486,105 @@ class NewFileWatcher(Logger):
             sleep = not gotone
             self.heartbeat()
     
+
+
+
+# Code shared between mosbot.py and decbot.py
+class Obsbot(NewFileWatcher):
+    def adjust_for_previous(self, tile, band, fid, debug=False):
+        '''
+        Adjust the exposure time we should take for this image based
+        on data we've already taken.
+        '''
+        # Find the other passes for this tile, and if we've taken an
+        # exposure, think about adjusting the exposure time.  If the
+        # depth in the other exposure is more than THRESHOLD too
+        # shallow, ignore it on the assumption that we'll re-take it.
+        # If there is a previous exposure for THIS tile, reduce our
+        # exposure time accordingly.
+
+        # Find other passes
+        others = self.other_passes(tile, self.tiles)
+        others.depth = others.get('%s_depth' % band)
+
+        target = fid.single_exposure_depth
+        if debug:
+            print('Adjusting exposure for tile', tile.tileid, 'pass',
+                  tile.get('pass'))
+
+        # depth = 0 means no obs;
+        # depth = 1 means non-photometric observation was taken.
+        # depth = 30 means image was taken but we don't know how deep it is yet
+
+        I = np.flatnonzero((others.depth > 1) * (others.depth < 30))
+        if len(I) == 0:
+            if debug:
+                print('No other passes have measured depths')
+            return 1.0
+        if debug:
+            print('Other tile passes:', others.get('pass')[I])
+            print('Other tile depths:', others.get('%s_depth' % band)[I])
+            print('Target depth:', target)
+
+        thisfactor = 1.0
+
+        threshold = 0.25
+
+        shortfall = target - others.depth
+        I = np.flatnonzero((others.depth > 1) *
+                           (shortfall > 0) * (shortfall < threshold))
+        if len(I) > 0:
+            others.cut(I)
+            if debug:
+                print('Other tiles with acceptable shortfalls:', shortfall[I])
+            # exposure time factors required
+            factors = (10.**(-shortfall[I] / 2.5))**2
+            if debug:
+                print('Exposure time factors:', factors)
+            extra = np.sum(1 - factors)
+            if debug:
+                print('Total extra fraction required:', extra)
+            # Split this extra required exposure time between the remaining
+            # passes...
+            # Magic number 3 = three passes
+            nremain = max(1, 3 - len(I))
+            if debug:
+                print('Extra time to be taken in this image:', extra / nremain)
+            thisfactor += extra / nremain
+        else:
+            if debug:
+                print('All other tiles reached depth or need to be retaken.')
+            
+        depth = tile.get('%s_depth' % band)
+        if depth > 1:
+            # If this tile has had previous exposure(s), subtract that.
+            shortfall = target - depth
+            factor = (10.**(-shortfall / 2.5))**2
+            if debug:
+                print('This tile had previous depth:', depth)
+                print('Fraction of nominal exposure time:', factor)
+            thisfactor -= factor
+
+        if debug:
+            print('Exposure time factor based on previous exposures:',
+                  thisfactor)
+
+        return thisfactor
+
+    def other_passes(self, tile, tiles):
+        '''
+        Given tile number *tile*, return the obstatus rows for the other passes
+        on this tile center.
+
+        Returns: *otherpasses*, table object
+        '''
+        from astrometry.libkd.spherematch import match_radec
+        # Could also use the fact that the passes are offset from each other
+        # by a fixed index (15872 for decam)...
+        # Max separation is about 0.6 degrees
+        I,J,d = match_radec(tile.ra, tile.dec, tiles.ra, tiles.dec, 1.)
+        # Omit 'tile' itself...
+        K = np.flatnonzero(tiles.tileid[J] != tile.tileid)
+        J = J[K]
+        return tiles[J]
+        

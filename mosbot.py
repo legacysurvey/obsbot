@@ -27,7 +27,7 @@ from jnox import (jnox_preamble, jnox_filter, jnox_moveto, jnox_exposure,
                   jnox_readout, jnox_end_exposure, jnox_cmds_for_json,
                   ra2hms, dec2dms)
 from obsbot import (exposure_factor, get_tile_from_name, get_airmass,
-                    NewFileWatcher, choose_pass)
+                    Obsbot, choose_pass)
 
 def main(cmdlineargs=None, get_mosbot=False):
     import optparse
@@ -56,6 +56,9 @@ def main(cmdlineargs=None, get_mosbot=False):
                       default=tile_path,
                       help='Observation status file, default %default')
 
+    parser.add_option('--adjust', action='store_true',
+                      help='Adjust exposure times based on previous passes?')
+    
     
     if cmdlineargs is None:
         opt,args = parser.parse_args()
@@ -116,7 +119,7 @@ def main(cmdlineargs=None, get_mosbot=False):
     mosbot.run()
 
 
-class Mosbot(NewFileWatcher):
+class Mosbot(Obsbot):
     def __init__(self, J1, J2, J3, opt, nom, obs, tiles):
         super(Mosbot, self).__init__(opt.rawdata, backlog=False,
                                      only_process_newest=True)
@@ -306,10 +309,10 @@ class Mosbot(NewFileWatcher):
         ps = None
         M = measure_raw(fn, ps=ps, **kwa)
     
-        # Sanity checks
+        # Basic checks
         ok = (M['nmatched'] >= 20) and (M.get('zp',None) is not None)
         if not ok:
-            print('Failed sanity checks in our measurement of', fn, '-- not updating anything')
+            print('Failed basic checks in our measurement of', fn, '-- not updating anything')
             # FIXME -- we could fall back to pass 3 here.
             return False
 
@@ -317,14 +320,14 @@ class Mosbot(NewFileWatcher):
 
 
     def update_for_image(self, M):
+        # filename patterns for the exposure and slew scripts
         expscriptpat  = os.path.join(self.scriptdir, self.expscriptpattern)
         slewscriptpat = os.path.join(self.scriptdir, self.slewscriptpattern)
         
-        # Choose the pass
+        # Choose the pass, based on...
         trans  = M['transparency']
         seeing = M['seeing']
         skybright = M['skybright']
-        
         # eg, nominal = 20, sky = 19, brighter is 1 mag brighter than nom.
         nomsky = self.nom.sky(M['band'])
         brighter = nomsky - skybright
@@ -333,7 +336,7 @@ class Mosbot(NewFileWatcher):
         print('Seeing      : %6.02f' % seeing)
         print('Sky         : %6.02f' % skybright)
         print('Nominal sky : %6.02f' % nomsky)
-        print('Sky over nom: %6.02f   (positive means brighter than nom)' %
+        print('Sky over nom: %6.02f   (positive means brighter than nominal)' %
               brighter)
 
         nextpass = choose_pass(trans, seeing, skybright, nomsky,
@@ -366,6 +369,7 @@ class Mosbot(NewFileWatcher):
         # Set observing conditions for computing exposure time
         self.obs.date = now
     
+        # Planned exposures:
         P = fits_table()
         P.type = []
         P.tilename = []
@@ -455,6 +459,16 @@ class Mosbot(NewFileWatcher):
             expfactor = exposure_factor(fid, self.nom,
                                         airmass, ebv, seeing, nextsky, trans)
             print('Exposure factor:', expfactor)
+
+            # Adjust for previous exposures?
+            if self.opt.adjust:
+                debug=True
+                adjfactor = self.adjust_for_previous(tile, band, fid,
+                                                     debug=debug)
+                # Don't adjust exposure times down, only up.
+                adjfactor = max(adjfactor, 1.0)
+                expfactor *= adjfactor
+
             exptime = expfactor * fid.exptime
     
             ### HACK -- safety factor!

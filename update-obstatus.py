@@ -296,6 +296,7 @@ def main():
                      histtype='step', color=' bgr'[passnum],
                      label='Pass %i' % passnum)
         plt.axvline(fid.single_exposure_depth, color='k')
+        plt.axvline(fid.single_exposure_depth - 0.25, color='k', linestyle='--')
         plt.xlabel('Depth (mag)')
         plt.legend(loc='upper left')
         plt.title('Depth: %s' % band)
