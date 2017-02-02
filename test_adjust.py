@@ -79,6 +79,9 @@ if __name__ == '__main__':
 
     ps = PlotSequence('tile', format='%03i')
 
+    band = 'z'
+    fid = nom.fiducial_exptime(band)
+    
     # i0 = 1000
     # ii = range(i0, i0+10)
 
@@ -91,51 +94,86 @@ if __name__ == '__main__':
 
         tile = tiles[i]
         ra,dec = tile.ra, tile.dec
+
+        factor,others = bot.adjust_for_previous(tiles[i], band, fid, debug=True, get_others=True)
+        print('Factor', factor)
         
-        PW,PH = 800,800
-        plot = Plotstuff(size=(PW, PH), rdw=(ra, dec, 2), outformat='png')
-
-        others = bot.other_passes(tiles[i], tiles)
-        others.rename('pass', 'passnum')
-
-        for passnum in [1, 2, 3]:
-
+        if True:
+            PW,PH = 800,800
+            plot = Plotstuff(size=(PW, PH), rdw=(ra, dec, 2), outformat='png')
+    
             plot.color = 'verydarkblue'
             plot.plot('fill')
-
+    
             plot.outline.fill = False
-
-            K = np.flatnonzero(tiles.get('pass') == passnum)
-            I,J,d = match_radec(np.array([tile.ra]), np.array([tile.dec]), tiles.ra[K], tiles.dec[K], 1.)
-            Tnear = tiles[K[J]]
-            plot.color = 'gray'
-            for r,d in zip(Tnear.ra, Tnear.dec):
-                plot_exposure(plot, r, d, wcses)
-
+    
             plot.color = 'red'
+            plot_exposure(plot, tile.ra, tile.dec, wcses)
+                
+            plot.color = 'white'
+            plot.outline.fill = True
+            for t in others:
+                plot.alpha = 0.25 * t.factor
+                plot.apply_settings()
+                plot_exposure(plot, t.ra, t.dec, wcses)
+
+            # Previous exposure for this tile
+            target = fid.single_exposure_depth
+            depth = tile.get('%s_depth' % band)
+            shortfall = target - depth
+            oldfactor = (10.**(-shortfall / 2.5))**2
+            plot.alpha = 0.25 * oldfactor
+            plot.apply_settings()
             plot_exposure(plot, tile.ra, tile.dec, wcses)
 
             
-            plot.color = 'white'
-            plot.alpha = 0.25
-            plot.outline.fill = True
-            plot.apply_settings()
-
-            I = np.flatnonzero(others.passnum == passnum)
-            for ird,(r,d) in enumerate(zip(others.ra[I], others.dec[I])):
-
-                for wcs in wcses:
-                    wcs.set_crval((r, d))
-                    plot.outline.wcs = anwcs_new_sip(wcs)
-                    plot.plot('outline')
-
             plot.write(ps.getnext())
 
-    sys.exit(0)
+            plot.alpha = 0.25 * factor
+            plot.apply_settings()
+            plot_exposure(plot, tile.ra, tile.dec, wcses)
+            plot.write(ps.getnext())
             
-    band = 'z'
-    fid = nom.fiducial_exptime(band)
-    for i in range(100):
-        print()
-        print('Tile', i)
-        bot.adjust_for_previous(tiles[i], band, fid, debug=True)
+
+        
+
+
+
+        
+        # Make plots to demo other_passes()
+        if False:
+            PW,PH = 800,800
+            plot = Plotstuff(size=(PW, PH), rdw=(ra, dec, 2), outformat='png')
+    
+            others = bot.other_passes(tiles[i], tiles)
+            others.rename('pass', 'passnum')
+    
+            for passnum in [1, 2, 3]:
+    
+                plot.color = 'verydarkblue'
+                plot.plot('fill')
+    
+                plot.outline.fill = False
+    
+                K = np.flatnonzero(tiles.get('pass') == passnum)
+                I,J,d = match_radec(np.array([tile.ra]), np.array([tile.dec]), tiles.ra[K], tiles.dec[K], 1.)
+                Tnear = tiles[K[J]]
+                plot.color = 'gray'
+                for r,d in zip(Tnear.ra, Tnear.dec):
+                    plot_exposure(plot, r, d, wcses)
+    
+                plot.color = 'red'
+                plot_exposure(plot, tile.ra, tile.dec, wcses)
+    
+                
+                plot.color = 'white'
+                plot.alpha = 0.25
+                plot.outline.fill = True
+                plot.apply_settings()
+    
+                I = np.flatnonzero(others.passnum == passnum)
+                for ird,(r,d) in enumerate(zip(others.ra[I], others.dec[I])):
+                    plot_exposure(plot, r, d, wcses)
+    
+                plot.write(ps.getnext())
+
