@@ -78,9 +78,9 @@ def main(cmdlineargs=None, get_mosbot=False):
     #ADM and nopass files
     scriptdir = os.path.dirname(opt.scriptfn)
     if len(scriptdir) and os.path.exists(scriptdir):
-        for file in glob(scriptdir+'/*sh'): 
-            os.remove(file)
-        for file in glob(scriptdir+'/*pass*'):
+        for file in (glob(os.path.join(scriptdir, '*.sh')) +
+                     glob(os.path.join(scriptdir, 'forcepass?')) +
+                     glob(os.path.join(scriptdir, 'nopass1'))):
             os.remove(file)
 
     json1fn,json2fn,json3fn = args
@@ -109,6 +109,8 @@ def main(cmdlineargs=None, get_mosbot=False):
     
     print('Reading tiles table', opt.tiles)
     tiles = fits_table(opt.tiles)
+    ## Cut tiles to only passes 1,2,3
+    tiles.cut(tiles.get('pass') <= 3)
     
     if opt.rawdata is None:
         opt.rawdata = os.environ.get('MOS3_DATA', 'rawdata')
@@ -620,6 +622,38 @@ class Mosbot(Obsbot):
 
         return True
 
+    # For adjust_for_previous: find nearby tiles
+    def other_passes(self, tile, tiles):
+        '''
+        Given tile number *tile*, return the obstatus rows for the other passes
+        on this tile center.
+
+        Returns: *otherpasses*, table object
+        '''
+        # For MzLS, the pass1, pass2, pass3 tiles are offset from each
+        # other by quite a lot.  Therefore, we want to look at not
+        # only the nearest tile, but all that overlap significantly
+        # (ie, not just a little overlap at the edges).
+        dd = 4096 * 2 * 0.262 / 3600.
+        #print('dd', dd)
+        cosdec = np.cos(np.deg2rad(tile.dec))
+        dra = dd / cosdec
+        #print('dra', dra)
+
+        deltara = np.abs(tile.ra  - tiles.ra )
+        I = np.flatnonzero((np.minimum(deltara, 360.-deltara) < dra) *
+                           (np.abs(tile.dec - tiles.dec) <  dd))
+        tt = tiles[I]
+        # Omit 'tile' itself...
+        tt.cut(tt.tileid != tile.tileid)
+
+        print('Tile', tile.tileid, 'pass', tile.get('pass'), 'RA,Dec', tile.ra, tile.dec)
+        print('Found overlapping tiles:')
+        for t in tt:
+            print(' tile', t.tileid, 'pass', t.get('pass'), 'RA,Dec', t.ra, t.dec, '(delta', t.ra - tile.ra, t.dec - tile.dec, ')')
+
+        return tt
+        
 
 def expscript_for_json(j, status=None):
 

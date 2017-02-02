@@ -506,9 +506,22 @@ class Obsbot(NewFileWatcher):
 
         # Find other passes
         others = self.other_passes(tile, self.tiles)
-        others.depth = others.get('%s_depth' % band)
-
+        others.rename('%s_depth' % band, 'depth')
+        others.rename('pass', 'passnum')
+        
         target = fid.single_exposure_depth
+
+        threshold = 0.25
+
+        others.shortfall = target - others.depth
+        others.factor    = (10.**(-others.shortfall / 2.5))**2
+        # If we don't know the depth yet, assume it is fine.
+        others.factor[others.depth == 30] = 1.0
+        # No obs, or non-photometric = no depth
+        others.factor[others.depth <=  1] = 0.0
+        # Depth below threshold: treat as though the image was not taken
+        others.factor[others.shortfall > threshold] = 0.0
+
         if debug:
             print('Adjusting exposure for tile', tile.tileid, 'pass',
                   tile.get('pass'))
@@ -525,47 +538,62 @@ class Obsbot(NewFileWatcher):
                 return 1.0,others
             return 1.0
         if debug:
-            print('Other tile passes:', others.get('pass')[I])
-            print('Other tile depths:', others.get('%s_depth' % band)[I])
+            print('Other tile passes:', others.passnum[I])
+            print('  depths:', others.depth[I])
+            print('  factors:', others.factor[I])
             print('Target depth:', target)
 
         thisfactor = 1.0
 
-        threshold = 0.25
+        thispass = tile.get('pass')
 
-        shortfall = target - others.depth
-        I = np.flatnonzero((others.depth > 1) *
-                           (shortfall > 0) * (shortfall < threshold))
-        if len(I) > 0:
-            others.cut(I)
-            if debug:
-                print('Other tiles with acceptable shortfalls:', shortfall[I])
-            # exposure time factors required
-            factors = (10.**(-shortfall[I] / 2.5))**2
-            if debug:
-                print('Exposure time factors:', factors)
-            extra = np.sum(1 - factors)
-            if debug:
-                print('Total extra fraction required:', extra)
-            # Split this extra required exposure time between the remaining
-            # passes...
-            # Magic number 3 = three passes
-            nremain = max(1, 3 - len(I))
-            if debug:
-                print('Extra time to be taken in this image:', extra / nremain)
-            thisfactor += extra / nremain
-        else:
-            if debug:
-                print('All other tiles reached depth or need to be retaken.')
+        print('This tile is pass', thispass)
+
+        # How much extra depth is required due to make up for previous exposures?
+        needed = 0.
+        
+        for passnum in [1,2,3]:
+            if passnum == thispass:
+                continue
+
+            # "acceptable" tiles
+            I = np.flatnonzero((others.passnum == passnum) *
+                               (others.factor > 0))
+            if len(I) == 0:
+                continue
             
+            print('Tiles for pass', passnum, ':', others.tileid[I])
+            print('  with factors:', others.factor[I])
+
+            # We want to make up for the worst "acceptable" surrounding tile
+            factor = min(others.factor[I])
+
+            print('Need to make up factor', 1.-factor, 'for this pass')
+            
+            needed += (1. - factor)
+
+        print('Total factor that needs to be made up:', needed)
+
+        # # Split this extra required exposure time between the remaining
+        # # passes...
+        # # Magic number 3 = three passes
+        # nremain = max(1, 3 - len(I))
+        # if debug:
+        #     print('Extra time to be taken in this image:', extra / nremain)
+        # thisfactor += extra / nremain
+
+        thisfactor += needed
+            
+        # If there were previous exposures for this tile, subtract their depth
+        # from what we need for this exposure.
+
         depth = tile.get('%s_depth' % band)
         if depth > 1:
             # If this tile has had previous exposure(s), subtract that.
             shortfall = target - depth
             factor = (10.**(-shortfall / 2.5))**2
             if debug:
-                print('This tile had previous depth:', depth)
-                print('Fraction of nominal exposure time:', factor)
+                print('This tile had previous depth:', depth, '-> factor', factor)
             thisfactor -= factor
 
         if debug:

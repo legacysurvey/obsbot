@@ -3,7 +3,7 @@
 
 This script is meant to be run during DECaLS/MzLS observing.  It waits
 for new images to appear, measures their sky brightness, seeing, and
-transparency, and advises whether & how to replan.
+transparency, and makes plots of the conditions.
 
 '''
 from __future__ import print_function
@@ -35,6 +35,8 @@ from obsbot import (exposure_factor, get_tile_from_name, NewFileWatcher,
 from tractor.sfd import SFDMap
 
 def db_to_fits(mm):
+    '''Converts the obsdb database entries
+    (obsdb/{mosaic3,decam}.sqlite3) into FITS format.'''
     from astrometry.util.fits import fits_table
     T = fits_table()
     for field in ['filename', 'extension', 'expnum', 'exptime', 'mjd_obs',
@@ -56,6 +58,8 @@ def db_to_fits(mm):
 
 def recent_gr_seeing(recent=30., exps=None):
     '''
+    Computes estimates of seeing in g and r bands based on recent measurements.
+
     *recent*: how far back from now to look, in minutes
 
     Returns:
@@ -108,6 +112,8 @@ def recent_gr_seeing(recent=30., exps=None):
 
 def recent_gr_sky_color(recent=30., pairs=5.):
     '''
+    Estimates g-r sky color based on recent measurements.
+
     *recent*: how far back from now to look, in minutes
     *pairs*: compare pairs of g,r exposures within this many minutes of each other.
     '''
@@ -240,6 +246,10 @@ def get_twilight(camera, date):
 
 def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
                       markmjds=[], show_plot=True, nightly=False):
+    '''
+    Plots our measurements of the conditions, as in the recent.png and
+    night.png plots.
+    '''
     import pylab as plt
     T = db_to_fits(mm)
     T.band = np.core.defchararray.replace(T.band, 'zd', 'z')
@@ -646,7 +656,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         yl,yh = plt.ylim()
         plt.text(Tx.mjd_obs[-1], yl+0.03*(yh-yl),
                  '(%.1f, %.1f)' % (dra[-1], ddec[-1]), ha='center', bbox=bbox)
-                
+
     plt.ylabel('dRA (blu), dDec (grn)')
     
     plt.xlabel('MJD')
@@ -1048,6 +1058,8 @@ def mark_twilight(camera, date):
     
 def plot_recent(opt, nom, tiles=None, markmjds=[],
                 botplanfn=None, nightly=False, **kwargs):
+    ''' Creates the recent.png plot of recent measurements of the conditions.
+    '''
     import obsdb
 
     if opt.mjdend is None:
