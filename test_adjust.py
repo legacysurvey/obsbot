@@ -21,6 +21,14 @@ duck.adjust = True
 #         print('Tile', i)
 #         bot.adjust_for_previous(tiles[i], band, fid, debug=True)
 
+
+def plot_exposure(plot, ra, dec, wcses):
+    for wcs in wcses:
+        wcs.set_crval((ra, dec))
+        plot.outline.wcs = anwcs_new_sip(wcs)
+        plot.plot('outline')
+    
+
 if __name__ == '__main__':
 
     if False:
@@ -71,9 +79,13 @@ if __name__ == '__main__':
 
     ps = PlotSequence('tile', format='%03i')
 
-    i0 = 1000
+    # i0 = 1000
+    # ii = range(i0, i0+10)
+
+    np.random.seed(42)
+    ii = np.random.randint(0, len(tiles), size=20)
     
-    for i in range(i0, i0+10):
+    for i in ii:
         print()
         print('Tile', i)
 
@@ -91,13 +103,18 @@ if __name__ == '__main__':
             plot.color = 'verydarkblue'
             plot.plot('fill')
 
-            plot.color = 'red'
             plot.outline.fill = False
-            r,d = tile.ra, tile.dec
-            for wcs in wcses:
-                wcs.set_crval((r, d))
-                plot.outline.wcs = anwcs_new_sip(wcs)
-                plot.plot('outline')
+
+            K = np.flatnonzero(tiles.get('pass') == passnum)
+            I,J,d = match_radec(np.array([tile.ra]), np.array([tile.dec]), tiles.ra[K], tiles.dec[K], 1.)
+            Tnear = tiles[K[J]]
+            plot.color = 'gray'
+            for r,d in zip(Tnear.ra, Tnear.dec):
+                plot_exposure(plot, r, d, wcses)
+
+            plot.color = 'red'
+            plot_exposure(plot, tile.ra, tile.dec, wcses)
+
             
             plot.color = 'white'
             plot.alpha = 0.25

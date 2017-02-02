@@ -634,7 +634,7 @@ class Mosbot(Obsbot):
         # other by quite a lot.  Therefore, we want to look at not
         # only the nearest tile, but all that overlap significantly
         # (ie, not just a little overlap at the edges).
-        dd = 4096 * 2 * 0.262 / 3600.
+        dd = (4096 - 400) * 2 * 0.262 / 3600.
         #print('dd', dd)
         cosdec = np.cos(np.deg2rad(tile.dec))
         dra = dd / cosdec
