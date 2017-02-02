@@ -78,9 +78,9 @@ def main(cmdlineargs=None, get_mosbot=False):
     #ADM and nopass files
     scriptdir = os.path.dirname(opt.scriptfn)
     if len(scriptdir) and os.path.exists(scriptdir):
-        for file in glob(scriptdir+'/*sh'): 
-            os.remove(file)
-        for file in glob(scriptdir+'/*pass*'):
+        for file in (glob(os.path.join(scriptdir, '*.sh')) +
+                     glob(os.path.join(scriptdir, 'forcepass?')) +
+                     glob(os.path.join(scriptdir, 'nopass1'))):
             os.remove(file)
 
     json1fn,json2fn,json3fn = args
