@@ -1,5 +1,6 @@
 from __future__ import print_function
 from collections import Counter
+import sys
 
 import matplotlib
 import pylab as plt
@@ -8,19 +9,60 @@ from legacypipe.common import LegacySurveyData
 
 from astrometry.util.fits import *
 from astrometry.libkd.spherematch import match_radec
-
-from decam import DecamNominalCalibration
+from astrometry.util.starutil_numpy import degrees_between
 
 def main():
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--mzls', action='store_true',
+                        help='Set MzLS (default: DECaLS)')
+    opt = parser.parse_args()
+
+    if opt.mzls:
+        from mosaic import MosaicNominalCalibration
+        nom = MosaicNominalCalibration()
+
+        obstatus_fn = 'obstatus/mosaic-tiles_obstatus.fits'
+        out_fn = 'mosaic-obstatus-depth.fits'
+        
+        bands = 'z'
+
+        declo,dechi = 30,80
+
+    else:
+        from decam import DecamNominalCalibration
+        nom = DecamNominalCalibration()
+
+        obstatus_fn = 'obstatus/decam-tiles_obstatus.fits'
+        out_fn = 'decam-obstatus-depth.fits'
+
+        bands = 'grz'
+
+        declo,dechi = -20,35
+        
     survey = LegacySurveyData()
     ccds = survey.get_annotated_ccds()
     print(len(ccds), 'CCDs')
 
-    O = fits_table('obstatus/decam-tiles_obstatus.fits')
+    O = fits_table(obstatus_fn)
     print(len(O), 'tiles')
-    # "tileid" = row number (1-indexed)
-    assert(np.all(O.tileid == np.arange(1, len(O)+1)))
 
+    # Map tile IDs back to index in the obstatus file.
+    tileid_to_index = np.empty(max(O.tileid)+1, int)
+    tileid_to_index[:] = -1
+    tileid_to_index[O.tileid] = np.arange(len(O))
+
+    assert(len(np.unique(O.tileid)) == len(O))
+    
+    I = tileid_to_index[O.tileid]
+    assert(np.all(I == np.arange(len(O))))
+
+    print('Pass numbers:', np.unique(O.get('pass')))
+    
+    goodtiles = np.flatnonzero(O.in_desi * (O.dec > 30) * (O.get('pass') <= 3))
+    print(len(goodtiles), 'tiles of interest')
+    
     # Look at whether exposures from other programs are near our tile centers.
     # Basically nope.
     # plt.clf()
@@ -36,11 +78,26 @@ def main():
     # plt.xlabel('Distance from tile to nearest DECam boresight (arcsec)')
     # plt.savefig('dists.png')
 
+    notileids = ccds[ccds.tileid <= 0]
+    print(len(notileids), 'CCDs have no tileid')
+    I,J,d = match_radec(notileids.ra_bore, notileids.dec_bore, O.ra, O.dec,
+                        0.5, nearest=True)
+                        
+    plt.clf()
+    plt.hist(d, bins=50)
+    plt.xlabel('Distance to nearest tile center (deg)')
+    plt.savefig('tiledist.png')
+
+    plt.clf()
+    plt.hist(d*3600, bins=50, range=(0,30))
+    plt.xlabel('Distance to nearest tile center (arcsec)')
+    plt.savefig('tiledist2.png')
+    
     ccds.cut(ccds.tileid > 0)
-    print(len(ccds), 'with tileid')
+    print(len(ccds), 'CCDs with tileid')
 
     expnums,I = np.unique(ccds.expnum, return_index=True)
-    print(len(expnums), 'unique exposures')
+    print(len(expnums), 'unique exposures (with tileids)')
     # Compute the mean depth per exposure
     E = ccds[I]
     for expnum in expnums:
@@ -79,7 +136,7 @@ def main():
     #print('Number of exposures of each tile:')
     #print(Counter(E.tileid).most_common())
     print('Number of exposures of tiles:')
-    for band in 'grz':
+    for band in bands:
         I = np.flatnonzero(E.filter == band)
         c = Counter(E.tileid[I])
         c2 = Counter([v for k,v in c.most_common()])
@@ -92,41 +149,69 @@ def main():
     #   # that's flux in nanomaggies -- convert to mag
     #   ccds.galdepth = -2.5 * (np.log10(depth) - 9)
 
-    # actually 5*detsig1...
     with np.errstate(divide='ignore', over='ignore'):
+        # actually 5*detsig1...
         detsig = 10.**((E.galdepth - 22.5) / -2.5)
-        detiv  = 1. / detsig**2
-    
-    nom = DecamNominalCalibration()
-    
-    for band in 'grz':
-        I = np.flatnonzero((E.filter == band) * E.photometric)
+        E.detiv  = 1. / detsig**2
+
+    for band in bands:
+        # "I" indexes into exposures E.
+        I = np.flatnonzero((E.filter == band) * E.photometric *
+                           np.isfinite(E.detiv))
         print(len(I), 'photometric exposures in', band)
+
+        # "iv" is for O.
         iv = np.zeros(len(O), np.float32)
-        np.add.at(iv, E.tileid[I] - 1, detiv[I])
+        # "J" indexes into obstatus tiles O.
+        J = tileid_to_index[E.tileid[I]]
+        assert(np.all((J >= 0) * (J < len(O))))
+        assert(np.all(O.tileid[J] == E.tileid[I]))
+
+        print('tileid range', E.tileid[I].min(), E.tileid[I].max())
+
+        d = np.array([degrees_between(*a) for a in
+                      zip(E.ra_bore[I], E.dec_bore[I], O.ra[J], O.dec[J])])
+        print('Degrees between tiles & exposures:', d)
+        
+        np.add.at(iv, J, E.detiv[I])
         print('galdepth range:', E.galdepth[I].min(), E.galdepth[I].max())
+        print('detiv range:', E.detiv[I].min(), E.detiv[I].max())
+        print('index range:', J.min(), J.max())
+        nexp = np.zeros(len(O), int)
+        np.add.at(nexp, J, 1)
+        print('tile exposure counts:', Counter(nexp))
+
         # convert iv back to galdepth in mags
         with np.errstate(divide='ignore'):
             galdepth = -2.5 * (np.log10(np.sqrt(1. / iv)) - 9)
         # extinction correction...
+        #print('galdepth deciles:', np.percentile(galdepth, [0,10,20,30,40,50,60,70,80,90,100]))
 
         fid = nom.fiducial_exptime(band)
         extinction = O.ebv_med * fid.A_co
+        #print('Extinction range:', extinction.min(), extinction.max())
         galdepth -= extinction
 
         galdepth[iv == 0] = 0.
 
-        # Flag non-photometric exposures with depth = 1.
+        print('galdepth deciles:', np.percentile(galdepth, [0,10,20,30,40,50,60,70,80,90,100]))
+        
+        # Flag tiles that have *only* non-photometric exposures with depth = 1.
         I = np.flatnonzero((E.filter == band) * (E.photometric == False))
-        assert(np.all(galdepth[E.tileid[I] - 1]) == 0.)
-        galdepth[E.tileid[I] - 1] = 1.
-        print('Marking', len(I), 'non-photometric exposures in', band)
+        print(len(I), 'exposures are non-photometric in', band, 'band')
+        only_nonphot = np.flatnonzero(
+            galdepth[tileid_to_index[E.tileid[I]]] == 0.)
+        print(len(only_nonphot), 'tiles have only non-photometric exposures')
+        galdepth[only_nonphot] = 1.
+        print('Marking', len(only_nonphot),'non-photometric exposures in', band)
 
         O.set('%s_depth' % band, galdepth)
 
+        print('Depth deciles:', np.percentile(O.get('%s_depth' % band), [0,10,20,30,40,50,60,70,80,90,100]))
+
         from astrometry.util.plotutils import antigray
         rlo,rhi = 0,360
-        dlo,dhi = -20,35
+        dlo,dhi = declo,dechi
         rr,dd = np.meshgrid(np.linspace(rlo,rhi,720), np.linspace(dlo,dhi,360))
         JJ,II,d = match_radec(rr.ravel(), dd.ravel(), O.ra, O.dec, 1.5,
                               nearest=True)
@@ -137,7 +222,6 @@ def main():
                            (O.dec > dlo) * (O.dec < dhi))
         print('Median E(B-V) in DECaLS area:', np.median(O.ebv_med[J]))
         print('Median extinction in DECaLS area, %s band:' % band, np.median(extinction[J]))
-
 
         I = np.flatnonzero((O.get('%s_expnum' % band) > 0) * (O.get('%s_depth' % band) == 0))
         print('Found', len(I), 'tiles with', band, 'EXPNUM but no DEPTH; setting to DEPTH=30')
@@ -150,21 +234,32 @@ def main():
         plt.subplots_adjust(left=0.1, right=0.9)
         
         for passnum in [1,2,3]:
+            print('Pass', passnum)
             plt.clf()
 
             J = np.flatnonzero((O.in_desi == 1) * (O.in_des == 0) *
                                (O.dec > dlo) * (O.dec < dhi) *
                                (O.get('pass') == passnum))
             #plt.plot(O.ra[J], O.dec[J], 'k.', alpha=0.5)
+
+            # Plot the gray background showing the in_desi footprint
             plt.imshow(indesi, extent=[rlo,rhi,dlo,dhi], vmin=0, vmax=4,
                        cmap=antigray, aspect='auto', interpolation='nearest',
                        origin='lower')
             depth = O.get('%s_depth' % band)
-            J = np.flatnonzero((O.get('pass') == passnum) * (depth > 0))
+            #J = np.flatnonzero((O.get('pass') == passnum) * (depth > 0))
+            
+            J = np.flatnonzero((O.get('pass') == passnum) * (depth > 1) * (depth < 30))
+            # print('Depths:', depth[J])
+            print('Depth deciles:', np.percentile(depth[J], [0,10,20,30,40,50,60,70,80,90,100]))
 
+            if len(J) == 0:
+                sys.exit(0)
+            
             target = fid.single_exposure_depth
-            cmap = cmap_discretize('RdBu', 11)
+            print('Target depth:', target)
 
+            cmap = cmap_discretize('RdBu', 11)
             dm = 0.275
             
             plt.scatter(O.ra[J], O.dec[J], c=depth[J] - target, linewidths=0,
@@ -193,20 +288,34 @@ def main():
         plt.clf()
         for passnum in [1,2,3]:
             depth = O.get('%s_depth' % band)
-            J = np.flatnonzero((O.get('pass') == passnum) * (depth > 0))
+            J = np.flatnonzero((O.get('pass') == passnum) *
+                               (depth > 1) * (depth < 30))
             depth = depth[J]
+
+            print('Pass', passnum)
+            print('Fiducial single-exposure-depth:', fid.single_exposure_depth)
+            print(sum(depth < fid.single_exposure_depth - 0.25), 'of', len(depth), 'tiles are more than 0.25 mag shallow')
+
+            odepth = O.get('%s_depth' % band)
+            K = np.flatnonzero((O.get('%s_done' % band) == 0) * (O.get('pass') == passnum) *
+                               (odepth > 1) * (odepth < 30))
+            print(sum(odepth[K] < fid.single_exposure_depth - 0.25), 'of', len(odepth[K]), 'DONE=0 tiles are more than 0.25 mag shallow')
+            K = np.flatnonzero((O.get('%s_done' % band) == 1) * (O.get('pass') == passnum) *
+                               (odepth > 1) * (odepth < 30))
+            print(sum(odepth[K] < fid.single_exposure_depth - 0.25), 'of', len(odepth[K]), 'DONE=1 tiles are more than 0.25 mag shallow')
+            
             mlo,mhi = 21,24
             plt.hist(np.clip(depth, mlo,mhi), bins=100, range=(mlo,mhi),
                      histtype='step', color=' bgr'[passnum],
                      label='Pass %i' % passnum)
         plt.axvline(fid.single_exposure_depth, color='k')
+        plt.axvline(fid.single_exposure_depth - 0.25, color='k', linestyle='--')
         plt.xlabel('Depth (mag)')
         plt.legend(loc='upper left')
-        plt.title('DECaLS depth: %s' % band)
+        plt.title('Depth: %s' % band)
         plt.savefig('depth-%s.png' % band)
-
         
-    O.writeto('decam-obstatus-depth.fits')
+    O.writeto(out_fn)
 
 # From http://scipy-cookbook.readthedocs.io/items/Matplotlib_ColormapTransformations.html
 def cmap_discretize(cmap, N):

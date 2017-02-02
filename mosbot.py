@@ -27,7 +27,7 @@ from jnox import (jnox_preamble, jnox_filter, jnox_moveto, jnox_exposure,
                   jnox_readout, jnox_end_exposure, jnox_cmds_for_json,
                   ra2hms, dec2dms)
 from obsbot import (exposure_factor, get_tile_from_name, get_airmass,
-                    NewFileWatcher, choose_pass)
+                    Obsbot, choose_pass, mjdnow)
 
 def main(cmdlineargs=None, get_mosbot=False):
     import optparse
@@ -56,6 +56,9 @@ def main(cmdlineargs=None, get_mosbot=False):
                       default=tile_path,
                       help='Observation status file, default %default')
 
+    parser.add_option('--adjust', action='store_true',
+                      help='Adjust exposure times based on previous passes?')
+    
     
     if cmdlineargs is None:
         opt,args = parser.parse_args()
@@ -116,7 +119,7 @@ def main(cmdlineargs=None, get_mosbot=False):
     mosbot.run()
 
 
-class Mosbot(NewFileWatcher):
+class Mosbot(Obsbot):
     def __init__(self, J1, J2, J3, opt, nom, obs, tiles):
         super(Mosbot, self).__init__(opt.rawdata, backlog=False,
                                      only_process_newest=True)
@@ -153,6 +156,8 @@ class Mosbot(NewFileWatcher):
             self.n_exposures = len(J)
         else:
             self.n_exposures = 0
+
+        self.bot_runtime = mjdnow()
             
     def filter_new_files(self, fns):
         return [fn for fn in fns if
@@ -306,10 +311,10 @@ class Mosbot(NewFileWatcher):
         ps = None
         M = measure_raw(fn, ps=ps, **kwa)
     
-        # Sanity checks
+        # Basic checks
         ok = (M['nmatched'] >= 20) and (M.get('zp',None) is not None)
         if not ok:
-            print('Failed sanity checks in our measurement of', fn, '-- not updating anything')
+            print('Failed basic checks in our measurement of', fn, '-- not updating anything')
             # FIXME -- we could fall back to pass 3 here.
             return False
 
@@ -317,23 +322,24 @@ class Mosbot(NewFileWatcher):
 
 
     def update_for_image(self, M):
+        # filename patterns for the exposure and slew scripts
         expscriptpat  = os.path.join(self.scriptdir, self.expscriptpattern)
         slewscriptpat = os.path.join(self.scriptdir, self.slewscriptpattern)
         
-        # Choose the pass
+        # Choose the pass, based on...
         trans  = M['transparency']
         seeing = M['seeing']
         skybright = M['skybright']
-        
         # eg, nominal = 20, sky = 19, brighter is 1 mag brighter than nom.
-        nomsky = self.nom.sky(M['band'])
+        meas_band = M['band']
+        nomsky = self.nom.sky(meas_band)
         brighter = nomsky - skybright
     
         print('Transparency: %6.02f' % trans)
         print('Seeing      : %6.02f' % seeing)
         print('Sky         : %6.02f' % skybright)
         print('Nominal sky : %6.02f' % nomsky)
-        print('Sky over nom: %6.02f   (positive means brighter than nom)' %
+        print('Sky over nom: %6.02f   (positive means brighter than nominal)' %
               brighter)
 
         nextpass = choose_pass(trans, seeing, skybright, nomsky,
@@ -366,6 +372,7 @@ class Mosbot(NewFileWatcher):
         # Set observing conditions for computing exposure time
         self.obs.date = now
     
+        # Planned exposures:
         P = fits_table()
         P.type = []
         P.tilename = []
@@ -434,7 +441,7 @@ class Mosbot(NewFileWatcher):
             tile = get_tile_from_name(tilename, self.tiles)
             ebv = tile.ebv_med
             nextband = str(jplan['filter'])[0]
-    
+
             print('Selected tile:', tile.tileid, nextband)
             rastr  = ra2hms (jplan['RA' ])
             decstr = dec2dms(jplan['dec'])
@@ -443,7 +450,7 @@ class Mosbot(NewFileWatcher):
             etile.compute(self.obs)
             airmass = get_airmass(float(etile.alt))
             print('Airmass of planned tile:', airmass)
-    
+
             if M['band'] == nextband:
                 nextsky = skybright
             else:
@@ -455,34 +462,87 @@ class Mosbot(NewFileWatcher):
             expfactor = exposure_factor(fid, self.nom,
                                         airmass, ebv, seeing, nextsky, trans)
             print('Exposure factor:', expfactor)
+
+            expfactor_orig = expfactor
+
+            # Adjust for previous exposures?
+            if self.opt.adjust:
+                debug=True
+                adjfactor,others = self.adjust_for_previous(
+                    tile, band, fid, debug=debug, get_others=True)
+                # Don't adjust exposure times down, only up.
+                adjfactor = max(adjfactor, 1.0)
+                expfactor *= adjfactor
+            else:
+                adjfactor = 0.
+                others = []
+
             exptime = expfactor * fid.exptime
-    
+
             ### HACK -- safety factor!
             print('Exposure time:', exptime)
             exptime *= 1.1
-            exptime = int(np.ceil(exptime))
             print('Exposure time with safety factor:', exptime)
+            exptime_unclipped = exptime
 
             exptime = np.clip(exptime, fid.exptime_min, fid.exptime_max)
             print('Clipped exptime', exptime)
+
+            exptime_satclipped = 0.
             if nextband == 'z':
                 # Compute cap on exposure time to avoid saturation /
                 # loss of dynamic range.
                 t_sat = self.nom.saturation_time(nextband, nextsky)
                 if exptime > t_sat:
+                    exptime_satclipped = t_sat
                     exptime = t_sat
                     print('Reduced exposure time to avoid z-band saturation: %.1f' % exptime)
-            exptime = int(exptime)
-    
+            exptime = int(np.ceil(exptime))
+
             print('Changing exptime from', jplan['expTime'], 'to', exptime)
             jplan['expTime'] = exptime
-    
+
+            # Update the computed exposure-time database.
+            try:
+                from obsdb.models import ComputedExptime, OtherPasses
+                zpt = M['zp']
+                c,created = ComputedExptime.objects.get_or_create(
+                    starttime=self.bot_runtime, seqnum=nextseq)
+                c.tileid = tile.tileid
+                c.passnumber = nextpass
+                c.band = nextband
+                c.airmass = airmass
+                c.ebv = ebv
+                c.meas_band = meas_band
+                c.zeropoint = zpt
+                c.transparency = trans
+                c.seeing = seeing
+                c.sky = skybright
+                c.expfactor = expfactor_orig
+                c.adjfactor = adjfactor
+                c.exptime_unclipped = exptime_unclipped
+                c.exptime_satclipped = exptime_satclipped
+                c.exptime=exptime
+                c.save()
+
+                for o in others:
+                    op = OtherPasses(exposure=c,
+                                     tileid=o.tileid,
+                                     passnumber=o.get('pass'),
+                                     depth=o.get('%s_depth' % nextband))
+                    op.save()
+            except:
+                print('Failed to update computed-exptime database.')
+                import traceback
+                traceback.print_exc()
+                # carry on
+
             status = ('Exp %i: Tile %s, Pass %i, RA %s, Dec %s' %
                       (nextseq, tilename, nextpass, rastr, decstr))
-    
+
             print('%s: updating exposure %i to tile %s' %
                   (str(ephem.now()), nextseq, tilename))
-    
+
             expscriptfn = expscriptpat % (nextseq)
             exptmpfn = expscriptfn + '.tmp'
             f = open(exptmpfn, 'w')
@@ -490,23 +550,23 @@ class Mosbot(NewFileWatcher):
                      (nextseq, tilename, seqnum, str(ephem.now()))) +
                     expscript_for_json(jplan, status=status))
             f.close()
-    
+
             slewscriptfn = slewscriptpat % (nextseq)
             slewtmpfn = slewscriptfn + '.tmp'
             f = open(slewtmpfn, 'w')
             f.write(slewscript_for_json(jplan))
             f.close()
-    
+
             os.rename(exptmpfn, expscriptfn)
             print('Wrote', expscriptfn)
             os.rename(slewtmpfn, slewscriptfn)
             print('Wrote', slewscriptfn)
-    
+
             self.obs.date += (exptime + self.nom.overhead) / 86400.
-    
+
             print('%s: updated exposure %i to tile %s' %
                   (str(ephem.now()), nextseq, tilename))
-    
+
             P.tilename.append(tilename)
             P.filter.append(nextband)
             P.exptime.append(exptime)
@@ -535,7 +595,7 @@ class Mosbot(NewFileWatcher):
                 f.write('\n')
                 f.close()
 
-            
+
         for i,J in enumerate([self.J1,self.J2,self.J3]):
             passnum = i+1
             for j in J:
@@ -550,16 +610,16 @@ class Mosbot(NewFileWatcher):
                 P.dec.append(j['dec'])
                 P.passnumber.append(passnum)
                 P.type.append('%i' % passnum)
-    
+
         P.to_np_arrays()
         fn = 'mosbot-plan.fits'
         tmpfn = fn + '.tmp'
         P.writeto(tmpfn)
         os.rename(tmpfn, fn)
         print('Wrote', fn)
-        
+
         return True
-    
+
 
 def expscript_for_json(j, status=None):
 
