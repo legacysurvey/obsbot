@@ -21,10 +21,10 @@ duck.adjust = True
 #         print('Tile', i)
 #         bot.adjust_for_previous(tiles[i], band, fid, debug=True)
 
-def mosaic_wcs(ra, dec):
+def mosaic_wcs(ra, dec, pixbin=1.):
     # This is pretty close to the outline of the four Mosaic chips.
-    W = H = 4096 * 2 + 100
-    cd = 0.262 / 3600.
+    W = H = (4096 * 2 + 100) / pixbin
+    cd = pixbin * 0.262 / 3600.
     tan = Tan(ra, dec, W/2., H/2., cd, 0., 0., cd,
               float(W), float(H))
     return tan
@@ -93,7 +93,9 @@ if __name__ == '__main__':
     # ii = range(i0, i0+10)
 
     np.random.seed(42)
-    ii = np.random.randint(0, len(tiles), size=20)
+    ii = np.random.randint(0, len(tiles), size=40)
+
+    nii = 0
     
     for i in ii:
         print()
@@ -104,6 +106,111 @@ if __name__ == '__main__':
 
         factor,others = bot.adjust_for_previous(tiles[i], band, fid, debug=True, get_others=True)
         print('Factor', factor)
+
+        if len(others) == 0:
+            continue
+        nii += 1
+        if nii == 20:
+            break
+        
+        pixbin = 8
+
+        mywcs = mosaic_wcs(tile.ra, tile.dec, pixbin=pixbin)
+        H,W = mywcs.shape
+
+        #ncov = np.zeros((H,W), int)
+        haspass = dict([(p, np.zeros((H,W), bool)) for p in [1,2,3]])
+        
+        cov  = np.zeros((H,W), np.float32)
+
+        for t in others:
+            #owcs = mosaic_wcs(t.ra, t.dec, pixbin=pixbin)
+            ok,x,y = mywcs.radec2pixelxy(t.ra, t.dec)
+            #print('other exposure
+            #if x - W/2 > W or y - W/2:
+            #    continue
+            #if x + W/2 < 0 or y + H/2 < 0:
+            #    continue
+            xlo = np.clip(int(x - W/2), 0, W)
+            xhi = np.clip(int(x + W/2), 0, W)
+            ylo = np.clip(int(y - H/2), 0, H)
+            yhi = np.clip(int(y + H/2), 0, H)
+            if xlo == xhi or ylo == yhi:
+                continue
+            
+            #ncov[ylo:yhi, xlo:xhi] += 1
+            if t.factor > 0:
+                haspass[t.passnum][ylo:yhi, xlo:xhi] = True
+                cov [ylo:yhi, xlo:xhi] += t.factor
+
+        # Previous exposure for this tile
+        depth = tile.get('%s_depth' % band)
+        target = fid.single_exposure_depth
+        shortfall = target - depth
+        threshold = 0.25
+        if depth == 30:
+            oldfactor = 1.
+        elif shortfall > threshold:
+            oldfactor = 0.
+        else:
+            oldfactor = (10.**(-shortfall / 2.5))**2
+
+        if oldfactor > 0:
+            #ncov += 1
+            haspass[tile.get('pass')][:,:] = True
+            cov  += oldfactor
+
+        ncov = haspass[1]*1 + haspass[2]*1 + haspass[3]*1
+            
+        plt.clf()
+        plt.subplot(1,2,1)
+        plt.imshow(ncov, interpolation='nearest', origin='lower',
+                   vmin=0, vmax=6)
+        plt.colorbar()
+        plt.title('Number of exposures')
+        plt.subplot(1,2,2)
+        plt.imshow(cov, interpolation='nearest', origin='lower',
+                   vmin=0, vmax=6)
+        plt.colorbar()
+        plt.title('Depth factor')
+        ps.savefig()
+
+        plt.clf()
+        nn = np.unique(ncov)
+        cmap = { 1:'r', 2:'b', 3:'m', 4:'g', 5:'c' }
+        for n in nn:
+            I = np.flatnonzero(ncov == n)
+            fac = cov.flat[I]
+
+            # plt.hist(fac, range=(0, nn.max()), bins=50, histtype='step',
+            #          color=cmap.get(n, 'k'), label='Ncov=%i' % n)
+            plt.hist(fac / float(np.maximum(1, n)), range=(0, 2), bins=50, histtype='step',
+                     color=cmap.get(n, 'k'), label='Ncov=%i' % n)
+        plt.legend()
+        plt.title('Before')
+        ps.savefig()
+
+        #
+        haspass[tile.get('pass')][:,:] = True
+        #ncov += 1
+        cov += factor
+
+        ncov = haspass[1]*1 + haspass[2]*1 + haspass[3]*1
+        
+        plt.clf()
+        nn = np.unique(ncov)
+        cmap = { 1:'r', 2:'b', 3:'m' }
+        for n in nn:
+            I = np.flatnonzero(ncov == n)
+            fac = cov.flat[I]
+
+            #plt.hist(fac, range=(0, nn.max()), bins=50, histtype='step',
+            #         color=cmap.get(n, 'k'), label='Ncov=%i' % n)
+            plt.hist(fac / float(np.maximum(1,n)), range=(0, 2), bins=50, histtype='step',
+                     color=cmap.get(n, 'k'), label='Ncov=%i' % n)
+        plt.legend()
+        plt.title('After (factor = %.2f)' % factor)
+        ps.savefig()
         
         if True:
             PW,PH = 800,800
@@ -118,9 +225,9 @@ if __name__ == '__main__':
             plot_exposure(plot, tile.ra, tile.dec, wcses)
 
             # This is pretty close to the outline of the four Mosaic chips.
-            plot.outline.wcs = anwcs_new_tan(mosaic_wcs(tile.ra, tile.dec))
-            plot.color = 'blue'
-            plot.plot('outline')
+            #plot.outline.wcs = anwcs_new_tan(mosaic_wcs(tile.ra, tile.dec))
+            #plot.color = 'blue'
+            #plot.plot('outline')
             
             plot.color = 'white'
             plot.outline.fill = True

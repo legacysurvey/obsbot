@@ -591,7 +591,12 @@ class Obsbot(NewFileWatcher):
         if depth > 1:
             # If this tile has had previous exposure(s), subtract that.
             shortfall = target - depth
-            factor = (10.**(-shortfall / 2.5))**2
+            if depth == 30:
+                factor = 1.
+            elif shortfall > threshold:
+                factor = 0.
+            else:
+                factor = (10.**(-shortfall / 2.5))**2
             if debug:
                 print('This tile had previous depth:', depth, '-> factor', factor)
             thisfactor -= factor
