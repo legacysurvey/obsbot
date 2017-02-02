@@ -21,6 +21,13 @@ duck.adjust = True
 #         print('Tile', i)
 #         bot.adjust_for_previous(tiles[i], band, fid, debug=True)
 
+def mosaic_wcs(ra, dec):
+    # This is pretty close to the outline of the four Mosaic chips.
+    W = H = 4096 * 2 + 100
+    cd = 0.262 / 3600.
+    tan = Tan(ra, dec, W/2., H/2., cd, 0., 0., cd,
+              float(W), float(H))
+    return tan
 
 def plot_exposure(plot, ra, dec, wcses):
     for wcs in wcses:
@@ -63,7 +70,7 @@ if __name__ == '__main__':
     bot = Mosbot([],[],[], duck, nom, obs, tiles)
 
     from astrometry.blind.plotstuff import Plotstuff
-    from astrometry.util.util import Sip, anwcs, anwcs_new_sip, wcs_pv2sip_hdr
+    from astrometry.util.util import Sip, anwcs, anwcs_new_sip, wcs_pv2sip_hdr, anwcs_new_tan, Tan
     from astrometry.util.fits import fits_table
     from astrometry.libkd.spherematch import match_radec
     from astrometry.util.plotutils import *
@@ -109,7 +116,12 @@ if __name__ == '__main__':
     
             plot.color = 'red'
             plot_exposure(plot, tile.ra, tile.dec, wcses)
-                
+
+            # This is pretty close to the outline of the four Mosaic chips.
+            plot.outline.wcs = anwcs_new_tan(mosaic_wcs(tile.ra, tile.dec))
+            plot.color = 'blue'
+            plot.plot('outline')
+            
             plot.color = 'white'
             plot.outline.fill = True
             for t in others:
