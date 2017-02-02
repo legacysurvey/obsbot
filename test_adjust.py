@@ -107,7 +107,8 @@ if __name__ == '__main__':
         factor,others = bot.adjust_for_previous(tiles[i], band, fid, debug=True, get_others=True)
         print('Factor', factor)
 
-        if len(others) == 0:
+        I = np.flatnonzero((others.depth > 1) * (others.depth < 30))
+        if len(I) == 0:
             continue
         nii += 1
         if nii == 20:

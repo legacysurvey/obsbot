@@ -569,8 +569,11 @@ class Obsbot(NewFileWatcher):
             factor = min(others.factor[I])
 
             print('Need to make up factor', 1.-factor, 'for this pass')
-            
-            needed += (1. - factor)
+
+            # Only increase the depth needed; we would need to know
+            # that the whole region is covered to the required depth
+            # (incl chip gaps) in order to decrease the depth required.
+            needed += max(0, (1. - factor))
 
         print('Total factor that needs to be made up:', needed)
 
