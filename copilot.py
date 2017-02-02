@@ -652,7 +652,8 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
                 plt.text(Z.mjd_obs[i], txty, '%i ' % Z.expnum[i],
                          rotation=90, va='top', ha='center')
 
-    if not nightly:
+    if refdra is None and not nightly:
+        # If refdra is available, only label that.
         yl,yh = plt.ylim()
         plt.text(Tx.mjd_obs[-1], yl+0.03*(yh-yl),
                  '(%.1f, %.1f)' % (dra[-1], ddec[-1]), ha='center', bbox=bbox)
