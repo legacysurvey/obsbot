@@ -2,6 +2,12 @@ from django.db import models
 import numpy as np
 
 class ComputedExptime(models.Model):
+
+    def __str__(self):
+        return ('ComputedExptime: start %.4f, seq %i' % (self.starttime, self.seqnum) +
+                ', tile %i, pass %i, band %s' % (self.tileid, self.passnumber, self.band) +
+                ', adj %.3f, exptime %.1f' % (self.adjfactor, self.exptime))
+
     starttime = models.FloatField()
     seqnum = models.IntegerField()
 

@@ -47,6 +47,7 @@ class TestMosbot(unittest.TestCase):
         tempdir = tempfile.mkdtemp()
         args = ['--script', os.path.join(tempdir, 'tonight.sh')]
         args.append('--adjust')
+        #args.append('--no-db')
         args += self.jsonfiles
         mosbot = main(cmdlineargs=args, get_mosbot=True)
 
@@ -58,6 +59,15 @@ class TestMosbot(unittest.TestCase):
         fn = os.path.join(self.testdatadir, 'mos3.68488.im4.fits.fz')
         mosbot.process_file(fn)
 
+        # Assert that entries have been added to the computed-exposure database
+        import obsdb
+        from obsdb.models import ComputedExptime, OtherPasses
+        c = ComputedExptime.objects.all()
+        print(c)
+        for cc in c:
+            print(cc)
+        self.assertEqual(len(c), 19)
+        
 
     def test_new_file_blank(self):
         from mosbot import main

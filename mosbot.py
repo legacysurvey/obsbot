@@ -58,7 +58,9 @@ def main(cmdlineargs=None, get_mosbot=False):
 
     parser.add_option('--adjust', action='store_true',
                       help='Adjust exposure times based on previous passes?')
-    
+
+    parser.add_option('--no-db', dest='db', default=True, action='store_false',
+                      help='Do not update the computed-exposure-time database')
     
     if cmdlineargs is None:
         opt,args = parser.parse_args()
@@ -505,38 +507,24 @@ class Mosbot(Obsbot):
             jplan['expTime'] = exptime
 
             # Update the computed exposure-time database.
-            try:
-                from obsdb.models import ComputedExptime, OtherPasses
-                zpt = M['zp']
-                c,created = ComputedExptime.objects.get_or_create(
-                    starttime=self.bot_runtime, seqnum=nextseq)
-                c.tileid = tile.tileid
-                c.passnumber = nextpass
-                c.band = nextband
-                c.airmass = airmass
-                c.ebv = ebv
-                c.meas_band = meas_band
-                c.zeropoint = zpt
-                c.transparency = trans
-                c.seeing = seeing
-                c.sky = skybright
-                c.expfactor = expfactor_orig
-                c.adjfactor = adjfactor
-                c.exptime_unclipped = exptime_unclipped
-                c.exptime_satclipped = exptime_satclipped
-                c.exptime=exptime
-                c.save()
-
-                for o in others:
-                    op = OtherPasses(exposure=c,
-                                     tileid=o.tileid, passnumber=o.passnum,
-                                     depth=o.depth)
-                    op.save()
-            except:
-                print('Failed to update computed-exptime database.')
-                import traceback
-                traceback.print_exc()
-                # carry on
+            if self.opt.db:
+                try:
+                    # NOTE, these kwargs MUST match the names in models.py
+                    self.update_exptime_db(
+                        nextseq, others, tileid=tile.tileid,
+                        passnumber=nextpass, band=nextband, airmass=airmass,
+                        ebv=ebv, meas_band=meas_band,
+                        zeropoint=M['zp'], transparency=trans,
+                        seeing=seeing, sky=skybright, expfactor=expfactor_orig,
+                        adjfactor=adjfactor,
+                        exptime_unclipped=exptime_unclipped,
+                        exptime_satclipped=exptime_satclipped,
+                        exptime=exptime)
+                except:
+                    print('Failed to update computed-exptime database.')
+                    import traceback
+                    traceback.print_exc()
+                    # carry on
 
             status = ('Exp %i: Tile %s, Pass %i, RA %s, Dec %s' %
                       (nextseq, tilename, nextpass, rastr, decstr))
@@ -621,6 +609,20 @@ class Mosbot(Obsbot):
 
         return True
 
+    def update_exptime_db(self, seqnum, others, **kwargs):
+        from obsdb.models import ComputedExptime, OtherPasses
+        c,created = ComputedExptime.objects.get_or_create(
+            starttime=self.bot_runtime, seqnum=seqnum)
+        for k,v in kwargs.items():
+            setattr(c, k, v)
+        c.save()
+
+        for o in others:
+            op = OtherPasses(exposure=c,
+                             tileid=o.tileid, passnumber=o.passnum,
+                             depth=o.depth)
+            op.save()
+        
     # For adjust_for_previous: find nearby tiles
     def other_passes(self, tile, tiles):
         '''
