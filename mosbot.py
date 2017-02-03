@@ -713,5 +713,9 @@ def slewscript_for_json(j):
 
 
 if __name__ == '__main__':
+    import obsdb
+    from camera_mosaic import database_filename
+    obsdb.django_setup(database_filename=database_filename)
+
     main()
     
