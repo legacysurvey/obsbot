@@ -46,6 +46,7 @@ class TestMosbot(unittest.TestCase):
 
         tempdir = tempfile.mkdtemp()
         args = ['--script', os.path.join(tempdir, 'tonight.sh')]
+        args.append('--adjust')
         args += self.jsonfiles
         mosbot = main(cmdlineargs=args, get_mosbot=True)
 

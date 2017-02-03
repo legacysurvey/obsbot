@@ -471,7 +471,7 @@ class Mosbot(Obsbot):
             if self.opt.adjust:
                 debug=True
                 adjfactor,others = self.adjust_for_previous(
-                    tile, band, fid, debug=debug, get_others=True)
+                    tile, nextband, fid, debug=debug, get_others=True)
                 # Don't adjust exposure times down, only up.
                 adjfactor = max(adjfactor, 1.0)
                 expfactor *= adjfactor
@@ -529,9 +529,8 @@ class Mosbot(Obsbot):
 
                 for o in others:
                     op = OtherPasses(exposure=c,
-                                     tileid=o.tileid,
-                                     passnumber=o.get('pass'),
-                                     depth=o.get('%s_depth' % nextband))
+                                     tileid=o.tileid, passnumber=o.passnum,
+                                     depth=o.depth)
                     op.save()
             except:
                 print('Failed to update computed-exptime database.')
