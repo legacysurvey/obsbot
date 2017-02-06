@@ -141,11 +141,9 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
                     sp += 1
                     i = I[k]
                     j = J[k]
-                    x = fx[j]
-                    y = fy[j] + shifty
+                    x = int(fx[j])
+                    y = int(fy[j] + shifty)
                     dimshow(img[y-S:y+S+1, x-S:x+S+1], ticks=False, **kwa)
-                    #if shifty == 0.:
-                    #    print('Plotting focus sweep star at', x,y)
             plt.suptitle('Focus sweep stars')
             ps.savefig()
 
@@ -238,36 +236,35 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
 
         if plotfn is None and ps is None:
             return meas
-        
-        if plotfn is not None:
-            plt.clf()
+
+        # If plotfn, we're making a 3x1 subplot; else 3 separate plots.
+        subplots = (plotfn is not None)
 
         seeings = []
 
         def pixvar2seeing(var):
             return np.sqrt(var) * 2.35 * self.pixscale
-        
+
+        plt.clf()
         for i,(name,Y,(X,Ymn,Ysig, s, xx, qq, fbest, seebest)) in enumerate(zip(
                 names, (allcxx, allcyy), fitvals)):
 
-            if plotfn is not None:
+            if subplots:
                 plt.subplot(3,1, 1+i)
             else:
                 plt.clf()
 
-            if i in [0,1]:
-                seeings.append(seebest)
-                plt.errorbar(X, pixvar2seeing(Ymn), yerr=pixvar2seeing(Ysig),
-                             fmt='o', color='g')
-                plt.plot(allfocus, pixvar2seeing(Y), 'b.', alpha=0.25)
+            seeings.append(seebest)
+            plt.errorbar(X, pixvar2seeing(Ymn), yerr=pixvar2seeing(Ysig),
+                         fmt='o', color='g')
+            plt.plot(allfocus, pixvar2seeing(Y), 'b.', alpha=0.25)
             ax = plt.axis()
-            if i in [0,1]:
-                plt.plot(xx, pixvar2seeing(qq), 'b-', alpha=0.5)
+            plt.plot(xx, pixvar2seeing(qq), 'b-', alpha=0.5)
             plt.axis(ax)
             plt.ylim(0.5, 2.5)
             plt.xlabel('Focus shift (um)')
             plt.ylabel(name)
-            if plotfn is not None:
+            if subplots:
                 plt.text(ax[0] + 0.9*(ax[1]-ax[0]), 20,
                          'Focus: %.0f' % fbest,
                          ha='right', va='top', fontsize=12,
@@ -275,10 +272,10 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
             else:
                 plt.title('Focus: %.1f' % fbest)
             plt.axvline(fbest, color='b')
-            if plotfn is None:
+            if not subplots:
                 ps.savefig()
 
-        if plotfn is not None:
+        if subplots:
             plt.subplot(3,1, 3)
         else:
             plt.clf()
@@ -297,14 +294,14 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
         meanseeing = np.mean(seeings)
         meanseeing = pixvar2seeing(meanseeing)
 
-        if meanseeing > 2.0:
-            mn,mx = meanseeing - 1., meanseeing + 1.5
-            plt.subplot(3,1,1)
-            plt.ylim(mn, mx)
-            plt.subplot(3,1,2)
-            plt.ylim(mn, mx)
-        
-        if plotfn is not None:
+        if subplots:
+            if meanseeing > 2.0:
+                mn,mx = meanseeing - 1., meanseeing + 1.5
+                plt.subplot(3,1,1)
+                plt.ylim(mn, mx)
+                plt.subplot(3,1,2)
+                plt.ylim(mn, mx)
+
             plt.subplot(3,1,1)
             plt.xlabel('')
             plt.subplot(3,1,2)
@@ -316,7 +313,6 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
             ps.savefig()
         
         return meas
-            
 
     def fit_general_gaussian(self, img, sig1, xi, yi, fluxi, psf_r=15, ps=None):
         import tractor
