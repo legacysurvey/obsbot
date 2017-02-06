@@ -11,7 +11,6 @@ import numpy as np
 
 from legacypipe.common import *
 
-from decam import DecamNominalCalibration
 import tractor
 
 #target_mjd = 57445.5
@@ -20,8 +19,16 @@ import tractor
 
 ps = PlotSequence('bot')
 
-nom = DecamNominalCalibration()
+decam = False
+mzls = not decam
 
+if decam:
+    from decam import DecamNominalCalibration
+    nom = DecamNominalCalibration()
+else:
+    from mosaic import MosaicNominalCalibration
+    nom = MosaicNominalCalibration()
+    
 botfn = 'bot-matched.fits'
 if not os.path.exists(botfn):
     obsfn = 'obsbot.fits'
@@ -58,43 +65,98 @@ if not os.path.exists(botfn):
     #bot.cut(np.abs(bot.mjd_obs - target_mjd) < mjd_diff)
     #print(len(bot), 'images for MJD')
     bot.cut(np.argsort(bot.mjd_obs))
-    for x in zip(bot.mjd_obs, bot.filename, bot.expnum):
-        print(x)
+    # for x in zip(bot.mjd_obs, bot.filename, bot.expnum)[:20]:
+    #     print(x)
     
     botccds = set(zip(bot.expnum, bot.extension))
-    print(len(botccds), 'unique CCDs')
+    print(len(botccds), 'unique CCDs in copilot database')
     
     survey = LegacySurveyData()
     #ccds = survey.get_ccds_readonly()
     ccds = survey.get_annotated_ccds()
+    print('Annotated CCDs:', len(ccds))
     
     # HACK
     #ccds.cut(np.abs(ccds.mjd_obs - target_mjd) < mjd_diff)
     #print('Cut to', len(ccds), 'CCDs near target MJD')
 
     ccds.cut(ccds.ccdzpt < 99.)
-    
-    ccdmap = dict([((expnum,ext),i) for i,(expnum,ext) in enumerate(zip(ccds.expnum, ccds.ccdname))])
+    print('With good zeropoints:', len(ccds))
 
-    #ccds.index = np.arange(len(ccds))
+    if mzls:
+        # Raw MzLS images are per-AMP, not per-CCD, so the names don't
+        # match up ("im4" vs "ccd1").  Instead just map by expnum, and
+        # record all matches
+        ccdmap = {}
+        for i,expnum in enumerate(ccds.expnum):
+            try:
+                ccdmap[expnum].append(i)
+            except KeyError:
+                ccdmap[expnum] = [i]
+
+    else:
+        ccdmap = dict([((expnum,ext.strip()),i) for i,(expnum,ext) in enumerate(zip(ccds.expnum, ccds.ccdname))])
+    print('Annotated CCDs map:', ccdmap.items()[:10], '...')
+    
     imatched = []
-    matched = []
-    #for expnum,ccdname in botccds:
-    for i,(expnum,ccdname,f) in enumerate(
-            zip(bot.expnum, bot.extension, bot.band)):
-        print('expnum', expnum, 'ccdname', ccdname, 'filter', f)
-        try:
-            iccd = ccdmap[(expnum, ccdname)]
-        except KeyError:
+    jmatched = []
+    alljmatched = []
+    
+    for i,(expnum,ccdname,obstype) in enumerate(
+            zip(bot.expnum, bot.extension, bot.obstype)):
+        ccdname = ccdname.strip()
+
+        obstype = obstype.strip()
+        if obstype in ['zero', 'dome flat', 'focus', 'dark']:
             continue
-        thisccd = ccds[np.array([iccd])]
-        #thisccd = ccds[(ccds.expnum == expnum) * (ccds.ccdname == ccdname)]
-        #print('    found', len(thisccd))
-        #assert(len(thisccd) <= 1)
-        matched.append(thisccd)
-        #if len(thisccd) == 1:
+
+        iccd = None
+        try:
+            if mzls:
+                iccds = ccdmap[expnum]
+                alljmatched.append(iccds)
+                # Arbitrarily keep just the first one...
+                iccd = iccds[0]
+            else:
+                iccd = ccdmap[(expnum, ccdname)]
+                alljmatched.append(iccd)
+        except KeyError:
+            # Check for mistaken expnums...
+            tryexpnum = None
+            if expnum > 3000000 and 'mos%i.fits' % expnum in bot.filename[i]:
+                # mos3101289 -- actually expnum 101289.
+                tryexpnum = expnum - 3000000
+            elif expnum > 300000 and expnum < 400000 and 'mos%i.fits' % expnum in bot.filename[i]:
+                # mos399505 -- actually expnum 99505
+                tryexpnum = expnum - 300000
+
+            if tryexpnum is not None:
+                try:
+                    iccds = ccdmap[tryexpnum]
+                    alljmatched.append(iccds)
+                    iccd = iccds[0]
+                    print('Tried', tryexpnum, 'rather than', expnum, 'and found a match!')
+                except KeyError:
+                    print('Also tried expnum', tryexpnum, 'but no luck')
+
+            if iccd is None:
+                print('Did not match bot entry: expnum', expnum, 'ccdname', ccdname, 'obstype "%s", object "%s"' % (obstype, bot.object[i].strip()))
+                print('  filename', bot.filename[i].strip())
+                continue
         imatched.append(i)
-    matched = merge_tables(matched)
+        jmatched.append(iccd)
+
+    jmatched = np.array(jmatched)
+    matched = ccds[jmatched]
+
+    alljmatched = np.hstack(alljmatched)
+    unmatched = np.ones(len(ccds), bool)
+    unmatched[alljmatched] = False
+    unmatched = np.flatnonzero(unmatched)
+    unmatched = ccds[unmatched]
+    print(len(unmatched), 'from CCDs file unmatched')
+    unmatched.writeto('ccds-unmatched.fits')
+    
     print('Found', len(matched), 'CCDs in survey CCDs file')
     imatched = np.array(imatched)
     print('Matched to', len(imatched), 'from bot file')
@@ -134,6 +196,7 @@ def Neff2(seeing):
 # Compute galaxy norm for a 1.3" Gaussian PSF, given FWHM seeing in arcsec
 # and pixel scale in arcsec/pixel.
 def get_galnorm(seeing, pixsc):
+    from tractor.patch import ModelMask
     S = 32
     W,H = S*2+1, S*2+1
     psf_sigma = seeing / 2.35 / pixsc
@@ -141,7 +204,7 @@ def get_galnorm(seeing, pixsc):
                         psf=tractor.NCircularGaussianPSF([psf_sigma], [1.]),
                         wcs=tractor.NullWCS(pixscale=pixsc))
     gal = SimpleGalaxy(tractor.PixPos(S,S), tractor.Flux(1.))
-    mm = Patch(0, 0, np.ones((H,W), bool))
+    mm = ModelMask(0, 0, W, H)
     galmod = gal.getModelPatch(tim, modelMask=mm).patch
     galmod = np.maximum(0, galmod)
     galmod /= galmod.sum()
@@ -281,10 +344,13 @@ plt.xlabel('Seeing (arcsec)')
 plt.ylabel('Exposure factor')
 ps.savefig()
 
+# HACK
+bot.band = np.array([b[0] for b in bot.band])
 
+botbands = np.unique(bot.band)
+print('Bot bands:', botbands)
 
-
-for band in np.unique(bot.band):
+for band in botbands:
     band = band.strip()
 
     bot = allbot[np.array([b.strip() == band for b in allbot.band])]
@@ -292,6 +358,8 @@ for band in np.unique(bot.band):
 
     bad = np.flatnonzero((bot.photometric == False))
     print(len(bad), 'rows are non-photometric')
+
+    notbad = np.flatnonzero(bot.photometric)
     
     tt = 'Obsbot vs Pipeline depth: %s band' % band
 
@@ -430,6 +498,10 @@ for band in np.unique(bot.band):
     plt.axis(ax)
     ps.savefig()
 
+
+    if mzls:
+        bot.avsky *= bot.exptime
+    
     
     skyflux = 10.**((bot.sky - zp0) / -2.5) * bot.exptime * pixsc**2
 
@@ -441,6 +513,19 @@ for band in np.unique(bot.band):
     print('Lstsq:', b)
     offset = b[0]
     slope = b[1]
+
+    plt.clf()
+    plt.plot(bot.exptime, bot.avsky, 'b.')
+    plt.xlabel('Exptime (s)')
+    plt.ylabel('CP avsky')
+    ps.savefig()
+
+    plt.clf()
+    plt.plot(bot.exptime, skyflux, 'b.')
+    plt.xlabel('Exptime (s)')
+    plt.ylabel('Bot sky flux')
+    ps.savefig()
+    
     
     plt.clf()
     plt.plot(bot.avsky, skyflux, 'b.')
@@ -474,11 +559,14 @@ for band in np.unique(bot.band):
     xx = np.array([0, 1])
     
     plt.clf()
-    plt.plot(bot.sig1, skysig1, 'b.')
-    plt.plot(bot.sig1[bad], skysig1[bad], 'r.')
+    plt.plot(bot.sig1[notbad], skysig1[notbad], 'b.')
+    ax = plt.axis()
+    [xmn,xmx,ymn,ymx] = ax
+    plt.plot(np.clip(bot.sig1[bad], xmn,xmx), np.clip(skysig1[bad], ymn,ymx), 'r.')
+    plt.axis(ax)
     plt.xlabel('Pipeline sig1')
     plt.ylabel('Bot sig1 = f(sky, zpt)')
-    ax = plt.axis()
+    #ax = plt.axis()
     p = plt.plot(xx, xx*factor, 'k-', alpha=0.3)
     p2 = plt.plot(xx, (xx*factor)*0.95, 'k--', alpha=0.3)
     plt.plot(xx, (xx*factor)*1.05, 'k--', alpha=0.3)
@@ -505,8 +593,12 @@ for band in np.unique(bot.band):
     print('Sky Scatter:', scatter)
     
     plt.clf()
-    p1 = plt.plot(expfactor_sig1, expfactor_sky, 'b.')
-    plt.plot(expfactor_sig1[bad], expfactor_sky[bad], 'r.')
+    p1 = plt.plot(expfactor_sig1[notbad], expfactor_sky[notbad], 'b.')
+    ax = plt.axis()
+    [xmn,xmx,ymn,ymx] = ax
+    plt.plot(np.clip(expfactor_sig1[bad], xmn,xmx),
+             np.clip(expfactor_sky[bad], ymn,ymx), 'r.')
+    plt.axis(ax)
     plt.xlabel('Pipeline exposure factor from sig1 (and zpt; arb. scale)')
     plt.ylabel('Bot exposure factor from sky')
     plt.title(tt)
@@ -523,6 +615,17 @@ for band in np.unique(bot.band):
     diff = np.median(bot.zeropoint - bot.ccdzpt)
     xx = np.array([20,30])
 
+    # plt.clf()
+    # plt.plot(bot.exptime, bot.ccdzpt, 'b.')
+    # plt.xlabel('Exptime (s)')
+    # plt.ylabel('Pipeline zeropoint')
+    # ps.savefig()
+    # plt.clf()
+    # plt.plot(bot.exptime, bot.zeropoint, 'b.')
+    # plt.xlabel('Exptime (s)')
+    # plt.ylabel('Bot zeropoint')
+    # ps.savefig()
+    
     plt.clf()
     plt.plot(bot.ccdzpt, bot.zeropoint, 'b.')
     plt.plot(bot.ccdzpt[bad], bot.zeropoint[bad], 'r.')
@@ -591,11 +694,14 @@ for band in np.unique(bot.band):
     print('Overall Scatter:', scatter)
     
     plt.clf()
-    p1 = plt.plot(expfactor, bot.expfactor, 'b.')
-    plt.plot(expfactor[bad], bot.expfactor[bad], 'r.')
+    p1 = plt.plot(expfactor[notbad], bot.expfactor[notbad], 'b.')
+    ax = plt.axis()
+    [xmn,xmx,ymn,ymx] = ax
+    plt.plot(np.clip(expfactor[bad], xmn,xmx),
+             np.clip(bot.expfactor[bad], ymn,ymx), 'r.')
+    plt.axis(ax)
     plt.xlabel('Pipeline expfactor from galdepth')
     plt.ylabel('Bot expfactor')
-    ax = plt.axis()
     p = plt.plot(xx, xx*factor, 'k-', alpha=0.3)
     p2 = plt.plot(xx, (xx*factor)*0.9, 'k--', alpha=0.3)
     plt.plot(xx, (xx*factor)*1.1, 'k--', alpha=0.3)
