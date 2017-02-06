@@ -618,11 +618,12 @@ class Mosbot(Obsbot):
         c.save()
 
         for o in others:
-            op = OtherPasses(exposure=c,
-                             tileid=o.tileid, passnumber=o.passnum,
-                             depth=o.depth)
+            op,created = OtherPasses.objects.get_or_create(
+                exposure=c, tileid=o.tileid)
+            op.passnumber = o.passnum
+            op.depth      = o.depth
             op.save()
-        
+
     # For adjust_for_previous: find nearby tiles
     def other_passes(self, tile, tiles):
         '''
