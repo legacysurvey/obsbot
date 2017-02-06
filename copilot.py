@@ -897,7 +897,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         focusfn = 'focus.png'
         M = meas.run(ps=None, plotfn=focusfn)
         if not 'focus' in M:
-            if M['nmatched'] < 10:
+            if ('nmatched' not in M) or (M['nmatched'] < 10):
                 print('FAILED TO MATCH ENOUGH STARS IN FOCUS FRAME -- please '
                       'try another image extension, eg:')
                 print('  python mosaic_focus.py --ext im16 %s' % fn)
