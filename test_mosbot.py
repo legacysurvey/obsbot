@@ -63,7 +63,6 @@ class TestMosbot(unittest.TestCase):
         import obsdb
         from obsdb.models import ComputedExptime, OtherPasses
         c = ComputedExptime.objects.all()
-        print(c)
         for cc in c:
             print(cc)
         self.assertEqual(len(c), 19)
