@@ -91,6 +91,9 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
         meas = super(Mosaic3FocusMeas, self).run(ps=ps, focus=True)
         # momentsize=10)
 
+        if not 'nmatched' in meas:
+            print('No stars detected!; abandoning focus frame measurement')
+            return meas
         if meas['nmatched'] < 10:
             print(('Only %i stars matched to PS1; abandoning focus frame ' +
                   'measurement') % meas['nmatched'])
