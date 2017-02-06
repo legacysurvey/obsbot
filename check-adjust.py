@@ -113,23 +113,24 @@ for a in adj[:10]:
     #print('depths:', [t.depth for t in others])
     print('factors:', ', '.join(['%.02f'%f for f in others.factor]))
 
-    PW,PH = 800,800
-    plot = Plotstuff(size=(PW, PH), rdw=(ra, dec, 2), outformat='png')
-    plot.color = 'verydarkblue'
-    plot.plot('fill')
+    if False:
+        PW,PH = 800,800
+        plot = Plotstuff(size=(PW, PH), rdw=(ra, dec, 2), outformat='png')
+        plot.color = 'verydarkblue'
+        plot.plot('fill')
+        
+        plot.outline.fill = False
+        plot.color = 'red'
+        plot_exposure(plot, tile.ra, tile.dec)
     
-    plot.outline.fill = False
-    plot.color = 'red'
-    plot_exposure(plot, tile.ra, tile.dec)
-
-    plot.color = 'white'
-    plot.outline.fill = True
-    for t in others:
-        plot.alpha = 0.25 * t.factor
-        plot.apply_settings()
-        plot_exposure(plot, t.ra, t.dec)
-
-    plot.write(ps.getnext())
+        plot.color = 'white'
+        plot.outline.fill = True
+        for t in others:
+            plot.alpha = 0.25 * t.factor
+            plot.apply_settings()
+            plot_exposure(plot, t.ra, t.dec)
+    
+        plot.write(ps.getnext())
 
     pixbin = 8
     mywcs = mosaic_wcs(tile.ra, tile.dec, pixbin=pixbin)
@@ -170,20 +171,77 @@ for a in adj[:10]:
         cov  += oldfactor
 
     ncov = haspass[1]*1 + haspass[2]*1 + haspass[3]*1
-        
-    plt.clf()
-    # plt.subplot(1,2,1)
-    # plt.imshow(ncov, interpolation='nearest', origin='lower',
-    #            vmin=0, vmax=6)
-    # plt.colorbar()
-    # plt.title('Number of exposures')
-    # plt.subplot(1,2,2)
-    plt.imshow(cov, interpolation='nearest', origin='lower',
-               vmin=0, vmax=6)
-    plt.colorbar(ticks=[0,1,2,3,4,5,6])
-    plt.title('Depth factor')
-    ps.savefig()
 
+    def makeplots(tt):
+
+        plt.subplots_adjust(hspace=0.1)
+
+        plt.clf()
+        for p in [1,2,3]:
+            plt.subplot(2,2,p)
+            plt.imshow(covs[p], interpolation='nearest', origin='lower',
+                       vmin=0, vmax=2, cmap='RdBu')
+            plt.colorbar(ticks=[0,1,2])
+            plt.title('Pass %i' % p)
+            plt.xticks([]); plt.yticks([])
+        plt.subplot(2,2,4)
+        plt.imshow(cov - ncov, interpolation='nearest', origin='lower',
+                   vmin=-1, vmax=1, cmap='RdBu')
+        plt.xticks([]); plt.yticks([])
+        plt.title('Total Depth - N passes')
+        #vmin=0, vmax=6)
+        #plt.colorbar(ticks=[0,1,2,3,4,5,6])
+        plt.colorbar(ticks=[-1,0,1])
+        plt.suptitle('Depth factor: ' + tt)
+        ps.savefig()
+
+        hmax = 5
+        ha = dict(range=(0,hmax), bins=40, histtype='step')
+        cmap = { 1:'r', 2:'g', 3:'b', 4:'m', 5:'c' }
+
+        plt.subplots_adjust(hspace=0)
+        
+        plt.clf()
+        for p in [1,2,3]:
+            plt.subplot(4,1,p)
+            plt.hist(covs[p].ravel(), color=cmap.get(p, 'k'),
+                     label='Pass %i' % (p), **ha)
+            plt.legend()
+            plt.xticks([])
+            plt.yticks([])
+            plt.axvline(1, color='k', lw=2, alpha=0.5)
+        plt.subplot(4,1,4)
+        plt.hist(np.clip(cov.ravel(), 0, hmax), color='m',
+                 label='Total depth', **ha)
+        plt.axvline(1, color='k', lw=2, alpha=0.5)
+        plt.axvline(2, color='k', lw=2, alpha=0.5)
+        plt.axvline(3, color='k', lw=2, alpha=0.5)
+        plt.yticks([])
+        plt.xticks(np.arange(hmax+1))
+        plt.legend()
+        plt.suptitle(tt)
+        ps.savefig()
+
+        
+
+        
+    makeplots('Before (pass %i)' % tilepass)
+    
+    # plt.clf()
+    # # plt.subplot(1,2,1)
+    # # plt.imshow(ncov, interpolation='nearest', origin='lower',
+    # #            vmin=0, vmax=6)
+    # # plt.colorbar()
+    # # plt.title('Number of exposures')
+    # # plt.subplot(1,2,2)
+    # plt.imshow(cov, interpolation='nearest', origin='lower',
+    #            vmin=0, vmax=6)
+    # plt.colorbar(ticks=[0,1,2,3,4,5,6])
+    # plt.title('Depth factor')
+    # ps.savefig()
+
+
+    
     # plt.clf()
     # nn = np.unique(ncov)
     # cmap = { 1:'r', 2:'b', 3:'m', 4:'g', 5:'c' }
@@ -199,21 +257,18 @@ for a in adj[:10]:
     # ps.savefig()
 
     #ha = dict(range=(0,2), bins=50, histtype='step')
-    hmax = 4
-    ha = dict(range=(0,hmax), bins=40, histtype='step')
     
-    plt.clf()
-    cmap = { 1:'r', 2:'g', 3:'b', 4:'m', 5:'c' }
-    for p in [1,2,3]:
-        plt.hist(covs[p].ravel(), color=cmap.get(p, 'k'),
-                 label='Pass %i' % (p), **ha)
-    plt.hist(cov.ravel() / np.maximum(ncov.ravel(), 1),
-             color='k', label='Total depth / N passes', **ha)
-    plt.hist(np.clip(cov.ravel(), 0, hmax), color='m',
-             label='Total depth', **ha)
-    plt.legend()
-    plt.title('Before')
-    ps.savefig()
+    # plt.clf()
+    # for p in [1,2,3]:
+    #     plt.hist(covs[p].ravel(), color=cmap.get(p, 'k'),
+    #              label='Pass %i' % (p), **ha)
+    # plt.hist(cov.ravel() / np.maximum(ncov.ravel(), 1),
+    #          color='k', label='Total depth / N passes', **ha)
+    # plt.hist(np.clip(cov.ravel(), 0, hmax), color='m',
+    #          label='Total depth', **ha)
+    # plt.legend()
+    # plt.title('Before')
+    # ps.savefig()
     
     factor = a.adjfactor
     p = tilepass
@@ -236,15 +291,38 @@ for a in adj[:10]:
     # plt.title('After (factor = %.2f)' % factor)
     # ps.savefig()
 
-    plt.clf()
-    for p in [1,2,3]:
-        plt.hist(covs[p].ravel(), color=cmap.get(p, 'k'),
-                 label='Pass %i' % (p), **ha)
-    plt.hist(cov.ravel() / np.maximum(ncov.ravel(), 1),
-             color='k', label='Total depth / N passes', **ha)
-    plt.hist(np.clip(cov.ravel(), 0, hmax), color='m',
-             label='Total depth', **ha)
-    plt.legend()
-    plt.title('After (factor = %.2f, pass = %i)' % (factor, tilepass))
-    ps.savefig()
+    # plt.clf()
+    # for p in [1,2,3]:
+    #     plt.subplot(4,1,p)
+    #     plt.hist(covs[p].ravel(), color=cmap.get(p, 'k'),
+    #              label='Pass %i' % (p), **ha)
+    #     plt.legend()
+    #     plt.xticks([])
+    #     plt.yticks([])
+    #     plt.axvline(1, color='k', lw=2, alpha=0.5)
+    # plt.subplot(4,1,4)
+    # plt.hist(np.clip(cov.ravel(), 0, hmax), color='m',
+    #          label='Total depth', **ha)
+    # plt.axvline(1, color='k', lw=2, alpha=0.5)
+    # plt.axvline(2, color='k', lw=2, alpha=0.5)
+    # plt.axvline(3, color='k', lw=2, alpha=0.5)
+    # plt.yticks([])
+    # plt.xticks(np.arange(hmax+1))
+    # plt.legend()
+    # plt.suptitle('After (factor = %.2f, pass = %i)' % (factor, tilepass))
+    # ps.savefig()
+
+    makeplots('After (factor = %.2f, pass = %i)' % (factor, tilepass))
+    
+    # plt.clf()
+    # for p in [1,2,3]:
+    #     plt.hist(covs[p].ravel(), color=cmap.get(p, 'k'),
+    #              label='Pass %i' % (p), **ha)
+    # plt.hist(cov.ravel() / np.maximum(ncov.ravel(), 1),
+    #          color='k', label='Total depth / N passes', **ha)
+    # plt.hist(np.clip(cov.ravel(), 0, hmax), color='m',
+    #          label='Total depth', **ha)
+    # plt.legend()
+    # plt.title('After (factor = %.2f, pass = %i)' % (factor, tilepass))
+    # ps.savefig()
     
