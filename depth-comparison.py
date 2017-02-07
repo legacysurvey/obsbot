@@ -1,6 +1,7 @@
 from __future__ import print_function
 import os
 import sys
+import datetime
 
 from astrometry.util.fits import *
 from astrometry.util.plotutils import *
@@ -502,15 +503,16 @@ for band in botbands:
 
     if mzls:
         bot.avsky *= bot.exptime
-    
-    
+
     skyflux = 10.**((bot.sky - zp0) / -2.5) * bot.exptime * pixsc**2
 
+    okvals = notbad[np.flatnonzero((bot.avsky < skyflux)[notbad])]
+    
     xx = np.array([0, 30000])
-    A = np.zeros((len(skyflux),2))
+    A = np.zeros((len(okvals),2))
     A[:,0] = 1.
-    A[:,1] = bot.avsky
-    b = np.linalg.lstsq(A, skyflux)[0]
+    A[:,1] = bot.avsky[okvals]
+    b = np.linalg.lstsq(A, skyflux[okvals])[0]
     print('Lstsq:', b)
     offset = b[0]
     slope = b[1]
@@ -526,11 +528,14 @@ for band in botbands:
     # plt.xlabel('Exptime (s)')
     # plt.ylabel('Bot sky flux')
     # ps.savefig()
-    
-    
+
+    out = np.flatnonzero(bot.avsky > skyflux)
+    print('AVSKY > SKYFLUX: expnums', bot.expnum[out])
+
     plt.clf()
     plt.plot(bot.avsky, skyflux, 'b.')
     plt.plot(bot.avsky[bad], skyflux[bad], 'r.')
+    plt.plot(bot.avsky[out], skyflux[out], 'g.')
     plt.xlabel('CP avsky')
     plt.ylabel('Bot sky flux')
     ax = plt.axis()
@@ -544,6 +549,151 @@ for band in botbands:
                loc='lower right')
     ps.savefig()
 
+    udates = np.unique(bot.date_obs)
+    print('Unique dates:', udates)
+
+    ccdskymags = []
+    skys = []
+    umjds = []
+    
+    slopes = []
+    gains = []
+    for idate,d in enumerate(udates):
+        I = np.flatnonzero(bot.date_obs == d)
+
+        A = np.zeros((len(I),2))
+        A[:,0] = 1.
+        A[:,1] = bot.avsky[I]
+        b = np.linalg.lstsq(A, skyflux[I])[0]
+        offset = b[0]
+        slope = b[1]
+
+        slopes.append(slope)
+        gains.append(np.median(bot.arawgain[I]))
+
+        ccdskymags.append(np.median(bot.ccdskymag[I]))
+        skys.append(np.median(bot.sky[I]))
+        umjds.append(np.median(bot.mjd_obs[I]))
+        
+        if idate >= 3:
+            continue
+        plt.clf()
+        plt.plot(bot.avsky[I], skyflux[I], 'b.')
+        plt.xlabel('CP avsky')
+        plt.ylabel('Bot sky flux')
+        plt.title('Date: ' + d)
+        ax = plt.axis()
+        p = plt.plot(xx, offset + xx*slope, 'k-', alpha=0.3)
+        p2 = plt.plot(xx, offset + xx*slope*0.9, 'k--', alpha=0.3)
+        plt.plot(xx, offset + xx*slope*1.1, 'k--', alpha=0.3)
+        plt.axis(ax)
+        plt.legend([p[0],p2[0]], ['offset %0.2f, slope %0.3f' % (offset, slope),
+                                  '+- 10%'],
+                   loc='lower right')
+        ps.savefig()
+
+
+    plt.clf()
+    plt.subplots_adjust(bottom=0.25)
+    dd = [datetime.date(*[int(w) for w in d.split('-')])
+          for d in udates]
+    plt.plot(dd, slopes, 'b.')
+    plt.plot(dd, gains, 'r.')
+    plt.xticks(rotation=90)
+    plt.xlabel('Obs date')
+    plt.ylabel('Slope')
+    ps.savefig()
+
+
+    plt.clf()
+    plt.plot(dd, ccdskymags, 'b.', label='ccdskymag')
+    plt.plot(dd, skys, 'r.', label='bot sky')
+    plt.xticks(rotation=90)
+    plt.xlabel('Obs date')
+    plt.ylabel('Sky estimate')
+    plt.legend()
+    ps.savefig()
+
+    ccdskymags = np.array(ccdskymags)
+    skys = np.array(skys)
+    off = np.median(ccdskymags - skys)
+
+    plt.clf()
+    plt.plot(dd, ccdskymags, 'b.', label='ccdskymag')
+    plt.ylim(18,20)
+    plt.xticks(rotation=90)
+    plt.xlabel('Obs date')
+    plt.ylabel('Sky estimate')
+    plt.legend()
+    ps.savefig()
+    plt.clf()
+    plt.plot(dd, skys + off, 'r.', label='bot sky')
+    plt.ylim(18,20)
+    plt.xticks(rotation=90)
+    plt.xlabel('Obs date')
+    plt.ylabel('Sky estimate')
+    plt.legend()
+    ps.savefig()
+
+
+    #from astrometry.util.starutil_numpy import *
+    #umjds = np.array([datetomjd(d) for d in dd])
+    umjds = np.array(umjds)
+    
+    plt.clf()
+    plt.plot(umjds % 28.0, ccdskymags, 'b.', label='ccdskymag')
+    plt.plot(umjds % 28.0, skys + off, 'r.', label='bot sky')
+    plt.ylim(18,20)
+    plt.xticks(rotation=90)
+    plt.xlabel('Obs date % 28')
+    plt.ylabel('Sky estimate')
+    plt.legend()
+    ps.savefig()
+    
+    
+    plt.clf()
+    plt.plot(bot.mjd_obs, bot.avsky / bot.exptime, 'b.')
+    plt.ylabel('avsky')
+    plt.xlabel('mjd')
+    ps.savefig()
+
+    plt.clf()
+    plt.plot(bot.mjd_obs, bot.sky, 'b.')
+    plt.ylabel('sky')
+    plt.xlabel('mjd')
+    ps.savefig()
+
+    plt.clf()
+    plt.plot(bot.mjd_obs, bot.ccdskymag, 'b.')
+    plt.ylabel('ccdskymag')
+    plt.xlabel('mjd')
+    ps.savefig()
+
+    plt.clf()
+    plt.plot(bot.mjd_obs, bot.ccdskycounts, 'b.')
+    plt.ylabel('ccdskycounts')
+    plt.xlabel('mjd')
+    ps.savefig()
+    
+    plt.clf()
+    plt.plot(bot.sky, bot.ccdskymag, 'b.')
+    plt.xlabel('sky')
+    plt.ylabel('ccdskymag')
+    ps.savefig()
+
+    plt.clf()
+    plt.plot(bot.ccdskycounts, bot.ccdskymag, 'b.')
+    plt.xlabel('ccdskycounts')
+    plt.ylabel('ccdskymag')
+    ps.savefig()
+
+    plt.clf()
+    plt.plot(bot.mjd_obs, bot.ccdskymag - bot.sky, 'b.')
+    plt.xlabel('mjd')
+    plt.ylabel('ccdskymag - sky')
+    ps.savefig()
+    
+    
     # Convert skyflux into a sig1 estimate
     # in Poisson process, mean = variance; total sky counts are distributed
     # like that.
