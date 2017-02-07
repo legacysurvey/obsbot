@@ -506,6 +506,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
 
         plt.plot(Tb.mjd_obs, clipped, 'o', mec='k', mfc='none', ms=9)
 
+        # Actual exposure times taken, marked with filled colored circles.
         I = np.flatnonzero(Tb.exptime > 0)
         if len(I):
             plt.plot(Tb.mjd_obs[I], Tb.exptime[I], 'o', color=ccmap[band])

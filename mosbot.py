@@ -66,7 +66,11 @@ def main(cmdlineargs=None, get_mosbot=False):
         opt,args = parser.parse_args()
     else:
         opt,args = parser.parse_args(cmdlineargs)
-    
+
+    if len(args) == 0:
+        # Default JSON filenames
+        args = ['pass1.json', 'pass2.json', 'pass3.json']
+
     if len(args) != 3:
         parser.print_help()
         sys.exit(-1)
