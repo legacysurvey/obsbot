@@ -247,9 +247,10 @@ if False:
         extdepth = bot.galdepth - extinction
 
         # 2-coverage target (90% fill)
-        target_depth = dict(g=24.0, r=23.4, z=22.5)[band]
+        #target_depth = dict(g=24.0, r=23.4, z=22.5)[band]
         # -> 1-coverage depth (- ~0.37 mag)
-        target_depth -= 2.5*np.log10(np.sqrt(2.))
+        #target_depth -= 2.5*np.log10(np.sqrt(2.))
+        target_depth = fid.single_exposure_depth
 
         p1 = plt.plot(equivtime[notbad], extdepth[notbad], 'b.', alpha=0.5)
         (xl,xh,yl,yh) = plt.axis()
@@ -514,17 +515,17 @@ for band in botbands:
     offset = b[0]
     slope = b[1]
 
-    plt.clf()
-    plt.plot(bot.exptime, bot.avsky, 'b.')
-    plt.xlabel('Exptime (s)')
-    plt.ylabel('CP avsky')
-    ps.savefig()
-
-    plt.clf()
-    plt.plot(bot.exptime, skyflux, 'b.')
-    plt.xlabel('Exptime (s)')
-    plt.ylabel('Bot sky flux')
-    ps.savefig()
+    # plt.clf()
+    # plt.plot(bot.exptime, bot.avsky, 'b.')
+    # plt.xlabel('Exptime (s)')
+    # plt.ylabel('CP avsky')
+    # ps.savefig()
+    # 
+    # plt.clf()
+    # plt.plot(bot.exptime, skyflux, 'b.')
+    # plt.xlabel('Exptime (s)')
+    # plt.ylabel('Bot sky flux')
+    # ps.savefig()
     
     
     plt.clf()
@@ -542,7 +543,7 @@ for band in botbands:
                               '+- 10%'],
                loc='lower right')
     ps.savefig()
-    
+
     # Convert skyflux into a sig1 estimate
     # in Poisson process, mean = variance; total sky counts are distributed
     # like that.
@@ -559,7 +560,7 @@ for band in botbands:
     xx = np.array([0, 1])
     
     plt.clf()
-    plt.plot(bot.sig1[notbad], skysig1[notbad], 'b.')
+    plt.plot(bot.sig1[notbad], skysig1[notbad], 'b.', alpha=0.25)
     ax = plt.axis()
     [xmn,xmx,ymn,ymx] = ax
     plt.plot(np.clip(bot.sig1[bad], xmn,xmx), np.clip(skysig1[bad], ymn,ymx), 'r.')
@@ -577,18 +578,30 @@ for band in botbands:
     plt.title(tt)
     ps.savefig()
 
-    # # sig1 includes effect of zeropoint...
-    # # Larger noise, longer exptime.
+    # plt.clf()
+    # plt.plot(bot.exptime, bot.sig1, 'b.')
+    # plt.xlabel('exptime')
+    # plt.ylabel('sig1')
+    # plt.ylim(0,np.percentile(bot.sig1, 98))
+    # ps.savefig()
+
+    
+    # sig1 (from CCDs table)
+    # is in units of nanomaggies
     zpscale = NanoMaggies.zeropointToScale(bot.zeropoint)
     expfactor_sig1 = (bot.sig1 * zpscale)**2
     expfactor_sig1 *= bot.exptime / fid.exptime
-    expfactor_sig1 /= np.median(expfactor_sig1)
+    print('Median expfactor_sig1:', np.median(expfactor_sig1))
+    #expfactor_sig1 /= np.median(expfactor_sig1)
 
+    print('Bot.sky:', bot.sky)
+    
+    # Sky estimate (from bot)
+    # This is the expfactor scaling
     expfactor_sky = 10.**(-0.4 * (bot.sky - fid.skybright))
 
     factor = np.median(expfactor_sky / expfactor_sig1)
-    xx = np.array([0, 10])
-
+    
     scatter = np.std(expfactor_sky / (expfactor_sig1 * factor))
     print('Sky Scatter:', scatter)
     
@@ -603,6 +616,7 @@ for band in botbands:
     plt.ylabel('Bot exposure factor from sky')
     plt.title(tt)
     ax = plt.axis()
+    xx = np.array([0, 10])
     p = plt.plot(xx, xx*factor, 'k-', alpha=0.3)
     p2 = plt.plot(xx, (xx*factor)*0.9, 'k--', alpha=0.3)
     plt.plot(xx, (xx*factor)*1.1, 'k--', alpha=0.3)
@@ -690,11 +704,17 @@ for band in botbands:
     factor = np.median(bot.expfactor / expfactor)
     xx = np.array([0, 10])
 
+    print('Galdepth values:', bot.galdepth)
+    print(bot.galdepth.min(), 'to', bot.galdepth.max())
+    
     scatter = np.std(bot.expfactor / (expfactor * factor))
     print('Overall Scatter:', scatter)
+
+    goodvals = notbad[np.flatnonzero(expfactor[notbad] < 1e16)]
     
     plt.clf()
-    p1 = plt.plot(expfactor[notbad], bot.expfactor[notbad], 'b.')
+    #p1 = plt.plot(expfactor[notbad], bot.expfactor[notbad], 'b.')
+    p1 = plt.plot(expfactor[goodvals], bot.expfactor[goodvals], 'b.')
     ax = plt.axis()
     [xmn,xmx,ymn,ymx] = ax
     plt.plot(np.clip(expfactor[bad], xmn,xmx),
@@ -719,14 +739,17 @@ for band in botbands:
 
     diff = np.median(galdepth - bot.galdepth)
     xx = np.array([20, 25])
+
+    gooddepth = notbad[bot.galdepth[notbad] > 10]
+
     plt.clf()
-    plt.plot(bot.galdepth - extinction, galdepth - extinction, 'b.')
-    plt.plot((bot.galdepth - extinction)[bad], (galdepth - extinction)[bad],
-             'r.')
+    plt.plot((bot.galdepth - extinction)[gooddepth], (galdepth - extinction)[gooddepth], 'b.')
+    ax = plt.axis()
+    plt.plot((bot.galdepth - extinction)[bad], (galdepth - extinction)[bad], 'r.')
     plt.xlabel('Pipeline galdepth (unextincted)')
     plt.ylabel('Bot galdepth (unextincted)')
     plt.axvline(target_depth, color='b', alpha=0.3)
-    ax = plt.axis()
+    #ax = [max(ax[0],20), ax[1], ax[2], ax[3]]
     plt.plot(xx, xx+diff, 'k-', alpha=0.3)
     p2 = plt.plot(xx, xx+diff+0.05, 'k--', alpha=0.3)
     plt.plot(xx, xx+diff-0.05, 'k--', alpha=0.3)
@@ -741,9 +764,10 @@ for band in botbands:
     
     plt.clf()
 
-    notbad = np.flatnonzero((bot.photometric == True))
+    #notbad = np.flatnonzero((bot.photometric == True))
 
-    p1 = plt.plot(equivtime[notbad], extdepth[notbad], 'b.', alpha=0.5)
+    #p1 = plt.plot(equivtime[notbad], extdepth[notbad], 'b.', alpha=0.5)
+    p1 = plt.plot(equivtime[gooddepth], extdepth[gooddepth], 'b.', alpha=0.5)
 
     yl,yh = plt.ylim()
     xl,xh = np.min(equivtime[notbad]) * 0.9, np.max(equivtime[notbad]) * 1.1
