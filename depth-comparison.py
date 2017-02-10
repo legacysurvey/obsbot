@@ -574,8 +574,8 @@ for band in botbands:
         ccdskymags.append(np.median(bot.ccdskymag[I]))
         skys.append(np.median(bot.sky[I]))
         umjds.append(np.median(bot.mjd_obs[I]))
-        
-        if idate >= 3:
+
+        if idate >= 1:
             continue
         plt.clf()
         plt.plot(bot.avsky[I], skyflux[I], 'b.')
@@ -605,93 +605,93 @@ for band in botbands:
     ps.savefig()
 
 
-    plt.clf()
-    plt.plot(dd, ccdskymags, 'b.', label='ccdskymag')
-    plt.plot(dd, skys, 'r.', label='bot sky')
-    plt.xticks(rotation=90)
-    plt.xlabel('Obs date')
-    plt.ylabel('Sky estimate')
-    plt.legend()
-    ps.savefig()
-
-    ccdskymags = np.array(ccdskymags)
-    skys = np.array(skys)
-    off = np.median(ccdskymags - skys)
-
-    plt.clf()
-    plt.plot(dd, ccdskymags, 'b.', label='ccdskymag')
-    plt.ylim(18,20)
-    plt.xticks(rotation=90)
-    plt.xlabel('Obs date')
-    plt.ylabel('Sky estimate')
-    plt.legend()
-    ps.savefig()
-    plt.clf()
-    plt.plot(dd, skys + off, 'r.', label='bot sky')
-    plt.ylim(18,20)
-    plt.xticks(rotation=90)
-    plt.xlabel('Obs date')
-    plt.ylabel('Sky estimate')
-    plt.legend()
-    ps.savefig()
-
-
-    #from astrometry.util.starutil_numpy import *
-    #umjds = np.array([datetomjd(d) for d in dd])
-    umjds = np.array(umjds)
-    
-    plt.clf()
-    plt.plot(umjds % 28.0, ccdskymags, 'b.', label='ccdskymag')
-    plt.plot(umjds % 28.0, skys + off, 'r.', label='bot sky')
-    plt.ylim(18,20)
-    plt.xticks(rotation=90)
-    plt.xlabel('Obs date % 28')
-    plt.ylabel('Sky estimate')
-    plt.legend()
-    ps.savefig()
-    
-    
-    plt.clf()
-    plt.plot(bot.mjd_obs, bot.avsky / bot.exptime, 'b.')
-    plt.ylabel('avsky')
-    plt.xlabel('mjd')
-    ps.savefig()
-
-    plt.clf()
-    plt.plot(bot.mjd_obs, bot.sky, 'b.')
-    plt.ylabel('sky')
-    plt.xlabel('mjd')
-    ps.savefig()
-
-    plt.clf()
-    plt.plot(bot.mjd_obs, bot.ccdskymag, 'b.')
-    plt.ylabel('ccdskymag')
-    plt.xlabel('mjd')
-    ps.savefig()
-
-    plt.clf()
-    plt.plot(bot.mjd_obs, bot.ccdskycounts, 'b.')
-    plt.ylabel('ccdskycounts')
-    plt.xlabel('mjd')
-    ps.savefig()
-    
-    plt.clf()
-    plt.plot(bot.sky, bot.ccdskymag, 'b.')
-    plt.xlabel('sky')
-    plt.ylabel('ccdskymag')
-    ps.savefig()
-
-    plt.clf()
-    plt.plot(bot.ccdskycounts, bot.ccdskymag, 'b.')
-    plt.xlabel('ccdskycounts')
-    plt.ylabel('ccdskymag')
-    ps.savefig()
-
-    plt.clf()
-    plt.plot(bot.mjd_obs, bot.ccdskymag - bot.sky, 'b.')
-    plt.xlabel('mjd')
-    plt.ylabel('ccdskymag - sky')
-    ps.savefig()
+    # plt.clf()
+    # plt.plot(dd, ccdskymags, 'b.', label='ccdskymag')
+    # plt.plot(dd, skys, 'r.', label='bot sky')
+    # plt.xticks(rotation=90)
+    # plt.xlabel('Obs date')
+    # plt.ylabel('Sky estimate')
+    # plt.legend()
+    # ps.savefig()
+    # 
+    # ccdskymags = np.array(ccdskymags)
+    # skys = np.array(skys)
+    # off = np.median(ccdskymags - skys)
+    # 
+    # plt.clf()
+    # plt.plot(dd, ccdskymags, 'b.', label='ccdskymag')
+    # plt.ylim(18,20)
+    # plt.xticks(rotation=90)
+    # plt.xlabel('Obs date')
+    # plt.ylabel('Sky estimate')
+    # plt.legend()
+    # ps.savefig()
+    # plt.clf()
+    # plt.plot(dd, skys + off, 'r.', label='bot sky')
+    # plt.ylim(18,20)
+    # plt.xticks(rotation=90)
+    # plt.xlabel('Obs date')
+    # plt.ylabel('Sky estimate')
+    # plt.legend()
+    # ps.savefig()
+    # 
+    # 
+    # #from astrometry.util.starutil_numpy import *
+    # #umjds = np.array([datetomjd(d) for d in dd])
+    # umjds = np.array(umjds)
+    # 
+    # plt.clf()
+    # plt.plot(umjds % 28.0, ccdskymags, 'b.', label='ccdskymag')
+    # plt.plot(umjds % 28.0, skys + off, 'r.', label='bot sky')
+    # plt.ylim(18,20)
+    # plt.xticks(rotation=90)
+    # plt.xlabel('Obs date % 28')
+    # plt.ylabel('Sky estimate')
+    # plt.legend()
+    # ps.savefig()
+    # 
+    # 
+    # plt.clf()
+    # plt.plot(bot.mjd_obs, bot.avsky / bot.exptime, 'b.')
+    # plt.ylabel('avsky')
+    # plt.xlabel('mjd')
+    # ps.savefig()
+    # 
+    # plt.clf()
+    # plt.plot(bot.mjd_obs, bot.sky, 'b.')
+    # plt.ylabel('sky')
+    # plt.xlabel('mjd')
+    # ps.savefig()
+    # 
+    # plt.clf()
+    # plt.plot(bot.mjd_obs, bot.ccdskymag, 'b.')
+    # plt.ylabel('ccdskymag')
+    # plt.xlabel('mjd')
+    # ps.savefig()
+    # 
+    # plt.clf()
+    # plt.plot(bot.mjd_obs, bot.ccdskycounts, 'b.')
+    # plt.ylabel('ccdskycounts')
+    # plt.xlabel('mjd')
+    # ps.savefig()
+    # 
+    # plt.clf()
+    # plt.plot(bot.sky, bot.ccdskymag, 'b.')
+    # plt.xlabel('sky')
+    # plt.ylabel('ccdskymag')
+    # ps.savefig()
+    # 
+    # plt.clf()
+    # plt.plot(bot.ccdskycounts, bot.ccdskymag, 'b.')
+    # plt.xlabel('ccdskycounts')
+    # plt.ylabel('ccdskymag')
+    # ps.savefig()
+    # 
+    # plt.clf()
+    # plt.plot(bot.mjd_obs, bot.ccdskymag - bot.sky, 'b.')
+    # plt.xlabel('mjd')
+    # plt.ylabel('ccdskymag - sky')
+    # ps.savefig()
     
     
     # Convert skyflux into a sig1 estimate
