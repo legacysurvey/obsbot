@@ -558,6 +558,14 @@ for band in botbands:
     
     slopes = []
     gains = []
+
+    bot_zpts = []
+    zpts = []
+    ccdzpts = []
+
+    bot_trans = []
+    ccdtrans = []
+    
     for idate,d in enumerate(udates):
         I = np.flatnonzero(bot.date_obs == d)
 
@@ -574,6 +582,13 @@ for band in botbands:
         ccdskymags.append(np.median(bot.ccdskymag[I]))
         skys.append(np.median(bot.sky[I]))
         umjds.append(np.median(bot.mjd_obs[I]))
+
+        bot_zpts.append(np.median(bot.zeropoint[I]))
+        zpts.append(np.median(bot.zpt[I]))
+        ccdzpts.append(np.median(bot.ccdzpt[I]))
+        
+        bot_trans.append(np.median(bot.transparency[I]))
+        ccdtrans.append(np.median(bot.ccdtransp[I]))
 
         if idate >= 1:
             continue
@@ -604,7 +619,36 @@ for band in botbands:
     plt.ylabel('Slope')
     ps.savefig()
 
+    alldd = [datetime.date(*[int(w) for w in d.split('-')])
+             for d in bot.date_obs]
+    
+    plt.clf()
+    plt.plot(dd, bot_zpts, 'b.', label='Bot zeropoint')
+    plt.plot(dd, ccdzpts, 'gx', label='Pipeline ccdzpt')
+    plt.plot(dd, zpts, 'r.', label='Pipeline zpt')
 
+    #plt.plot(alldd, bot.ccdzpt, 'r.', alpha=0.1)
+
+    plt.xticks(rotation=90)
+    plt.legend()
+    plt.axhline(26.2, color='k', lw=2, alpha=0.5)
+    #plt.axhline(26.2+0.6, color='k', lw=2, alpha=0.5, ls='--')
+    #plt.axhline(26.2-0.6, color='k', lw=2, alpha=0.5, ls='--')
+    plt.xlabel('Obs date')
+    plt.ylabel('Zeropoint')
+    ps.savefig()
+
+    plt.clf()
+    plt.plot(dd, bot_trans, 'b.', label='Bot transparency')
+    plt.plot(dd, ccdtrans, 'r.', label='Pipeline ccdtransp')
+
+    plt.xticks(rotation=90)
+    plt.legend()
+    plt.xlabel('Obs date')
+    plt.ylabel('Transparency')
+    ps.savefig()
+
+    
     # plt.clf()
     # plt.plot(dd, ccdskymags, 'b.', label='ccdskymag')
     # plt.plot(dd, skys, 'r.', label='bot sky')
