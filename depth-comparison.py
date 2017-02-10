@@ -754,7 +754,8 @@ for band in botbands:
     xx = np.array([0, 1])
     
     plt.clf()
-    plt.plot(bot.sig1[notbad], skysig1[notbad], 'b.', alpha=0.25)
+    #plt.plot(bot.sig1[notbad], skysig1[notbad], 'b.', alpha=0.25)
+    plt.scatter(bot.sig1[notbad], skysig1[notbad], c=bot.mjd_obs[notbad], alpha=0.25, edgecolor='none')
     ax = plt.axis()
     [xmn,xmx,ymn,ymx] = ax
     plt.plot(np.clip(bot.sig1[bad], xmn,xmx), np.clip(skysig1[bad], ymn,ymx), 'r.')
@@ -800,7 +801,10 @@ for band in botbands:
     print('Sky Scatter:', scatter)
     
     plt.clf()
-    p1 = plt.plot(expfactor_sig1[notbad], expfactor_sky[notbad], 'b.')
+    #p1 = plt.plot(expfactor_sig1[notbad], expfactor_sky[notbad], 'b.')
+    plt.scatter(expfactor_sig1[notbad], expfactor_sky[notbad],
+                c=bot.mjd_obs[notbad], edgecolor='none', alpha=0.25,
+                label='scatter %.1f %%' % (100.*scatter))
     ax = plt.axis()
     [xmn,xmx,ymn,ymx] = ax
     plt.plot(np.clip(expfactor_sig1[bad], xmn,xmx),
@@ -812,10 +816,10 @@ for band in botbands:
     ax = plt.axis()
     xx = np.array([0, 10])
     p = plt.plot(xx, xx*factor, 'k-', alpha=0.3)
-    p2 = plt.plot(xx, (xx*factor)*0.9, 'k--', alpha=0.3)
+    p2 = plt.plot(xx, (xx*factor)*0.9, 'k--', alpha=0.3,
+                  label='+- 10%')
     plt.plot(xx, (xx*factor)*1.1, 'k--', alpha=0.3)
-    plt.legend([p2[0], p1[0]], ['+- 10%', 'scatter %.1f %%' % (100.*scatter)],
-               loc='lower right')
+    plt.legend(loc='lower right')
     plt.axis(ax)
     ps.savefig()
 
@@ -835,7 +839,8 @@ for band in botbands:
     # ps.savefig()
     
     plt.clf()
-    plt.plot(bot.ccdzpt, bot.zeropoint, 'b.')
+    #plt.plot(bot.ccdzpt, bot.zeropoint, 'b.')
+    plt.scatter(bot.ccdzpt, bot.zeropoint, c=bot.mjd_obs, alpha=0.25, edgecolor='none')
     plt.plot(bot.ccdzpt[bad], bot.zeropoint[bad], 'r.')
     plt.xlabel('Pipeline zeropoint')
     plt.ylabel('Bot zeropoint')
@@ -908,7 +913,8 @@ for band in botbands:
     
     plt.clf()
     #p1 = plt.plot(expfactor[notbad], bot.expfactor[notbad], 'b.')
-    p1 = plt.plot(expfactor[goodvals], bot.expfactor[goodvals], 'b.')
+    #p1 = plt.plot(expfactor[goodvals], bot.expfactor[goodvals], 'b.')
+    plt.scatter(expfactor[goodvals], bot.expfactor[goodvals], c=bot.mjd_obs[goodvals], edgecolor='none', alpha=0.25, label='scatter %.1f %%' % (100.*scatter))
     ax = plt.axis()
     [xmn,xmx,ymn,ymx] = ax
     plt.plot(np.clip(expfactor[bad], xmn,xmx),
@@ -916,13 +922,11 @@ for band in botbands:
     plt.axis(ax)
     plt.xlabel('Pipeline expfactor from galdepth')
     plt.ylabel('Bot expfactor')
-    p = plt.plot(xx, xx*factor, 'k-', alpha=0.3)
-    p2 = plt.plot(xx, (xx*factor)*0.9, 'k--', alpha=0.3)
+    plt.plot(xx, xx*factor, 'k-', alpha=0.3, label='slope %0.3f' % (factor))
+    plt.plot(xx, (xx*factor)*0.9, 'k--', alpha=0.3, label='+- 10%')
     plt.plot(xx, (xx*factor)*1.1, 'k--', alpha=0.3)
     plt.plot(xx, xx, 'r-', alpha=0.3)
-    plt.legend([p[0],p2[0],p1[0]], ['slope %0.3f' % (factor), '+- 10%',
-                                    'scatter %.1f %%' % (100.*scatter)],
-               loc='lower right')
+    plt.legend(loc='lower right')
     plt.axis(ax)
     plt.title(tt)
     ps.savefig()
@@ -937,7 +941,8 @@ for band in botbands:
     gooddepth = notbad[bot.galdepth[notbad] > 10]
 
     plt.clf()
-    plt.plot((bot.galdepth - extinction)[gooddepth], (galdepth - extinction)[gooddepth], 'b.')
+    # plt.plot((bot.galdepth - extinction)[gooddepth], (galdepth - extinction)[gooddepth], 'b.')
+    plt.scatter((bot.galdepth - extinction)[gooddepth], (galdepth - extinction)[gooddepth], c=bot.mjd_obs[gooddepth], edgecolor='none', alpha=0.25)
     ax = plt.axis()
     plt.plot((bot.galdepth - extinction)[bad], (galdepth - extinction)[bad], 'r.')
     plt.xlabel('Pipeline galdepth (unextincted)')
@@ -952,6 +957,33 @@ for band in botbands:
     plt.title(tt)
     ps.savefig()
 
+    II = []
+    q = np.percentile(bot.mjd_obs, [0, 25, 50, 75, 100])
+    for qlo,qhi in zip(q, q[1:]):
+        II.append(np.flatnonzero((bot.mjd_obs >= qlo) * (bot.mjd_obs <= qhi)))
+
+    for I in II:
+        plt.clf()
+        plt.scatter((bot.galdepth - extinction)[I], (galdepth - extinction)[I], c=bot.mjd_obs[I], edgecolor='none', alpha=0.25,
+                    vmin=q[0], vmax=q[-1])
+        plt.xlabel('Pipeline galdepth (unextincted)')
+        plt.ylabel('Bot galdepth (unextincted)')
+        plt.axvline(target_depth, color='b', alpha=0.3)
+        plt.plot(xx, xx+diff, 'k-', alpha=0.3)
+        p2 = plt.plot(xx, xx+diff+0.05, 'k--', alpha=0.3)
+        plt.plot(xx, xx+diff-0.05, 'k--', alpha=0.3)
+        plt.axis(ax)
+        plt.legend([p2[0]], ['+- 0.05 mag'], loc='lower right')
+        plt.title(tt)
+        ps.savefig()
+
+        
+
+
+
+
+
+    
     equivtime = (bot.exptime / bot.expfactor)
 
     extdepth = bot.galdepth - extinction
