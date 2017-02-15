@@ -88,38 +88,43 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
         from astrometry.libkd.spherematch import match_xy
         from legacyanalysis.ps1cat import ps1cat
         import photutils
+
+        # Here's where we do all the source detection & matching to
+        # PS1; we call Mosaic3Measurer.run, which is actually just
+        # RawMeasurer.run() (both in measure_raw.py)
         meas = super(Mosaic3FocusMeas, self).run(ps=ps, focus=True)
-        # momentsize=10)
 
         if not 'nmatched' in meas:
             print('No stars detected!; abandoning focus frame measurement')
             return meas
-        if meas['nmatched'] < 10:
-            print(('Only %i stars matched to PS1; abandoning focus frame ' +
-                  'measurement') % meas['nmatched'])
-            return meas
+        # if meas['nmatched'] < 10:
+        #     print(('Only %i stars matched to PS1; abandoning focus frame ' +
+        #           'measurement') % meas['nmatched'])
+        #     return meas
 
+        # px,py are coordinates of PS1 stars with good colors.
         px = meas['px']
         py = meas['py']
+        # fx,fy are coordinates of detected stars
         fx = meas['fx']
         fy = meas['fy']
-        img= meas['img']
-        sig1=meas['sig1']
-        stars=meas['stars']
-        band=meas['band']
+        img   = meas['img']
+        sig1  = meas['sig1']
+        stars = meas['stars']
+        band  = meas['band']
         apflux = meas['apflux']
-        
         # (mx2 ,my2 ,mxy ,mtheta,ma,mb,mell) = meas['moments' ]
         # (wmx2,wmy2,wmxy,wtheta,wa,wb,well) = meas['wmoments']
-        
+
+        # Match PS1 stars
         radius2 = 3. / self.pixscale
         I,J,d = match_xy(px, py, fx, fy, radius2)
 
         # Choose the brightest PS1 stars not near an edge
         ps1band = ps1cat.ps1band.get(band, 2)
+        # pull out just the matched ones (I)
         ps1mag = stars.median[I, ps1band]
-        hdr = self.hdr
-        shifts = self.get_focus_shifts(hdr)
+        shifts = self.get_focus_shifts(self.hdr)
         S = 20
         H,W = img.shape
         miny = fy[J] + min(shifts)
@@ -149,13 +154,22 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
 
         meas.update(I=I, J=J, K=K)
 
-        shifts = self.get_focus_shifts(hdr)
-        focus = self.get_focus_values(hdr)
-    
+        if nstars == 0:
+            print(('Found no stars matched to PS1 with star colors; '
+                   'abandoning focus frame.  You could try another extension '
+                   'with "python mosaic_focus.py --ext im16 <filename>"'))
+            return meas
+        
+        shifts = self.get_focus_shifts(self.hdr)
+        focus = self.get_focus_values(self.hdr)
+
+        # Looking at our detected sources that are matched to PS1,
+        # fitting a general Gaussian for each and recording the
+        # moments.
         allfocus = []
         allcxx,allcyy,allcxy = [],[],[]
-        nstars = 21
-        for ik,k in enumerate(K[:nstars]):
+        max_nstars = 21
+        for ik,k in enumerate(K[:max_nstars]):
             j = J[k]
             xi = fx[j]
             yi = fy[j]
@@ -172,8 +186,7 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
                 allcxx.append(p[0])
                 allcyy.append(p[1])
                 allcxy.append(p[2])
-    
-        allfocus  = np.array(allfocus)
+        allfocus = np.array(allfocus)
         allcxx = np.array(allcxx)
         allcyy = np.array(allcyy)
         allcxy = np.array(allcxy)
@@ -199,6 +212,13 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
                 y1,ymn,y2 = np.percentile(yi, [16,50,84])
                 ysig = (y2 - y1) / 2
                 Ymn [i] = ymn
+                if ysig == 0:
+                    # Single source or all measurements the same...
+                    ysig = 1.
+                elif len(J) < 10:
+                    # increase ysig estimate for safety (eg, 2 estimates
+                    # close to each other -> small ysig -> large weight)
+                    ysig = np.hypot(ysig, 0.2)
                 Ysig[i] = ysig
 
             # Rescale xx to ~[-1,1]
