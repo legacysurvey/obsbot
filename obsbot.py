@@ -491,6 +491,10 @@ class NewFileWatcher(Logger):
 
 # Code shared between mosbot.py and decbot.py
 class Obsbot(NewFileWatcher):
+    def __init__(self, *args, **kwargs):
+        super(Obsbot, self).__init__(*args, **kwargs)
+        self.tiletree = None
+
     def adjust_for_previous(self, tile, band, fid, debug=False,
                             get_others=False):
         '''
@@ -619,15 +623,26 @@ class Obsbot(NewFileWatcher):
 
         Returns: *otherpasses*, table object
         '''
-        from astrometry.libkd.spherematch import match_radec
-        # Could also use the fact that the passes are offset from each other
-        # by a fixed index (15872 for decam)...
-        # Max separation is about 0.6 degrees for DECam...
-        #### FIXME for Mosaic this is much smaller... and the three passes
-        #### for a tile are not necessarily relatively close to each other.
-        I,J,d = match_radec(tile.ra, tile.dec, tiles.ra, tiles.dec, 1.)
+        if tiles != self.tiles:
+            from astrometry.libkd.spherematch import match_radec
+            # Could also use the fact that the passes are offset from each other
+            # by a fixed index (15872 for decam)...
+            # Max separation is about 0.6 degrees for DECam...
+            #### FIXME for Mosaic this is much smaller... and the three passes
+            #### for a tile are not necessarily relatively close to each other.
+            I,J,d = match_radec(tile.ra, tile.dec, tiles.ra, tiles.dec, 1.)
+            # Omit 'tile' itself...
+            K = np.flatnonzero(tiles.tileid[J] != tile.tileid)
+            J = J[K]
+            return tiles[J]
+
+        if self.tiletree is None:
+            from astrometry.libkd.spherematch import tree_build_radec
+            self.tiletree = tree_build_radec(self.tiles.ra, self.tiles.dec)
+
+        from astrometry.libkd.spherematch import tree_search_radec
+        J = tree_search_radec(self.tiletree, tile.ra, tile.dec, 1.0)
         # Omit 'tile' itself...
         K = np.flatnonzero(tiles.tileid[J] != tile.tileid)
         J = J[K]
         return tiles[J]
-        

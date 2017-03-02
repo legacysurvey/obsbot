@@ -12,7 +12,7 @@ import ephem
 
 from astrometry.util.starutil_numpy import degrees_between
 
-if __name__ == '__main__':
+def main():
     import optparse
     import sys
     
@@ -33,11 +33,9 @@ if __name__ == '__main__':
     parser.add_option('--start-date', help='Start date for this plan, YYYY-MM-DD UTC.')
     parser.add_option('--second-half', action='store_true', help='This plan starts at the start of the second half-night.')
     
-    parser.add_option('--skip', type=int, default=1, help='can have 200 plan*.png files so skip 50 would write every 50th only')
+    parser.add_option('--skip', type=int, default=1, help='Write every Nth plot only')
     
     opt,args = parser.parse_args()
-    print('opt= ',opt) 
-    print('args= ',args)
     if len(args) != 1:
         parser.print_help()
         sys.exit(-1)
@@ -79,7 +77,6 @@ if __name__ == '__main__':
     obs.date = ephem.Date(opt.start_date + ' 8:00:00')
     #print('Obs date:', obs.date)
     daystart = obs.date
-    
     obs.horizon = -ephem.degrees('12:00:00.0')
     sun = ephem.Sun()
     eve_twi  = obs.next_setting(sun)
@@ -115,9 +112,8 @@ if __name__ == '__main__':
     tiles = None
     if opt.obstatus is not None:
         from astrometry.util.fits import fits_table
-        import pyfits
         
-        tiles = fits_table(pyfits.getdata(opt.obstatus, 1))
+        tiles = fits_table(opt.obstatus)
         print('Read', len(tiles), 'tiles')
         tiles = tiles[(tiles.in_des == 0) * np.logical_or(
             (tiles.in_sdss == 1),
@@ -150,9 +146,12 @@ if __name__ == '__main__':
     filtcc = np.array([fcmap[f] for f in filts])
     ddecs = np.array([ddecmap[f] for f in filts])
 
+    # passmap = { 1: dict(marker='.'),
+    #             2: dict(marker='o', mfc='none'),
+    #             3: dict(marker='x') }
     passmap = { 1: dict(marker='.'),
-                2: dict(marker='o', mfc='none'),
-                3: dict(marker='x') }
+                2: dict(marker='.'),
+                3: dict(marker='.'), }
 
     opt.bands = opt.bands.split(',')
     if len(opt.bands) == 1:
@@ -173,25 +172,34 @@ if __name__ == '__main__':
 
     moon = ephem.Moon()
 
-    # Predict times when exposures should occur.
+    # Get times when exposures should occur.
     times = []
     LSTs = []
-    lastra,lastdec = None,None
-    for i in range(len(J)):
-        print('Exposure', i, 'should start at', str(obs.date))
-        times.append(ephem.Date(obs.date))
-        LSTs.append(np.rad2deg(float(obs.sidereal_time())))
-        overhead = 30.
-        if lastra is not None:
-            slew = degrees_between(lastra, lastdec, ras[i], decs[i])
-            lastra  = ras [i]
-            lastdec = decs[i]
-            # Add 3 seconds per degree for slews longer than 2 degrees
-            overhead += np.maximum(0, slew - 2.) * 3.
-        # Add overhead
-        print('Adding', exptime[i], 'seconds exptime plus',
-              overhead, 'seconds overhead')
-        obs.date += (exptime[i] + overhead) / (24 * 3600.)
+
+    # If the JSON files include estimated times, use those
+    if 'approx_datetime' in J[0]:
+        for j in J:
+            obs.date = ephem.Date(str(j['approx_datetime']))
+            times.append(ephem.Date(obs.date))
+            LSTs.append(np.rad2deg(float(obs.sidereal_time())))
+    else:
+        # Predict overheads
+        lastra,lastdec = None,None
+        for i in range(len(J)):
+            print('Exposure', i, 'should start at', str(obs.date))
+            times.append(ephem.Date(obs.date))
+            LSTs.append(np.rad2deg(float(obs.sidereal_time())))
+            overhead = 30.
+            if lastra is not None:
+                slew = degrees_between(lastra, lastdec, ras[i], decs[i])
+                lastra  = ras [i]
+                lastdec = decs[i]
+                # Add 3 seconds per degree for slews longer than 2 degrees
+                overhead += np.maximum(0, slew - 2.) * 3.
+            # Add overhead
+            print('Adding', exptime[i], 'seconds exptime plus',
+                  overhead, 'seconds overhead')
+            obs.date += (exptime[i] + overhead) / (24 * 3600.)
 
     # Try to get the pass number via parsing the field name to get tile id
     # and looking up the pass number in the tiles table.
@@ -226,7 +234,7 @@ if __name__ == '__main__':
                     #print sum(I), 'tiles done in', filt, 'pass', p
                     plt.plot(transform_ra(tiles.ra[I]), tiles.dec[I] + filtddec[filt],
                              linestyle='none',
-                             color=fcmap[filt], alpha=0.5, mec=fcmap[filt],
+                             color=fcmap[filt], alpha=0.25, mec=fcmap[filt],
                              zorder=10,
                              **passmap[p])
             #print sum(todo), 'tiles to-do'
@@ -238,7 +246,8 @@ if __name__ == '__main__':
 
         rr = ras[:i+1]
         dd = decs[:i+1] + ddecs[:i+1]
-        plt.scatter(transform_ra(rr), dd, c=filtcc[:i+1], s=40, zorder=50)
+        plt.scatter(transform_ra(rr), dd, c=filtcc[:i+1], s=40, zorder=50,
+                    edgecolors='k')
         plt.plot(transform_ra(rr), dd, 'k-', alpha=0.5, zorder=40)
 
         plt.text(transform_ra(rr[i]-5), dd[i], fieldname[i],
@@ -253,8 +262,6 @@ if __name__ == '__main__':
         print('Moon RA,Dec', moonra, moondec)
         plt.plot(transform_ra(moonra), moondec, 'o', ms=20, mec=(1,0.6,0), mew=5, mfc='none', zorder=40)
         #plt.plot(moonra, moondec, 'o', ms=20, mec='k', mew=1)
-
-        from nightlystrategy import GetAirmass, ConvertRA, ConvertDec
 
         dd = np.linspace(ax[2], ax[3], 20)
         rr = np.linspace(ax[0], ax[1], 21)
@@ -336,3 +343,54 @@ if __name__ == '__main__':
     os.system(cmd)
 
         
+#### From nightlystrategy.py:
+
+def GetAirmass(al):
+    if (al < 0.07):
+        al = 0.07
+    secz = 1.0/np.sin(al)
+    seczm1 = secz-1.0
+    airm = secz-0.0018167*seczm1-0.002875*seczm1**2-0.0008083*seczm1**3
+    return airm
+
+def ConvertRA(raval):
+    hours = np.zeros_like(raval)
+    minutes = np.zeros_like(raval)
+    seconds = np.zeros_like(raval)
+    
+    hours = (raval/360.0)*24.0
+    minutes = (hours-np.floor(hours))*60.0
+    seconds = (minutes-np.floor(minutes))*60.0
+    
+    
+    stringra = []
+    for k in range(0,raval.size):
+        #print hours[k],minutes[k], seconds[k]
+        stringra.append("%02d:%02d:%04.1f" % (hours[k], minutes[k], seconds[k]))
+    
+    stringra = np.array(stringra)
+    return stringra
+
+
+#######################################################
+def ConvertDec(decval):
+    sdd = np.zeros_like(decval)
+    minutes = np.zeros_like(decval)
+    seconds = np.zeros_like(decval)
+    
+    sdd = decval
+    pos_sdd = np.fabs(sdd)
+    minutes = (pos_sdd-np.floor(pos_sdd))*60.0
+    seconds = (minutes-np.floor(minutes))*60.0
+    
+    stringdec = []
+    for k in range(0,decval.size):
+        #print sdd[k],minutes[k], seconds[k]
+        stringdec.append("%02d:%02d:%02d" % (sdd[k], minutes[k], seconds[k]))
+    
+    stringdec = np.array(stringdec)
+    return stringdec
+
+
+if __name__ == '__main__':
+    main()

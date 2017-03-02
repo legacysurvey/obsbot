@@ -1100,6 +1100,7 @@ def plot_recent(opt, nom, tiles=None, markmjds=[],
 
     markmjds.extend(mark_twilight(camera, ephem.Date(mjdtodate(mjd_end))))
 
+    import pylab as plt
     plt.figure(1)
     plot_measurements(mm, plotfn, nom, allobs=allobs,
                       mjdrange=(mjd_start, mjd_end), markmjds=markmjds,
