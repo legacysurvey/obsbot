@@ -38,7 +38,7 @@ from obsbot import (
 
 def main(cmdlineargs=None, get_decbot=False):
     import optparse
-    parser = optparse.OptionParser(usage='%prog <pass1.json> <pass2.json> <pass3.json>')
+    parser = optparse.OptionParser(usage='%prog [<pass1.json> <pass2.json> <pass3.json>]')
 
     from camera_decam import (ephem_observer, default_extension, nominal_cal,
                               tile_path)
@@ -386,14 +386,9 @@ class Decbot(Obsbot):
         return [fn for fn in fns if
                 fn.endswith('.fits.fz') or fn.endswith('.fits')]
 
-    def process_file(self, fn):
-        ext = self.opt.ext
-        #print('%s: found new image %s' % (str(ephem.now()), fn))
-
+    def check_header(self, fn):
         # Read primary FITS header
         phdr = fitsio.read_header(fn)
-        expnum = phdr.get('EXPNUM', 0)
-    
         obstype = phdr.get('OBSTYPE','').strip()
         #print('Obstype:', obstype)
         if obstype in ['zero', 'focus', 'dome flat']:
@@ -418,11 +413,10 @@ class Decbot(Obsbot):
 
         obj = phdr.get('OBJECT', '')
         print('Object:', obj, 'exptime', exptime, 'filter', filt)
-        
-        # Measure the new image
-        kwa = dict(verbose=self.verbose, ps=None)
+        return True
 
-        # multiple extensions?
+    def measure_extensions(self, fn, ext, kwa):
+        # If we're checking multiple extensions, build argument lists for each.
         args = []
         if ext is not None:
             exts = ext.split(',')
@@ -432,13 +426,14 @@ class Decbot(Obsbot):
                 args.append((fn, thiskwa))
         else:
             args.append((fn, kwa))
-
+        # Measure extensions in parallel.
         from astrometry.util.multiproc import multiproc
         mp = multiproc(self.opt.threads)
         MM = mp.map(bounce_measure_raw, args)
         mp.close()
         del mp
 
+    def check_measurements(self, MM, fn):
         # Reasonableness checks
         keep = []
         for M in MM:
@@ -449,23 +444,39 @@ class Decbot(Obsbot):
             print('Failed checks in our measurement of', fn,
                   '-- not updating anything')
             # FIXME -- we could fall back to pass 3 here.
+            return []
+        return keep
+
+    def average_measurements(self, MM):
+        # Average the measurements -- but start by copying one of
+        # the measurements.
+        M = MM[0].copy()
+        # FIXME -- means?
+        for key,nice in [('skybright','Sky'),
+                         ('transparency','Transparency'),
+                         ('seeing','Seeing')]:
+            print('Measurements of %-12s:' % nice,
+                  ', '.join(['%6.3f' % mi[key] for mi in MM]))
+            M[key] = np.mean([mi[key] for mi in MM])
+        return M
+
+    def process_file(self, fn):
+        ok = self.check_header(fn)
+        if not ok:
             return False
-        MM = keep
+        # Measure the new image
+        kwa = dict(verbose=self.verbose, ps=None)
+        MM = self.measure_extensions(fn, self.opt.ext, kwa)
+
+        MM = self.check_measurements(MM, fn)
+        if len(MM) == 0:
+            return False
         
         if len(MM) == 1:
             M = MM[0]
         else:
-            # Average the measurements -- but start by copying one of
-            # the measurements.
-            M = MM[0].copy()
-            # FIXME -- means?
-            for key,nice in [('skybright','Sky'),
-                             ('transparency','Transparency'),
-                             ('seeing','Seeing')]:
-                print('Measurements of %-12s:' % nice,
-                      ', '.join(['%6.3f' % mi[key] for mi in MM]))
-                M[key] = np.mean([mi[key] for mi in MM])
-        
+            M = self.average_measurements(MM)
+
         trans  = M['transparency']
         seeing = M['seeing']
         skybright = M['skybright']
