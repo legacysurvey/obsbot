@@ -606,7 +606,10 @@ class Decbot(Obsbot):
         expfactor = exposure_factor(fid, self.nom, airmass,ebv,seeing,sky,trans)
 
         if self.adjust_previous:
+            from astrometry.util.ttime import Time
+            t0 = Time()
             adjfactor = self.adjust_for_previous(tile, band, fid)
+            print('Adjust-for-previous:', Time()-t0)
             expfactor *= adjfactor
 
         exptime = expfactor * fid.exptime
