@@ -432,6 +432,7 @@ class Decbot(Obsbot):
         MM = mp.map(bounce_measure_raw, args)
         mp.close()
         del mp
+        return MM
 
     def check_measurements(self, MM, fn):
         # Reasonableness checks
@@ -528,10 +529,10 @@ class Decbot(Obsbot):
         # Update plans (exposure times) for all three passes
         for j,J in enumerate([self.J1, self.J2, self.J3]):
             passnum = j+1
-            self.update_plans_for_pass(passnum, J)
+            self.update_plans_for_pass(passnum, J, exptime)
         self.write_plans()
 
-    def update_plans_for_pass(self, passnum, J):
+    def update_plans_for_pass(self, passnum, J, exptime):
         if len(J) == 0:
             print('Could not find a JSON observation in pass', passnum,
                   'with approx_datetime after now =', str(ephem.now()))
@@ -598,7 +599,7 @@ class Decbot(Obsbot):
         mairmass = M['airmass']
         assert(mairmass >= 1.0 and mairmass < 4.0)
 
-        sky = self.predict_sky(mband, msky, band, grsky)
+        sky = self.predict_sky(mband, msky, band, grsky, debug)
         seeing = self.predict_seeing(band,seeing,mairmass,airmass, grsee, debug)
 
         fid = self.nom.fiducial_exptime(band)
@@ -627,7 +628,7 @@ class Decbot(Obsbot):
         exptime = int(exptime)
         return exptime
 
-    def predict_sky(self, mband, msky, band, grsky):
+    def predict_sky(self, mband, msky, band, grsky, debug):
         '''
         mband: measured band
         msky: measured sky in that band
