@@ -591,62 +591,18 @@ class Decbot(Obsbot):
         M = self.latest_measurement
         trans  = M['transparency']
         seeing = M['seeing']
-        msky = M['skybright']
+        msky  = M['skybright']
         grsky = M.get('grsky', None)
         grsee = M.get('grsee', None)
         mband = M['band']
         mairmass = M['airmass']
         assert(mairmass >= 1.0 and mairmass < 4.0)
-        
-        if mband == band:
-            sky = msky
-        else:
-            sky = None
-            if ((grsky is not None) and
-                ((mband == 'g' and band == 'r') or
-                 (mband == 'r' and band == 'g'))):
-                if debug:
-                    print('g-r color:', grsky)
-                    print('measured sky in', mband, '=', msky)
-                if band == 'r':
-                    sky = msky - grsky
-                else:
-                    sky = msky + grsky
-                    if debug:
-                        print('predicted sky in', band, '=', sky)
-                
-            if sky is None:
-                # Guess that the sky is as much brighter than canonical
-                # in the next band as it is in this one!
-                nomsky = self.nom.sky(mband)
-                sky = ((msky - nomsky) + self.nom.sky(band))
 
-        if (grsee is not None) and (band in 'gr'):
-            g_see,r_see,G,R = grsee
-            oldsee = seeing
-            oldair = mairmass
-            if band == 'r':
-                seeing = r_see
-                mairmass = np.median(R.airmass)
-            else:
-                seeing = g_see
-                mairmass = np.median(G.airmass)
-            if debug:
-                print('Using g,r seeing estimate', seeing, 'rather than most',
-                      'recent measurement', oldsee)
-                print('Updating airmass from', oldair, 'to', mairmass,
-                      'used for seeing estimate')
-
-        seeing_wrt_airmass = self.nom.seeing_wrt_airmass(band)
-        oldsee = seeing
-        seeing += (airmass - mairmass) * seeing_wrt_airmass
-        if debug:
-            print('Updated seeing prediction from', oldsee, 'to', seeing,
-                  'for airmass %.2f to %.2f' % (mairmass, airmass))
+        sky = self.predict_sky(mband, msky, band, grsky)
+        seeing = self.predict_seeing(band,seeing,mairmass,airmass, grsee, debug)
 
         fid = self.nom.fiducial_exptime(band)
-        expfactor = exposure_factor(fid, self.nom,
-                                    airmass, ebv, seeing, sky, trans)
+        expfactor = exposure_factor(fid, self.nom, airmass,ebv,seeing,sky,trans)
 
         if self.adjust_previous:
             adjfactor = self.adjust_for_previous(tile, band, fid)
@@ -670,7 +626,69 @@ class Decbot(Obsbot):
                          'saturation: %.1f s' % exptime, uniq=True)
         exptime = int(exptime)
         return exptime
-            
+
+    def predict_sky(self, mband, msky, band, grsky):
+        '''
+        mband: measured band
+        msky: measured sky in that band
+        band: band that we want to predict the sky level in
+        grsky: estimate of g-r sky color.
+        '''
+        if mband == band:
+            sky = msky
+        else:
+            sky = None
+            if ((grsky is not None) and
+                ((mband == 'g' and band == 'r') or
+                 (mband == 'r' and band == 'g'))):
+                if debug:
+                    print('g-r color:', grsky)
+                    print('measured sky in', mband, '=', msky)
+                if band == 'r':
+                    sky = msky - grsky
+                else:
+                    sky = msky + grsky
+                    if debug:
+                        print('predicted sky in', band, '=', sky)
+                
+            if sky is None:
+                # Guess that the sky is as much brighter than canonical
+                # in the next band as it is in this one!
+                nomsky = self.nom.sky(mband)
+                sky = ((msky - nomsky) + self.nom.sky(band))
+        return sky
+
+    def predict_seeing(self, band, seeing, mairmass, airmass, grsee, debug):
+        '''
+        band: band we want to predict the seeing in.
+        seeing: measured seeing
+        mairmass: airmass of measured images
+        airmass: airmass of the image we want to predict for.
+        grsee: recent seeing estimates for g,r bands.
+        '''
+        oldsee = seeing
+        if (grsee is not None) and (band in 'gr'):
+            g_see,r_see,G,R = grsee
+            oldair = mairmass
+            if band == 'r':
+                seeing = r_see
+                mairmass = np.median(R.airmass)
+            else:
+                seeing = g_see
+                mairmass = np.median(G.airmass)
+            if debug:
+                print('Using g,r seeing estimate', seeing, 'rather than most',
+                      'recent measurement', oldsee)
+                print('Updating airmass from', oldair, 'to', mairmass,
+                      'used for seeing estimate')
+
+        seeing_wrt_airmass = self.nom.seeing_wrt_airmass(band)
+        seeing += (airmass - mairmass) * seeing_wrt_airmass
+        if debug:
+            print('Updated seeing prediction from', oldsee, 'to', seeing,
+                  'for airmass %.2f to %.2f' % (mairmass, airmass))
+        return seeing
+
     def tiles_after_now(self, J):
         now = ephem.now()
         keep = []
