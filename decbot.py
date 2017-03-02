@@ -528,41 +528,42 @@ class Decbot(Obsbot):
         # Update plans (exposure times) for all three passes
         for j,J in enumerate([self.J1, self.J2, self.J3]):
             passnum = j+1
+            self.update_plans_for_pass(passnum, J)
+        self.write_plans()
 
-            if len(J) == 0:
-                print('Could not find a JSON observation in pass', passnum,
-                      'with approx_datetime after now =', str(ephem.now()))
-                return False
+    def update_plans_for_pass(self, passnum, J):
+        if len(J) == 0:
+            print('Could not find a JSON observation in pass', passnum,
+                  'with approx_datetime after now =', str(ephem.now()))
+            return
 
-            M = self.latest_measurement
-            if M is not None:
-                # Update the exposure times in plan J based on measured conditions.
-                print('Updating exposure times for pass', passnum)
-                # Keep track of expected time of observations
-                # FIXME -- should add margin for the images currently in the queue...
-                self.obs.date = ephem.now()
-                for ii,jplan in enumerate(J):
-                    exptime = self.exptime_for_tile(jplan, debug=(ii < 3))
-                    jplan['expTime'] = exptime
-                    self.obs.date += (exptime + self.nom.overhead) / 86400.
-            elif exptime is not None: 
-                for ii,jplan in enumerate(J):
-                    jplan['expTime'] = exptime
-
+        M = self.latest_measurement
+        if M is not None:
+            # Update the exposure times in plan J based on measured conditions.
+            print('Updating exposure times for pass', passnum)
+            # Keep track of expected time of observations
+            # FIXME -- should add margin for the images currently in the queue.
             self.obs.date = ephem.now()
             for ii,jplan in enumerate(J):
-                s = (('Plan tile %s (pass %i), band %s, RA,Dec (%.3f,%.3f), ' +
-                      'exptime %i.') %
-                      (jplan['object'], jplan['planpass'], jplan['filter'],
-                       jplan['RA'], jplan['dec'], jplan['expTime']))
-                if ii <= 3:
-                    airmass = self.airmass_for_tile(jplan)
-                    s += '  Airmass if observed now: %.2f' % airmass
-                    self.log(s)
-                else:
-                    self.debug(s)
-                
-        self.write_plans()
+                exptime = self.exptime_for_tile(jplan, debug=(ii < 3))
+                jplan['expTime'] = exptime
+                self.obs.date += (exptime + self.nom.overhead) / 86400.
+        elif exptime is not None: 
+            for ii,jplan in enumerate(J):
+                jplan['expTime'] = exptime
+
+        self.obs.date = ephem.now()
+        for ii,jplan in enumerate(J):
+            s = (('Plan tile %s (pass %i), band %s, RA,Dec (%.3f,%.3f), ' +
+                  'exptime %i.') %
+                  (jplan['object'], jplan['planpass'], jplan['filter'],
+                   jplan['RA'], jplan['dec'], jplan['expTime']))
+            if ii <= 3:
+                airmass = self.airmass_for_tile(jplan)
+                s += '  Airmass if observed now: %.2f' % airmass
+                self.log(s)
+            else:
+                self.debug(s)
             
     def airmass_for_tile(self, jplan):
         '''
@@ -648,8 +649,7 @@ class Decbot(Obsbot):
                                     airmass, ebv, seeing, sky, trans)
 
         if self.adjust_previous:
-            adjfactor = self.adjust_for_previous(tile, band, fid,
-                                                 debug=debug)
+            adjfactor = self.adjust_for_previous(tile, band, fid)
             expfactor *= adjfactor
 
         exptime = expfactor * fid.exptime
