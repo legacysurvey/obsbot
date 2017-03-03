@@ -353,6 +353,11 @@ class Decbot(Obsbot):
             return
 
         # Is "now" after the next tile in any pass?  If so, replan!
+
+        # (but only if cut_before_now is set)
+        if not opt.cut_before_now:
+            return
+
         replan = False
         for J in [self.J1, self.J2, self.J3]:
             if len(J):
@@ -752,9 +757,10 @@ class Decbot(Obsbot):
         keep = []
         now = ephem.now()
         for j in J:
-            tstart = ephem.Date(str(j['approx_datetime']))
-            if tstart < now:
-                continue
+            if opt.cut_before_now:
+                tstart = ephem.Date(str(j['approx_datetime']))
+                if tstart < now:
+                    continue
             tilename = str(j['object'])
             # Was this tile seen in a file on disk? (not incl. backlog)
             if tilename in self.observed_tiles:
