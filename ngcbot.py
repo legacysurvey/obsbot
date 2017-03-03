@@ -156,7 +156,10 @@ class NgcBot(NewFileWatcher):
             if xl == xh or yl == yh:
                 continue
             subimg = raw[yl:yh, xl:xh]
-            #print('Subimage size:', subimg.shape)
+            sh,sw = subimg.shape
+            if sh < 25 or sw < 25:
+                continue
+            print('Subimage size:', subimg.shape)
             lo,hi = np.percentile(subimg.ravel(), [50, 99.5])
 
             # plt.clf()
@@ -185,7 +188,6 @@ class NgcBot(NewFileWatcher):
             # ps.savefig()
 
             #
-            sh,sw = subimg.shape
             
             urlpat = 'http://legacysurvey.org/viewer/jpeg-cutout/?ra=%.4f&dec=%.4f&pixscale=%.3f&width=%i&height=%i&layer=%s'
 
