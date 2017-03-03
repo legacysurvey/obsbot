@@ -278,18 +278,18 @@ def main():
                  zorder=60)
 
         for (atimes, aras, adecs, afilts, aexptime, afieldname) in also:
-            I = np.flatnonzero(atimes >= times[i])
+            I = np.flatnonzero(atimes <= times[i])
             afiltcc = np.array([fcmap[f]  for f in afilts])
             addecs = np.array([ddecmap[f] for f in afilts])
             rr = aras[I]
             dd = adecs[I] + ddecs[I]
             plt.scatter(transform_ra(rr), dd, c=filtcc[:i+1], s=40, zorder=50,
-                        edgecolors='k')
-            plt.plot(transform_ra(rr), dd, 'k-', alpha=0.5, zorder=40)
+                        edgecolors='k', alpha=0.5)
+            plt.plot(transform_ra(rr), dd, 'k-', alpha=0.25, zorder=40)
             ii = I[-1]
-            plt.text(transform_ra(rr[ii]-5), dd[ii], afieldname[ii],
+            plt.text(transform_ra(rr[-1]-5), dd[-1], afieldname[ii],
                      bbox=dict(facecolor='w', alpha=0.8, edgecolor='none'),
-                     zorder=60)
+                     zorder=50)
 
         
         print('time:', times[i])
@@ -361,12 +361,13 @@ def main():
             
         plt.xlabel('RA (deg)')
         plt.ylabel('Dec (deg)')
-        tt = ('%s: pass %i, UT: %s; exp: %i sec' %
-              (fieldname[i], passnum[i], times[i], exptime[i]))
+        tt = ('%s: (%.1f,%.1f), pass %i, UT: %s, %i sec' %
+              (fieldname[i], ras[i], decs[i],passnum[i], times[i], exptime[i]))
         for (atimes, aras, adecs, afilts, aexptime, afieldname) in also:
-            I = np.flatnonzero(atimes >= times[i])
+            I = np.flatnonzero(atimes <= times[i])
             ii = I[-1]
-            tt += '\n%s, %i sec' % (afieldname[ii], aexptime[ii])
+            tt += ('\n%s, (%.1f, %.1f), %i sec' %
+                   (afieldname[ii], aras[ii], adecs[ii], aexptime[ii]))
 
         plt.title(tt)
 
