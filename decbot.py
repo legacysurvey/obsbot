@@ -355,7 +355,7 @@ class Decbot(Obsbot):
         # Is "now" after the next tile in any pass?  If so, replan!
 
         # (but only if cut_before_now is set)
-        if not opt.cut_before_now:
+        if not self.opt.cut_before_now:
             return
 
         replan = False
@@ -757,7 +757,7 @@ class Decbot(Obsbot):
         keep = []
         now = ephem.now()
         for j in J:
-            if opt.cut_before_now:
+            if self.opt.cut_before_now:
                 tstart = ephem.Date(str(j['approx_datetime']))
                 if tstart < now:
                     continue
