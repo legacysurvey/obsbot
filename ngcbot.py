@@ -43,7 +43,7 @@ def main():
 
 class NgcBot(NewFileWatcher):
     def __init__(self, imagedir, nom, opt):
-        super(NgcBot, self).__init__(imagedir, backlog=True)
+        super(NgcBot, self).__init__(imagedir, backlog=False)
         self.nom = nom
         self.opt = opt
 
@@ -185,7 +185,7 @@ class NgcBot(NewFileWatcher):
             plt.yticks([])
         plt.suptitle('Exposure %i' % (primhdr['EXPNUM']))
 
-        if opt.show:
+        if self.opt.show:
             plt.draw()
             plt.show(block=False)
             plt.pause(0.001)
