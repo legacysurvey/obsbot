@@ -170,6 +170,9 @@ class NgcBot(NewFileWatcher):
             tt = '%s in %s' % (self.cat.name[j], hdr['EXTNAME'].strip())
             cutouts.append((tt, nlmap(subimg), nlmap(lo), None))
 
+        if len(cutouts) == 0:
+            return
+            
         plt.clf()
         NC = int(np.ceil(np.sqrt(len(cutouts)) * 1.3))
         NR = int(np.ceil(len(cutouts) / float(NC)))
