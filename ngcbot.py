@@ -4,6 +4,12 @@ import sys
 import os
 import re
 
+import requests
+import tempfile
+
+from PIL import Image
+from io import BytesIO
+
 import numpy as np
 import pylab as plt
 
@@ -68,7 +74,11 @@ class NgcBot(NewFileWatcher):
         
     def try_open_file(self, path):
         print('Trying to open file: %s' % path)
-        fitsio.FITS(path)
+        F = fitsio.FITS(path)
+        ## HACK
+        if len(F) < 60:
+            print('Got', len(F), 'extensions')
+            raise RuntimeError('fewer extensions than expected')
 
     def process_file(self, path):
         print('Reading', path)
@@ -104,8 +114,14 @@ class NgcBot(NewFileWatcher):
         
         for i,j in zip(I,J):
             ext = exts[i]
-            r,d = self.cat.ra[j], self.cat.dec[j]
-            #hdr = F[ext].read_header()
+            obj = self.cat[j]
+            r,d = obj.ra, obj.dec
+            hdr = F[ext].read_header()
+            extname = hdr['EXTNAME'].strip()
+            if 'F' in extname:
+                # Skip focus chips
+                continue
+
             zpt = self.nom.zeropoint(band, ext)
             print('Nominal zeropoint:', zpt)
             
@@ -116,14 +132,15 @@ class NgcBot(NewFileWatcher):
             ok,x,y = wcs.radec2pixelxy(r, d)
             x = x - 1
             y = y - 1
-            print('x,y', x,y)
+            # print('x,y', x,y)
 
-            pixrad = self.cat.radius[j] * 3600. / wcs.pixel_scale()
-            print('radius:', self.cat.radius[j], 'pixel radius:', pixrad)
+            pixrad = obj.radius * 3600. / wcs.pixel_scale()
             pixrad = max(pixrad, 100)
+            print('radius:', obj.radius, 'pixel radius:', pixrad)
             r = pixrad
-            tt = '%s in exp %i ext %s (%i)' % (self.cat.name[j], primhdr['EXPNUM'], hdr['EXTNAME'].strip(), ext)
-
+            tt = '%s in exp %i ext %s (%i)' % (obj.name, primhdr['EXPNUM'], extname, ext)
+            print(tt)
+            
             # plt.clf()
             # plt.imshow(raw, interpolation='nearest', origin='lower',
             #            vmin=median, vmax=hi, cmap='hot')
@@ -167,30 +184,81 @@ class NgcBot(NewFileWatcher):
             # plt.colorbar()
             # ps.savefig()
 
-            tt = '%s in %s' % (self.cat.name[j], hdr['EXTNAME'].strip())
-            cutouts.append((tt, nlmap(subimg), nlmap(lo), None))
+            #
+            sh,sw = subimg.shape
+            
+            urlpat = 'http://legacysurvey.org/viewer/jpeg-cutout/?ra=%.4f&dec=%.4f&pixscale=%.3f&width=%i&height=%i&layer=%s'
+
+            scale = 1.
+            if max(sh,sw) > 1024:
+                scale = 2.
+            
+            jpegs = []
+            for layer in ['decals-dr3', 'sdssco']:
+                url = urlpat % (obj.ra, obj.dec, wcs.pixel_scale() * scale, sw/scale, sh/scale, layer)
+                r = requests.get(url)
+
+                #jpg = Image.open(BytesIO(r.content))
+
+                ftmp = tempfile.NamedTemporaryFile()
+                ftmp.write(r.content)
+                ftmp.flush()
+                jpg = plt.imread(ftmp.name)
+                ftmp.close()
+
+                print('Got jpg', jpg.shape)
+                jpegs.append((layer,jpg))
+            
+            tt = '%s in %s' % (obj.name, extname)
+            cutouts.append((tt, nlmap(subimg), nlmap(lo), None, jpegs))
 
         if len(cutouts) == 0:
             return
             
+        # plt.clf()
+        # NC = int(np.ceil(np.sqrt(len(cutouts)) * 1.3))
+        # NR = int(np.ceil(len(cutouts) / float(NC)))
+        # for i,(tt,img,lo,hi,jpegs) in enumerate(cutouts):
+        #     plt.subplot(NR, NC, i+1)
+        #     plt.imshow(img, interpolation='nearest', origin='lower',
+        #                vmin=lo, vmax=hi, cmap='hot')
+        #     plt.title(tt)
+        #     plt.xticks([])
+        #     plt.yticks([])
+        # plt.suptitle('Exposure %i' % (primhdr['EXPNUM']))
+        # 
+        # if self.opt.show:
+        #     plt.draw()
+        #     plt.show(block=False)
+        #     plt.pause(0.001)
+        # 
+        # plt.savefig('cutouts.png')
+
         plt.clf()
-        NC = int(np.ceil(np.sqrt(len(cutouts)) * 1.3))
-        NR = int(np.ceil(len(cutouts) / float(NC)))
-        for i,(tt,img,lo,hi) in enumerate(cutouts):
+        NC = len(cutouts)
+        NR = 3
+        for i,(tt,img,lo,hi,jpegs) in enumerate(cutouts):
             plt.subplot(NR, NC, i+1)
             plt.imshow(img, interpolation='nearest', origin='lower',
                        vmin=lo, vmax=hi, cmap='hot')
             plt.title(tt)
             plt.xticks([])
             plt.yticks([])
+            for j,(layer,pix) in enumerate(jpegs):
+                plt.subplot(NR, NC, i+1 + (j+1)*NC)
+                plt.imshow(pix, interpolation='nearest', origin='lower')
+                #plt.title(layer)
+                plt.xticks([])
+                plt.yticks([])
         plt.suptitle('Exposure %i' % (primhdr['EXPNUM']))
-
+        
         if self.opt.show:
             plt.draw()
             plt.show(block=False)
             plt.pause(0.001)
         
         plt.savefig('cutouts.png')
+
         
 if __name__ == '__main__':
     main()
