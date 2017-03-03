@@ -27,6 +27,9 @@ def main():
     parser.add_option('--declo', type=float, default=None)
     parser.add_option('--dechi', type=float, default=None)
 
+    parser.add_option('--also', action='append', default=[],
+                      help='Also plot the plan from the given filename.')
+    
     parser.add_option('--mosaic', action='store_true', help='Set defaults for Mosaic survey')
     
     parser.add_option('--start-time', help='Start time for this plan, HH:MM:SS UTC.  Default: 12-degree twilight tonight.')
@@ -103,11 +106,13 @@ def main():
             # If --start-date is, eg, 2am, assume it's during the night starting on daystart.
             obs.date += 1.
         print('Start date:', obs.date)
-        
+
     jfn = args[0]
     print('Reading JSON file', jfn)
     J = json.loads(open(jfn,'rb').read())
     print(len(J), 'entries')
+
+    Jalso = [json.loads(open(fn,'rb').read()) for fn in opt.also]
 
     tiles = None
     if opt.obstatus is not None:
@@ -201,6 +206,16 @@ def main():
                   overhead, 'seconds overhead')
             obs.date += (exptime[i] + overhead) / (24 * 3600.)
 
+    also = []
+    for Ja in Jalso:
+        atimes = np.array([ephem.Date(str(j['approx_datetime'])) for j in Ja])
+        aras = np.array([j['RA'] for j in Ja])
+        adecs = np.array([j['dec'] for j in Ja])
+        afilts = np.array([j['filter'] for j in Ja])
+        aexptime = np.array([j['expTime'] for j in Ja])
+        afieldname = [j['object'] for j in Ja]
+        also.append((atimes, aras, adecs, afilts, aexptime, afieldname))
+            
     # Try to get the pass number via parsing the field name to get tile id
     # and looking up the pass number in the tiles table.
     if tiles is not None:
@@ -253,6 +268,21 @@ def main():
         plt.text(transform_ra(rr[i]-5), dd[i], fieldname[i],
                  bbox=dict(facecolor='w', alpha=0.8, edgecolor='none'),
                  zorder=60)
+
+        for (atimes, aras, adecs, afilts, aexptime, afieldname) in also:
+            I = np.flatnonzero(atimes >= times[i])
+            afiltcc = np.array([fcmap[f]  for f in afilts])
+            addecs = np.array([ddecmap[f] for f in afilts])
+            rr = aras[I]
+            dd = adecs[I] + ddecs[I]
+            plt.scatter(transform_ra(rr), dd, c=filtcc[:i+1], s=40, zorder=50,
+                        edgecolors='k')
+            plt.plot(transform_ra(rr), dd, 'k-', alpha=0.5, zorder=40)
+            ii = I[-1]
+            plt.text(transform_ra(rr[ii]-5), dd[ii], afieldname[ii],
+                     bbox=dict(facecolor='w', alpha=0.8, edgecolor='none'),
+                     zorder=60)
+
         
         print('time:', times[i])
         obs.date = times[i]
@@ -263,6 +293,7 @@ def main():
         plt.plot(transform_ra(moonra), moondec, 'o', ms=20, mec=(1,0.6,0), mew=5, mfc='none', zorder=40)
         #plt.plot(moonra, moondec, 'o', ms=20, mec='k', mew=1)
 
+        # Plot airmass contours
         dd = np.linspace(ax[2], ax[3], 20)
         rr = np.linspace(ax[0], ax[1], 21)
         airmass = np.zeros((len(dd), len(rr)))
@@ -283,7 +314,6 @@ def main():
                     
         levels = np.append(np.arange(1.0, 2.5, 0.1), [2.5, 3.0, 4.0])
         darkblue = (0.03, 0.19, 0.42, 0.5)
-
         if opt.sgc:
             # Plot the contours in two parts... if SGC_DRA != an rr grid point, this
             # may be ugly...
@@ -323,8 +353,15 @@ def main():
             
         plt.xlabel('RA (deg)')
         plt.ylabel('Dec (deg)')
-        plt.title('%s: pass %i, UT: %s; exp: %i sec' %
-                  (fieldname[i], passnum[i], times[i], exptime[i]))
+        tt = ('%s: pass %i, UT: %s; exp: %i sec' %
+              (fieldname[i], passnum[i], times[i], exptime[i]))
+        for (atimes, aras, adecs, afilts, aexptime, afieldname) in also:
+            I = np.flatnonzero(atimes >= times[i])
+            ii = I[-1]
+            tt += '\n%s, %i sec' % (afieldname[ii], aexptime[ii])
+
+        plt.title(tt)
+
         fn = '%s-%03i.png' % (opt.base, i)
 
         tt = np.arange(0, 361, 60)
