@@ -22,6 +22,8 @@ from obsbot import (exposure_factor, get_tile_from_name, NewFileWatcher,
 from astrometry.libkd.spherematch import *
 from astrometry.util.plotutils import *
 from astrometry.util.fits import *
+from astrometry.util.util import *
+from astrometry.util.resample import *
 
 ps = PlotSequence('ngcbot')
 
@@ -44,6 +46,11 @@ def main():
 
     nom = nominal_cal
     bot = NgcBot(imagedir, nom, opt)
+
+    if len(args):
+        for a in args:
+            bot.process_file(a)
+
     bot.run()
     return 0
 
@@ -189,15 +196,20 @@ class NgcBot(NewFileWatcher):
 
             #
             
-            urlpat = 'http://legacysurvey.org/viewer/jpeg-cutout/?ra=%.4f&dec=%.4f&pixscale=%.3f&width=%i&height=%i&layer=%s'
+            urlpat = 'http://legacysurvey.org/viewer/%s-cutout/?ra=%.4f&dec=%.4f&pixscale=%.3f&width=%i&height=%i&layer=%s'
 
             scale = 1.
             if max(sh,sw) > 1024:
+                scale = 4.
+            elif max(sh,sw) > 512:
                 scale = 2.
-            
+
             jpegs = []
             for layer in ['decals-dr3', 'sdssco']:
-                url = urlpat % (obj.ra, obj.dec, wcs.pixel_scale() * scale, sw/scale, sh/scale, layer)
+                rh,rw = int(np.ceil(sh/scale)),int(np.ceil(sw/scale))
+
+                url = urlpat % ('jpeg', obj.ra, obj.dec, wcs.pixel_scale() * scale, rw, rh, layer)
+                print('URL:', url)
                 r = requests.get(url)
 
                 #jpg = Image.open(BytesIO(r.content))
@@ -209,8 +221,37 @@ class NgcBot(NewFileWatcher):
                 ftmp.close()
 
                 print('Got jpg', jpg.shape)
-                jpegs.append((layer,jpg))
-            
+                #jpegs.append((layer,jpg))
+
+                # url = urlpat % ('fits', obj.ra, obj.dec, wcs.pixel_scale() * scale, rw, rh, layer)
+                # print('URL:', url)
+                # r = requests.get(url)
+                # ftmp = tempfile.NamedTemporaryFile()
+                # ftmp.write(r.content)
+                # ftmp.flush()
+                # fits,hdr = fitsio.read(ftmp.name, header=True)
+                # ftmp.close()
+                # print('Got:', fits.shape)
+                # thiswcs = Tan(hdr)
+                # print('Got WCS:', thiswcs)
+                # print('Bands:', hdr['BANDS'])
+
+                pixsc = wcs.pixel_scale() * scale
+                thiswcs = Tan(*[float(x) for x in
+                                [obj.ra, obj.dec, 0.5 + rw/2., 0.5 + rh/2.,
+                                 -pixsc, 0., 0., pixsc, rw, rh]])
+
+                print('Thiswcs shape:', thiswcs.shape)
+                
+                try:
+                    Yo,Xo,Yi,Xi,rims = resample_with_wcs(wcs, thiswcs)
+                except:
+                    continue
+
+                resamp = np.zeros((sh,sw,3))
+                resamp[Yo,Xo,:] = jpg[Yi,Xi,:]
+                jpegs.append((layer, resamp))
+                
             tt = '%s in %s' % (obj.name, extname)
             cutouts.append((tt, nlmap(subimg), nlmap(lo), None, jpegs))
 
@@ -252,7 +293,7 @@ class NgcBot(NewFileWatcher):
                 #plt.title(layer)
                 plt.xticks([])
                 plt.yticks([])
-        plt.suptitle('Exposure %i' % (primhdr['EXPNUM']))
+        plt.suptitle('Exposure %i: %g band' % (primhdr['EXPNUM'], band))
         
         if self.opt.show:
             plt.draw()
