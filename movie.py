@@ -26,6 +26,10 @@ def main():
     parser.add_option('--rahi',  type=float, default=None)
     parser.add_option('--declo', type=float, default=None)
     parser.add_option('--dechi', type=float, default=None)
+    parser.add_option('--scaled', action='store_true', default=False,
+                      help='Scale plot so that 1 deg RA = 1 deg Dec (no COS term)')
+    parser.add_option('--wide', action='store_true', default=False,
+                      help='Make wider plots?')
 
     parser.add_option('--also', action='append', default=[],
                       help='Also plot the plan from the given filename.')
@@ -169,6 +173,10 @@ def main():
     #seqcc = np.array([seqmap[s % len(seqmap)] for s in seqnum])
     #seqcc = np.array([seqmap[s % len(seqmap)] for s in seqid])
     
+    if opt.wide:
+        plt.figure(figsize=(12,8))
+    plt.subplots_adjust(left=0.1, right=0.95)
+
     plt.clf()
     plt.plot(transform_ra(ras), decs, 'r.')
     plt.axis('scaled')
@@ -365,12 +373,17 @@ def main():
         fn = '%s-%03i.png' % (opt.base, i)
 
         tt = np.arange(0, 361, 60)
+        if opt.rahi - opt.ralo <= 120:
+            tt = np.arange(0, 361, 20)
         if opt.sgc:
             plt.xticks(transform_ra(tt), ['%i' % t for t in tt])
         else:
             plt.xticks(tt)
                
         plt.axis(ax)
+        if opt.scaled:
+            plt.axis('scaled')
+            plt.axis(ax)
         plt.savefig(os.path.join(os.path.dirname(args[0]),fn))
         print('Wrote', fn)
         
