@@ -244,8 +244,11 @@ class NgcBot(NewFileWatcher):
             corry = aff[5] + aff[6] * adx + aff[7] * ady - ady
             print('Affine correction', corrx, corry)
 
+            ### Shift the 'subwcs' to account for astrometric offset
+            cx,cy = subwcs.get_crpix()
+            subwcs.set_crpix((cx - dx, cy - dy))
+
             subimg2 = raw[(yl-dy):(yh-dy), (xl-dx):(xh-dx)]
-            
 
             lo,hi = np.percentile(subimg.ravel(), [50, 99.5])
 
@@ -352,11 +355,6 @@ class NgcBot(NewFileWatcher):
                 # rgb = matplotlib.cm.hot(v)
                 # jpegs.append(('resamp2 '+layer, rgb))
 
-                ### Shift the 'subwcs' to account for astrometric offset
-
-                cx,cy = subwcs.get_crpix()
-                subwcs.set_crpix((cx - dx, cy - dy))
-
                 resamp3 = np.zeros((rh,rw), dtype=subimg.dtype)
                 try:
                     Yo,Xo,Yi,Xi,rims = resample_with_wcs(thiswcs, subwcs)
@@ -404,6 +402,27 @@ class NgcBot(NewFileWatcher):
                                #m=0.03)
                 jpegs.append((layer + ' fits', rgb))
 
+                if band in bands:
+                    ii = bands.index(band)
+                    if not np.all(imgs[ii] == 0):
+                        plt.clf()
+                        plt.subplot(1,2,1)
+                        plt.imshow(imgs[ii], interpolation='nearest', origin='lower', cmap='hot')
+                        plt.title(layer)
+                        plt.colorbar()
+                        cl,ch = plt.gci().get_clim()
+                        plt.subplot(1,2,2)
+                        
+                        zp = M['zp']
+                        print('measured zeropoint:', zp)
+                        zpscale = 10.**((zp - 22.5)/2.5)
+                        print('zpscale', zpscale)
+                        exptime = primhdr['EXPTIME']
+
+                        plt.imshow(resamp3 / (zpscale * exptime), interpolation='nearest', origin='lower',
+                                   vmin=cl, vmax=ch, cmap='hot')
+                        plt.colorbar()
+                        ps.savefig()
 
 
             tt = '%s in %s' % (obj.name, extname)
