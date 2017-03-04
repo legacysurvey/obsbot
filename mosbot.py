@@ -363,20 +363,7 @@ class Mosbot(Obsbot):
 
         # Choose the next tile from the right JSON tile list Jp
         J = [self.J1,self.J2,self.J3][nextpass-1]
-        now = ephem.now()
-        iplan = None
-        for i,j in enumerate(J):
-            tstart = ephem.Date(str(j['approx_datetime']))
-            if tstart > now:
-                print('Found tile', j['object'], 'which starts at', str(tstart))
-                iplan = i
-                break
-        if iplan is None:
-            print('Could not find a JSON observation in pass', nextpass,
-                  'with approx_datetime after now =', str(now),
-                  '-- latest one', str(tstart))
-            return False
-    
+
         # Read the current sequence number
         print('%s: reading sequence number from %s' %
               (str(ephem.now()), self.seqnumpath))
@@ -386,6 +373,29 @@ class Mosbot(Obsbot):
         seqnum = int(s)
         print('%s: sequence number: %i' % (str(ephem.now()), seqnum))
         
+        # 'iplan': the tile index we will use for exposure # 'seqnum'
+        iplan = None
+        if self.opt.cut_before_now:
+            # The usual case
+            now = ephem.now()
+            for i,j in enumerate(J):
+                tstart = ephem.Date(str(j['approx_datetime']))
+                if tstart <= now:
+                    continue
+                print('Found tile', j['object'], 'which starts at', str(tstart))
+                iplan = i
+                break
+            if iplan is None:
+                print('Could not find a JSON observation in pass', nextpass,
+                      'with approx_datetime after now =', str(now),
+                      '-- latest one', str(tstart))
+                return False
+        else:
+            # For when we want to observe every tile in the plan:
+            # 'seqnum' is the exposure currently running;
+            # seqnum is 1-indexed, so that's the index we want for iplan.
+            iplan = seqnum
+
         # Set observing conditions for computing exposure time
         self.obs.date = now
     
@@ -597,7 +607,6 @@ class Mosbot(Obsbot):
                 f = open(path, 'w')
                 f.write('\n')
                 f.close()
-
 
         for i,J in enumerate([self.J1,self.J2,self.J3]):
             passnum = i+1
