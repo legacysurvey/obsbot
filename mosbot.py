@@ -356,6 +356,11 @@ class Mosbot(Obsbot):
 
         nextpass = choose_pass(trans, seeing, skybright, nomsky,
                                forcedir=self.scriptdir)
+
+        print()
+        print('Selected pass:', nextpass)
+        print()
+
         # Choose the next tile from the right JSON tile list Jp
         J = [self.J1,self.J2,self.J3][nextpass-1]
         now = ephem.now()
@@ -402,10 +407,11 @@ class Mosbot(Obsbot):
             nextseq = seqnum + 1 + iahead
 
             if self.n_exposures > 0 and nextseq > self.n_exposures:
-                print('Planned tile is beyond the exposure number in tonight.sh -- RESTART MOSBOT')
+                print('Planned tile is beyond the exposure number in ',
+                      'tonight.sh -- RESTART MOSBOT')
                 return False
             
-            print('Considering planning tile %s for exp %i' % (tilename, nextseq))
+            print('Considering planning tile %s for exp %i'%(tilename, nextseq))
             
             # Check all planned tiles before this one for a duplicate tile.
             dup = False
@@ -447,7 +453,6 @@ class Mosbot(Obsbot):
                     print()
                     print()
                     os.system('tput bel; sleep 0.2; ' * 5)
-
                 
             # Find this tile in the tiles table.
             tile = get_tile_from_name(tilename, self.tiles)
@@ -508,7 +513,8 @@ class Mosbot(Obsbot):
                 if exptime > t_sat:
                     exptime_satclipped = t_sat
                     exptime = t_sat
-                    print('Reduced exposure time to avoid z-band saturation: %.1f' % exptime)
+                    print('Reduced exposure time to avoid z-band saturation:',
+                    '%.1f' % exptime)
             exptime = int(np.ceil(exptime))
 
             print('Changing exptime from', jplan['expTime'], 'to', exptime)
