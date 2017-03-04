@@ -78,6 +78,11 @@ class NgcBot(NewFileWatcher):
         TT.append(T)
         self.cat = merge_tables(TT, columns='fillzero')
 
+        # import obsdb
+        # from camera_decam import database_filename
+        # obsdb.django_setup(database_filename=database_filename)
+        # self.copilot_db = obsdb.MeasuredCCD.objects
+
         
     def try_open_file(self, path):
         print('Trying to open file: %s' % path)
@@ -167,6 +172,10 @@ class NgcBot(NewFileWatcher):
             if sh < 25 or sw < 25:
                 continue
             print('Subimage size:', subimg.shape)
+
+            subwcs = wcs.get_subimage(xl, yl, xh-xl, yh-yl)
+            print('Subwcs:', subwcs.shape)
+
             lo,hi = np.percentile(subimg.ravel(), [50, 99.5])
 
             # plt.clf()
@@ -208,7 +217,7 @@ class NgcBot(NewFileWatcher):
             for layer in ['decals-dr3', 'sdssco']:
                 rh,rw = int(np.ceil(sh/scale)),int(np.ceil(sw/scale))
 
-                url = urlpat % ('jpeg', obj.ra, obj.dec, wcs.pixel_scale() * scale, rw, rh, layer)
+                url = urlpat % ('jpeg', obj.ra, obj.dec, subwcs.pixel_scale() * scale, rw, rh, layer)
                 print('URL:', url)
                 r = requests.get(url)
 
@@ -220,10 +229,12 @@ class NgcBot(NewFileWatcher):
                 jpg = plt.imread(ftmp.name)
                 ftmp.close()
 
+                jpg = np.flipud(jpg)
+
                 print('Got jpg', jpg.shape)
                 #jpegs.append((layer,jpg))
 
-                # url = urlpat % ('fits', obj.ra, obj.dec, wcs.pixel_scale() * scale, rw, rh, layer)
+                # url = urlpat % ('fits', obj.ra, obj.dec, subwcs.pixel_scale() * scale, rw, rh, layer)
                 # print('URL:', url)
                 # r = requests.get(url)
                 # ftmp = tempfile.NamedTemporaryFile()
@@ -236,24 +247,77 @@ class NgcBot(NewFileWatcher):
                 # print('Got WCS:', thiswcs)
                 # print('Bands:', hdr['BANDS'])
 
-                pixsc = wcs.pixel_scale() * scale
+                pixsc = subwcs.pixel_scale() * scale / 3600.
                 thiswcs = Tan(*[float(x) for x in
                                 [obj.ra, obj.dec, 0.5 + rw/2., 0.5 + rh/2.,
                                  -pixsc, 0., 0., pixsc, rw, rh]])
 
-                print('Thiswcs shape:', thiswcs.shape)
+                # print('Thiswcs shape:', thiswcs.shape)
                 
                 try:
-                    Yo,Xo,Yi,Xi,rims = resample_with_wcs(wcs, thiswcs)
+                    Yo,Xo,Yi,Xi,rims = resample_with_wcs(subwcs, thiswcs)
                 except:
                     continue
 
-                resamp = np.zeros((sh,sw,3))
-                resamp[Yo,Xo,:] = jpg[Yi,Xi,:]
+                # print('subwcs:', subwcs)
+                # print('thiswcs:', thiswcs)
+                # 
+                # print('subwcs RA,Dec bounds:', subwcs.radec_bounds())
+                # print('thiswcs RA,Dec bounds:', thiswcs.radec_bounds())
+                # 
+                # print('Yo', Yo.min(), Yo.max())
+                # print('Xo', Xo.min(), Xo.max())
+                # print('Yi', Yi.min(), Yi.max())
+                # print('Xi', Xi.min(), Xi.max())
+
+                resamp = np.zeros((sh,sw,3), dtype=jpg.dtype)
+                #print('Resamp:', resamp.shape, resamp.dtype)
+
+                # print('resamp shape', resamp.shape)
+                # print('vs subwcs.shape', subwcs.shape)
+                # print('jpg shape', jpg.shape)
+                # print('vs thiswcs.shape',thiswcs.shape)
+
+                for k in range(3):
+                    resamp[Yo,Xo,k] = jpg[Yi,Xi,k]
+
+                jpegs.append((layer, jpg))
+
                 jpegs.append((layer, resamp))
                 
+            # Has the copilot measured this exposure yet?
+
+            meas.ext = ext
+            M = meas.run(n_fwhm=1, verbose=False)
+            
+            #print('Measured:', M)
+
+            dx = int(np.round(M['dx']))
+            dy = int(np.round(M['dy']))
+            print('DX,Dy', dx,dy)
+
+            aff = M['affine']
+            x = (xl+xh)/2
+            y = (yl+yh)/2
+            print('x,y', x,y)
+            print('Affine correction terms:', aff)
+            adx = x - aff[0]
+            ady = y - aff[1]
+
+            corrx = aff[2] + aff[3] * adx + aff[4] * ady - adx
+            corry = aff[5] + aff[6] * adx + aff[7] * ady - ady
+
+            print('Affine correction', corrx, corry)
+
+            #subimg2 = raw[(yl+dy):(yh+dy), (xl+dx):(xh+dx)]
+            subimg2 = raw[(yl-dy):(yh-dy), (xl-dx):(xh-dx)]
+            print('subimg2:', subimg2.shape)
+
+            # jpegs.append(('dx', subimg2))
+
             tt = '%s in %s' % (obj.name, extname)
-            cutouts.append((tt, nlmap(subimg), nlmap(lo), None, jpegs))
+            cutouts.append((tt, nlmap(subimg), nlmap(lo), None, nlmap(subimg2), jpegs))
+
 
         if len(cutouts) == 0:
             return
@@ -279,21 +343,30 @@ class NgcBot(NewFileWatcher):
 
         plt.clf()
         NC = len(cutouts)
-        NR = 3
-        for i,(tt,img,lo,hi,jpegs) in enumerate(cutouts):
+        NR = 6
+        for i,(tt,img,lo,hi,img2, jpegs) in enumerate(cutouts):
             plt.subplot(NR, NC, i+1)
             plt.imshow(img, interpolation='nearest', origin='lower',
                        vmin=lo, vmax=hi, cmap='hot')
             plt.title(tt)
             plt.xticks([])
             plt.yticks([])
+
+            plt.subplot(NR, NC, NC + i+1)
+            plt.imshow(img2, interpolation='nearest', origin='lower',
+                       vmin=lo, vmax=hi, cmap='hot')
+            plt.title(tt)
+            plt.xticks([])
+            plt.yticks([])
+
             for j,(layer,pix) in enumerate(jpegs):
-                plt.subplot(NR, NC, i+1 + (j+1)*NC)
+                plt.subplot(NR, NC, i+1 + (j+1+1)*NC)
+                #print('pix:', pix.shape, pix.dtype)
                 plt.imshow(pix, interpolation='nearest', origin='lower')
                 #plt.title(layer)
                 plt.xticks([])
                 plt.yticks([])
-        plt.suptitle('Exposure %i: %g band' % (primhdr['EXPNUM'], band))
+        plt.suptitle('Exposure %i: %s band' % (primhdr['EXPNUM'], band))
         
         if self.opt.show:
             plt.draw()
