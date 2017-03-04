@@ -299,7 +299,7 @@ class Decbot(Obsbot):
             nomsky = self.nom.sky(M['band'])
             self.nextpass = choose_pass(trans, seeing, skybright, nomsky)
             print()
-            print('Selected pass:', nextpass)
+            print('Selected pass:', self.nextpass)
             print()
         return self.nextpass
 
@@ -563,14 +563,14 @@ class Decbot(Obsbot):
 
         self.obs.date = ephem.now()
         for ii,jplan in enumerate(J):
-            s = (('Plan tile %s (pass %i), band %s, RA,Dec (%.3f,%.3f), ' +
+            s = (('%s (pass %i), band %s, RA,Dec (%.3f,%.3f), ' +
                   'exptime %i.') %
                   (jplan['object'], jplan['planpass'], jplan['filter'],
                    jplan['RA'], jplan['dec'], jplan['expTime']))
             if ii < 3:
                 airmass = self.airmass_for_tile(jplan)
                 s += '  Airmass if observed now: %.2f' % airmass
-                print(s)
+                print('   ', s)
             else:
                 self.debug('  ', s)
             
