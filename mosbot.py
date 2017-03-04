@@ -364,6 +364,8 @@ class Mosbot(Obsbot):
         # Choose the next tile from the right JSON tile list Jp
         J = [self.J1,self.J2,self.J3][nextpass-1]
 
+        now = ephem.now()
+
         # Read the current sequence number
         print('%s: reading sequence number from %s' %
               (str(ephem.now()), self.seqnumpath))
@@ -371,13 +373,12 @@ class Mosbot(Obsbot):
         s = f.read()
         f.close()
         seqnum = int(s)
-        print('%s: sequence number: %i' % (str(ephem.now()), seqnum))
+        print('%s: sequence number: %i' % (str(now), seqnum))
         
         # 'iplan': the tile index we will use for exposure # 'seqnum'
         iplan = None
         if self.opt.cut_before_now:
             # The usual case
-            now = ephem.now()
             for i,j in enumerate(J):
                 tstart = ephem.Date(str(j['approx_datetime']))
                 if tstart <= now:
@@ -398,7 +399,7 @@ class Mosbot(Obsbot):
 
         # Set observing conditions for computing exposure time
         self.obs.date = now
-    
+
         # Planned exposures:
         P = fits_table()
         P.type = []
@@ -421,8 +422,8 @@ class Mosbot(Obsbot):
                       'tonight.sh -- RESTART MOSBOT')
                 return False
             
-            print('Considering planning tile %s for exp %i'%(tilename, nextseq))
-            
+            print('Considering planning tile %s for exp %i'%(tilename,nextseq))
+
             # Check all planned tiles before this one for a duplicate tile.
             dup = False
             for s in range(nextseq-1, 0, -1):
@@ -434,7 +435,7 @@ class Mosbot(Obsbot):
                     break
             if dup:
                 continue
-    
+
             self.planned_tiles[nextseq] = tilename
             iahead += 1
 
@@ -529,6 +530,9 @@ class Mosbot(Obsbot):
 
             print('Changing exptime from', jplan['expTime'], 'to', exptime)
             jplan['expTime'] = exptime
+
+            print('Predict tile will be observed at', str(self.obs.date),
+                  'vs approx_datetime', jplan['approx_datetime'])
 
             # Update the computed exposure-time database.
             if self.opt.db:
