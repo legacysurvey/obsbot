@@ -283,13 +283,32 @@ class Mosbot(Obsbot):
         print('Wrote', scriptfn)
 
     def process_file(self, fn):
-        ext = self.opt.ext
-
         print('%s: found new image %s' % (str(ephem.now()), fn))
 
+        if not self.check_header(fn):
+            return False
+
+        # Measure the new image
+        kwa = {}
+        ext = self.opt.ext
+        if ext is not None:
+            kwa.update(ext=ext)
+        ps = None
+        M = measure_raw(fn, ps=ps, **kwa)
+
+        # Basic checks
+        ok = (M['nmatched'] >= 20) and (M.get('zp',None) is not None)
+        if not ok:
+            print('Failed basic checks in our measurement of', fn,
+                  '-- not updating anything')
+            # FIXME -- we could fall back to pass 3 here.
+            return False
+
+        return self.update_for_image(M)
+
+    def check_header(self, fn):
         # Read primary FITS header
         phdr = fitsio.read_header(fn)
-        expnum = phdr.get('EXPNUM', 0)
     
         obstype = phdr.get('OBSTYPE','').strip()
         print('obstype:', obstype)
@@ -311,23 +330,8 @@ class Mosbot(Obsbot):
         if filt == 'solid':
             print('Solid (block) filter.')
             return False
-    
-        # Measure the new image
-        kwa = {}
-        if ext is not None:
-            kwa.update(ext=ext)
-        ps = None
-        M = measure_raw(fn, ps=ps, **kwa)
-    
-        # Basic checks
-        ok = (M['nmatched'] >= 20) and (M.get('zp',None) is not None)
-        if not ok:
-            print('Failed basic checks in our measurement of', fn, '-- not updating anything')
-            # FIXME -- we could fall back to pass 3 here.
-            return False
 
-        return self.update_for_image(M)
-
+        return True
 
     def update_for_image(self, M):
         # filename patterns for the exposure and slew scripts
