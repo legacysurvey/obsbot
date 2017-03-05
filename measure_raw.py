@@ -121,7 +121,7 @@ class RawMeasurer(object):
         return slices
         
     def run(self, ps=None, focus=False, momentsize=5,
-            n_fwhm=100, verbose=True):
+            n_fwhm=100, verbose=True, get_image=False):
         import pylab as plt
         from astrometry.util.plotutils import dimshow, plothist
         from legacyanalysis.ps1cat import ps1cat
@@ -241,6 +241,9 @@ class RawMeasurer(object):
                     pixscale=pixsc, primhdr=primhdr,
                     hdr=hdr, wcs=wcs, ra_ccd=ra_ccd, dec_ccd=dec_ccd,
                     extension=ext, camera=camera)
+
+        if get_image:
+            meas.update(image=img, trim_x0=trim_x0, trim_y0=trim_y0)
         
         if skybr is not None and not np.isfinite(skybr):
             print('Measured negative sky brightness:', sky1, 'counts')
