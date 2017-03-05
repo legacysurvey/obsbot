@@ -236,10 +236,12 @@ class NgcBot(NewFileWatcher):
                 continue
             subwcs = wcs.get_subimage(xl, yl, sw, sh)
 
-            dx = int(np.round(M['dx']))
-            dy = int(np.round(M['dy']))
+            #dx = int(np.round(M['dx']))
+            #dy = int(np.round(M['dy']))
             #print('DX,DY', dx,dy)
-
+            dx = M['dx']
+            dy = M['dy']
+            
             aff = M['affine']
             x = (xl+xh)/2
             y = (yl+yh)/2
@@ -253,7 +255,8 @@ class NgcBot(NewFileWatcher):
 
             ### Shift the 'subwcs' to account for astrometric offset
             cx,cy = subwcs.get_crpix()
-            subwcs.set_crpix((cx - dx, cy - dy))
+            #subwcs.set_crpix((cx - dx, cy - dy))
+            subwcs.set_crpix((cx - dx - corrx, cy - dy - corry))
 
             urlpat = 'http://legacysurvey.org/viewer/%s-cutout/?ra=%.4f&dec=%.4f&pixscale=%.3f&width=%i&height=%i&layer=%s'
 
@@ -348,10 +351,12 @@ class NgcBot(NewFileWatcher):
                 # FIXME -- we do this multiple times into all-assumed-the-same WCS.
                 resamp3 = np.zeros((rh,rw), dtype=subimg.dtype)
                 try:
-                    Yo,Xo,Yi,Xi,rims = resample_with_wcs(thiswcs, subwcs)
+                    #Yo,Xo,Yi,Xi,rims = resample_with_wcs(thiswcs, subwcs)
+                    Yo,Xo,Yi,Xi,rims = resample_with_wcs(thiswcs, subwcs, [subimg])
                 except:
                     continue
-                resamp3[Yo,Xo] = subimg[Yi,Xi]
+                #resamp3[Yo,Xo] = subimg[Yi,Xi]
+                resamp3[Yo,Xo] = rims[0]
 
                 if not np.all(fits == 0):
                     fitsimgs.append((layer, bands, imgs))
@@ -414,16 +419,15 @@ class NgcBot(NewFileWatcher):
             rgbs = []
             
             for i,(layer, bands, imgs) in enumerate(fitsimgs):
-    
+
                 layer = {'decals-dr3': 'DECaLS DR3',
                          'sdssco': 'SDSS'}.get(layer, layer)
     
-                plt.subplot(NR, NC, 2+i)
-                plt.title(layer, **targs)
-    
-                # empty white plot if not replaced
-                plt.imshow(np.ones_like(newimg), interpolation='nearest', origin='lower', vmin=0, vmax=1, cmap='hot')
-                plt.xticks([]); plt.yticks([])
+                # plt.subplot(NR, NC, 2+i)
+                # plt.title(layer, **targs)
+                # # empty white plot if not replaced
+                # plt.imshow(np.ones_like(newimg), interpolation='nearest', origin='lower', vmin=0, vmax=1, cmap='hot')
+                # plt.xticks([]); plt.yticks([])
 
                 nicebands = []
 
@@ -491,7 +495,7 @@ class NgcBot(NewFileWatcher):
                 plt.xticks([]); plt.yticks([])
                 plt.title(tt, **targs)
 
-            plt.suptitle('%s in exposure %i-%s: %s band' %
+            plt.suptitle('%s in DECam %i-%s: %s band' %
                          (obj.name, primhdr['EXPNUM'], extname, newband))
     
             if self.opt.show:
