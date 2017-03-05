@@ -28,7 +28,8 @@ from astrometry.util.resample import *
 from legacypipe.survey import get_rgb
 
 #rgbkwargs = dict(mnmx=(-1,100.), arcsinh=1.)
-rgbkwargs = dict(mnmx=(-1,1000.), arcsinh=1.)
+#rgbkwargs = dict(mnmx=(-1,1000.), arcsinh=1.)
+rgbkwargs = dict(mnmx=(0,500.), arcsinh=1.)
 
 ps = PlotSequence('ngcbot')
 
@@ -61,7 +62,7 @@ def main():
 
 
 def sdss_rgb(rimgs, bands, scales=None,
-             m = 0.02):
+             m = 0.02, clip=True):
     import numpy as np
     rgbscales = {'u': 1.5, #1.0,
                  'g': 2.5,
@@ -89,7 +90,8 @@ def sdss_rgb(rimgs, bands, scales=None,
     # G[J] = G[J]/maxrgb[J]
     # B[J] = B[J]/maxrgb[J]
     rgb = np.dstack((R,G,B))
-    rgb = np.clip(rgb, 0, 1)
+    if clip:
+        rgb = np.clip(rgb, 0, 1)
     return rgb
                 
 
@@ -181,11 +183,13 @@ class NgcBot(NewFileWatcher):
 
             #raw,hdr = meas.read_raw(F, ext)
             wcs = meas.get_wcs(hdr)
-
+            
+            print('Original WCS:', wcs)
             #print('raw shape:', raw.shape)
             print('WCS shape:', wcs.shape)
 
-            ok,x,y = wcs.radec2pixelxy(r, d)
+            ok,x,y = wcs.radec2pixelxy(obj.ra, obj.dec)
+            print('X,Y in original WCS:', x,y)
             x = x - 1
             y = y - 1
 
@@ -233,6 +237,7 @@ class NgcBot(NewFileWatcher):
             print('Raw image:', raw.shape)
             # Now repeat the cutout check with the trimmed image
             wcs = M['wcs']
+            print('WCS:', wcs)
             print('WCS:', wcs.shape)
             # Trim WCS to trimmed raw image shape
             trim_x0, trim_y0 = M['trim_x0'], M['trim_y0']
@@ -240,8 +245,10 @@ class NgcBot(NewFileWatcher):
             H,W = raw.shape
             wcs = wcs.get_subimage(trim_x0, trim_y0, W, H)
             print('Trimmed WCS:', wcs.shape)
+            print('Trimmed WCS:', wcs)
             
-            ok,x,y = wcs.radec2pixelxy(r, d)
+            ok,x,y = wcs.radec2pixelxy(obj.ra, obj.dec)
+            print('X,Y in trimmed WCS:', x,y)
             x = x - 1
             y = y - 1
 
@@ -255,7 +262,7 @@ class NgcBot(NewFileWatcher):
             print('Subimage shape', subimg.shape)
             if sh < 25 or sw < 25:
                 continue
-            print('Subimage size:', subimg.shape)
+            subwcs = wcs.get_subimage(xl, yl, sw, sh)
             
             dx = int(np.round(M['dx']))
             dy = int(np.round(M['dy']))
@@ -422,6 +429,11 @@ class NgcBot(NewFileWatcher):
                 print('Guessed WCS for JPEG:', thiswcs)
                 print('WCS from FITS:', fwcs)
 
+                ### HACK -- surface brightness correction...
+                if layer == 'sdssco':
+                    s = (subwcs.pixel_scale() / 0.396)
+                    fits *= s**2
+                
                 N,ww,hh = fits.shape
                 imgs = [fits[n,:,:] for n in range(N)]
 
@@ -515,7 +527,7 @@ class NgcBot(NewFileWatcher):
                 plt.title(layer, fontsize=8)
                 plt.xticks([])
                 plt.yticks([])
-        plt.suptitle('Exposure %i: %s band' % (primhdr['EXPNUM'], band))
+        plt.suptitle('Exposure %i: %s band' % (primhdr['EXPNUM'], newband))
         
         if self.opt.show:
             plt.draw()
@@ -532,30 +544,37 @@ class NgcBot(NewFileWatcher):
         NC = 1 + len(fitsimgs)
         NR = 2
 
-        plt.subplot(NR, NC, 1)
-
         zp = M['zp']
         zpscale = 10.**((zp - 22.5)/2.5)
         exptime = primhdr['EXPTIME']
         newimg = resamp3 / (zpscale * exptime)
 
-        # grab out grayscale
-        newrgb = get_rgb([newimg], [newband], **rgbkwargs)
-        print('newrgb:', newrgb.shape, newrgb.dtype, 'range',
-              newrgb.min(), newrgb.max())
+        def my_rgb(imgs, bands, **kwargs):
+            #return get_rgb(imgs, bands, **rgbkwargs)
+            return sdss_rgb(imgs, bands, scales=dict(g=6.0, r=3.4, i=2.5, z=2.2), m=0.03, **kwargs)
 
-        fitsio.write('newrgb.fits', newrgb, clobber=True)
+        #return sdss_rgb(rimgs, bands, 
+        def grayscale(img, band):
+            #oldrgb = my_rgb([img], [band])
+            #oldrgb = my_rgb([img,img,img], [band,band,band])
+            rgb = my_rgb([img,img,img], [band,band,band],
+                         clip=False)
+            index = 'zrg'.index(newband)
+            gray = rgb[:,:,index]
+            return gray
 
-        index = 'zrg'.index(newband)
-        print('Newrgb: grabbing index', index)
-        newrgb = newrgb[:,:,index]
-        print('newrgb:', newrgb.shape, newrgb.dtype, 'range',
-              newrgb.min(), newrgb.max())
+        targs = dict(fontsize=8)
         
-        plt.imshow(newrgb, interpolation='nearest', origin='lower',
-                   vmin=0., vmax=1., cmap='gray')
-        plt.xticks([]); plt.yticks([])
+        newgray = grayscale(newimg, newband)
 
+        hi = np.percentile(newgray, 99.5)
+        grayargs = dict(interpolation='nearest', origin='lower',
+                        vmin=0., vmax=hi, cmap='gray')
+        plt.subplot(NR, NC, 1)
+        plt.imshow(newgray, **grayargs)
+        plt.xticks([]); plt.yticks([])
+        plt.title('New image', **targs)
+        
         newimgs = [None, None, None]
         newbands = ['g','r','z']
         newindex = dict(g=0, r=1, i=2, z=2)
@@ -565,16 +584,20 @@ class NgcBot(NewFileWatcher):
         newbands[j] = newband
 
         for i,(layer, bands, imgs) in enumerate(fitsimgs):
+
+            layer = {'decals-dr3': 'DECaLS DR3',
+                     'sdssco': 'SDSS'}.get(layer, layer)
+
             plt.subplot(NR, NC, 2+i)
             plt.title(layer, fontsize=8)
+
+            # empty white plot if not replaced
+            plt.imshow(np.array([[1.]]), interpolation='nearest', origin='lower', vmin=0, vmax=1, cmap='hot')
+            plt.xticks([]); plt.yticks([])
             
             for band,img in zip(bands, imgs):
-                plt.subplot(NR, NC, 2+i)
                 if np.all(img == 0.):
                     print('Band', band, 'of', layer, 'is all zero')
-                    # empty white plot
-                    plt.imshow(np.array([[1.]]), interpolation='nearest', origin='lower', vmin=0, vmax=1, cmap='hot')
-                    plt.xticks([]); plt.yticks([])
                     continue
                 print('  ', layer, band)
                 j = newindex[band]
@@ -588,16 +611,16 @@ class NgcBot(NewFileWatcher):
 
                 if band == newband:
                     # grab out grayscale
-                    oldrgb = get_rgb([img], [band], **rgbkwargs)
-                    index = 'zrg'.index(newband)
-                    oldrgb = oldrgb[:,:,index]
-                    plt.imshow(oldrgb, interpolation='nearest', origin='lower', vmin=0, vmax=1, cmap='gray')
+                    oldgray = grayscale(img, band)
+                    plt.subplot(NR, NC, 2+i)
+                    plt.imshow(oldgray, **grayargs)
                     plt.xticks([]); plt.yticks([])
 
             plt.subplot(NR, NC, 2 + i + NC)
-            rgb = get_rgb(imgs, bands, **rgbkwargs)
+            rgb = my_rgb(imgs, bands)
             plt.imshow(rgb, interpolation='nearest', origin='lower')
             plt.xticks([]); plt.yticks([])
+            plt.title('%s RGB' % layer, **targs)
 
         # Now overwrite with the new image in its band
         # j = newindex[newband]
@@ -611,11 +634,13 @@ class NgcBot(NewFileWatcher):
         newbands = ''.join(newbands)
 
         plt.subplot(NR, NC, 1 + NC)
-        rgb = get_rgb(newimgs, newbands, **rgbkwargs)
+        rgb = my_rgb(newimgs, newbands)
         plt.imshow(rgb, interpolation='nearest', origin='lower')
         plt.xticks([]); plt.yticks([])
+        plt.title('New+Old RGB', **targs)
 
-        plt.suptitle('Exposure %i: %s band' % (primhdr['EXPNUM'], newband))
+        plt.suptitle('%s in exposure %i: %s band' %
+                     (obj.name, primhdr['EXPNUM'], newband))
 
         if self.opt.show:
             plt.draw()
