@@ -225,6 +225,7 @@ class NgcBot(NewFileWatcher):
             #print('Subwcs:', subwcs.shape)
 
             meas.ext = ext
+            meas.edge_trim = 20
             M = meas.run(n_fwhm=1, verbose=False, get_image=True)
             print('Measured:', M.keys())
 
