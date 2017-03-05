@@ -43,6 +43,9 @@ def main():
 
     parser.add_option('--no-show', dest='show', default=True, action='store_false',
                       help='Do not show plot window, just save it.')
+
+    parser.add_option('--tweet', default=False, action='store_true',
+                      help='Send a tweet for each galaxy?')
     
     opt,args = parser.parse_args()
 
@@ -417,9 +420,13 @@ class NgcBot(NewFileWatcher):
             print('Setting band', newband, '(index %i)'%j, 'to new image')
             
             rgbs = []
+
+            bestdata = None
+            bestn = 0
             
             for i,(layer, bands, imgs) in enumerate(fitsimgs):
 
+                origlayer = layer
                 layer = {'decals-dr3': 'DECaLS DR3',
                          'sdssco': 'SDSS'}.get(layer, layer)
     
@@ -470,6 +477,11 @@ class NgcBot(NewFileWatcher):
                     rgb = my_rgb([img,img,img], [band,band,band])
                 else:
                     rgb = my_rgb(imgs, bands)
+
+                if len(goodbands) > bestn:
+                    bestn = len(goodbands)
+                    bestdata = origlayer
+
                 nicebands = ''.join(nicebands)
                 print('bands for', layer, ':', bands, ', actually', nicebands)
                 rgbs.append((2+i+NC, rgb, '%s (%s)' % (layer, nicebands)))
@@ -502,12 +514,42 @@ class NgcBot(NewFileWatcher):
                 plt.draw()
                 plt.show(block=False)
                 plt.pause(0.001)
-    
+
+            plotfn = ps.pattern % (ps.format % ps.ploti, ps.suffixes[0])
             ps.savefig()
 
+            if self.opt.tweet:
+                import urllib
+                url = 'http://legacysurvey.org/viewer/?ra=%.3f&dec=%.3f' % (obj.ra, obj.dec)
+                url2 = ('http://ned.ipac.caltech.edu/cgi-bin/objsearch?' + 
+                         urllib.urlencode(dict(objname=obj.name, corr_z=1, list_limit=5, img_stamp='YES')))
 
-        
-        
+                if bestdata is not None:
+                    url += '&layer=%s' % bestdata
+
+                txt = ('DECam observed %s in image %i-%s: %s band' %
+                       (obj.name, primhdr['EXPNUM'], extname, newband)
+                       + '\n' + url + '\n' + url2)
+                print('Tweet text:', txt)
+
+                send_tweet(txt, plotfn)
+
+def send_tweet(txt, imgfn):
+    from twython import Twython
+    try:
+        import secrets as s
+    except:
+        print('You need a "secrets.py" file with Twitter credentials')
+        return
+
+    twitter = Twython(s.APP_KEY, s.APP_SECRET,
+                      s.OAUTH_TOKEN, s.OAUTH_TOKEN_SECRET)
+
+    upload_response = twitter.upload_media(media=open(imgfn, 'rb'))
+    media_id = upload_response['media_id']
+    response = twitter.update_status(status=txt, media_ids=media_id)
+    print(response)
+
 if __name__ == '__main__':
     main()
             
