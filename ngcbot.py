@@ -551,7 +551,8 @@ class NgcBot(NewFileWatcher):
 
         def my_rgb(imgs, bands, **kwargs):
             #return get_rgb(imgs, bands, **rgbkwargs)
-            return sdss_rgb(imgs, bands, scales=dict(g=6.0, r=3.4, i=2.5, z=2.2), m=0.03, **kwargs)
+            #return sdss_rgb(imgs, bands, scales=dict(g=6.0, r=3.4, i=2.5, z=2.2), m=0.03, **kwargs)
+            return sdss_rgb(imgs, bands, scales=dict(g=6.0, r=3.4, i=2.5, z=2.2), m=0.01, **kwargs)
 
         #return sdss_rgb(rimgs, bands, 
         def grayscale(img, band):
