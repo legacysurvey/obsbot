@@ -551,7 +551,8 @@ class Obsbot(NewFileWatcher):
 
         thispass = tile.get('pass')
 
-        print('This tile is pass', thispass)
+        if debug:
+            print('This tile is pass', thispass)
 
         # How much extra depth is required due to make up for previous exposures?
         needed = 0.
@@ -565,21 +566,24 @@ class Obsbot(NewFileWatcher):
                                (others.factor > 0))
             if len(I) == 0:
                 continue
-            
-            print('Tiles for pass', passnum, ':', others.tileid[I])
-            print('  with factors:', others.factor[I])
+
+            if debug:
+                print('Tiles for pass', passnum, ':', others.tileid[I])
+                print('  with factors:', others.factor[I])
 
             # We want to make up for the worst "acceptable" surrounding tile
             factor = min(others.factor[I])
 
-            print('Need to make up factor', 1.-factor, 'for this pass')
+            if debug:
+                print('Need to make up factor', 1.-factor, 'for this pass')
 
             # Only increase the depth needed; we would need to know
             # that the whole region is covered to the required depth
             # (incl chip gaps) in order to decrease the depth required.
             needed += max(0, (1. - factor))
 
-        print('Total factor that needs to be made up:', needed)
+        if debug:
+            print('Total factor that needs to be made up:', needed)
 
         # # Split this extra required exposure time between the remaining
         # # passes...

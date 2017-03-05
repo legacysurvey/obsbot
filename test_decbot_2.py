@@ -130,6 +130,7 @@ class TestDecbot2(TestCase):
                 j['planpass'] = i+1
 
         opt = Duck()
+        opt.cut_before_now = True
         opt.rawdata = 'rawdata'
         opt.verbose = False
         opt.adjust = False

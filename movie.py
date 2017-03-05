@@ -282,7 +282,7 @@ def main():
             afiltcc = np.array([fcmap[f]  for f in afilts])
             addecs = np.array([ddecmap[f] for f in afilts])
             rr = aras[I]
-            dd = adecs[I] + ddecs[I]
+            dd = adecs[I] + addecs[I]
             plt.scatter(transform_ra(rr), dd, c=filtcc[:i+1], s=40, zorder=50,
                         edgecolors='k', alpha=0.5)
             plt.plot(transform_ra(rr), dd, 'k-', alpha=0.25, zorder=40)
