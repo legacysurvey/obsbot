@@ -552,7 +552,7 @@ class NgcBot(NewFileWatcher):
         def my_rgb(imgs, bands, **kwargs):
             #return get_rgb(imgs, bands, **rgbkwargs)
             #return sdss_rgb(imgs, bands, scales=dict(g=6.0, r=3.4, i=2.5, z=2.2), m=0.03, **kwargs)
-            return sdss_rgb(imgs, bands, scales=dict(g=6.0, r=3.4, i=2.5, z=2.2), m=0.01, **kwargs)
+            return sdss_rgb(imgs, bands, scales=dict(g=6.0, r=3.4, i=2.5, z=2.2), m=-0.02, **kwargs)
 
         #return sdss_rgb(rimgs, bands, 
         def grayscale(img, band):
@@ -584,6 +584,8 @@ class NgcBot(NewFileWatcher):
         newimgs[j] = newimg
         newbands[j] = newband
 
+        rgbs = []
+        
         for i,(layer, bands, imgs) in enumerate(fitsimgs):
 
             layer = {'decals-dr3': 'DECaLS DR3',
@@ -616,12 +618,8 @@ class NgcBot(NewFileWatcher):
                     plt.subplot(NR, NC, 2+i)
                     plt.imshow(oldgray, **grayargs)
                     plt.xticks([]); plt.yticks([])
-
-            plt.subplot(NR, NC, 2 + i + NC)
             rgb = my_rgb(imgs, bands)
-            plt.imshow(rgb, interpolation='nearest', origin='lower')
-            plt.xticks([]); plt.yticks([])
-            plt.title('%s RGB' % layer, **targs)
+            rgbs.append((2+i+NC, rgb, '%s RGB' % layer))
 
         # Now overwrite with the new image in its band
         # j = newindex[newband]
@@ -636,10 +634,21 @@ class NgcBot(NewFileWatcher):
 
         plt.subplot(NR, NC, 1 + NC)
         rgb = my_rgb(newimgs, newbands)
+        hi = np.percentile(rgb.ravel(), 99.9)
+        lo = 0.
+        rgb = np.clip((rgb - lo) / (hi - lo), 0., 1.)
+        
         plt.imshow(rgb, interpolation='nearest', origin='lower')
         plt.xticks([]); plt.yticks([])
         plt.title('New+Old RGB', **targs)
 
+        for sp, rgb, tt in rgbs:
+            plt.subplot(NR, NC, sp)
+            rgb = np.clip((rgb - lo) / (hi - lo), 0., 1.)
+            plt.imshow(rgb, interpolation='nearest', origin='lower')
+            plt.xticks([]); plt.yticks([])
+            plt.title(tt, **targs)
+        
         plt.suptitle('%s in exposure %i: %s band' %
                      (obj.name, primhdr['EXPNUM'], newband))
 
