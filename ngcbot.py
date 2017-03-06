@@ -25,6 +25,12 @@ from astrometry.util.fits import *
 from astrometry.util.util import *
 from astrometry.util.resample import *
 
+from legacypipe.survey import get_rgb
+
+#rgbkwargs = dict(mnmx=(-1,100.), arcsinh=1.)
+#rgbkwargs = dict(mnmx=(-1,1000.), arcsinh=1.)
+rgbkwargs = dict(mnmx=(0,500.), arcsinh=1.)
+
 ps = PlotSequence('ngcbot')
 
 def main():
@@ -37,6 +43,9 @@ def main():
 
     parser.add_option('--no-show', dest='show', default=True, action='store_false',
                       help='Do not show plot window, just save it.')
+
+    parser.add_option('--tweet', default=False, action='store_true',
+                      help='Send a tweet for each galaxy?')
     
     opt,args = parser.parse_args()
 
@@ -56,7 +65,7 @@ def main():
 
 
 def sdss_rgb(rimgs, bands, scales=None,
-             m = 0.02):
+             m = 0.02, clip=True):
     import numpy as np
     rgbscales = {'u': 1.5, #1.0,
                  'g': 2.5,
@@ -84,7 +93,8 @@ def sdss_rgb(rimgs, bands, scales=None,
     # G[J] = G[J]/maxrgb[J]
     # B[J] = B[J]/maxrgb[J]
     rgb = np.dstack((R,G,B))
-    rgb = np.clip(rgb, 0, 1)
+    if clip:
+        rgb = np.clip(rgb, 0, 1)
     return rgb
                 
 
@@ -135,14 +145,19 @@ class NgcBot(NewFileWatcher):
         print(len(F), 'extensions')
 
         band = primhdr['FILTER'][0]
-
+        newband = band
+        
         rr,dd = [],[]
         exts = np.arange(1, len(F))
         for i in exts:
             ext = i
+            hdr = F[ext].read_header()
+            extname = hdr['EXTNAME'].strip()
+            if 'F' in extname:
+                # Skip focus chips
+                continue
             meas = DECamMeasurer(path, ext, self.nom)
             meas.primhdr = primhdr
-            hdr = F[ext].read_header()
             wcs = meas.get_wcs(hdr)
             #print('WCS:', wcs)
             rc,dc = wcs.radec_center()
@@ -151,6 +166,7 @@ class NgcBot(NewFileWatcher):
             rr.append(rc)
             dd.append(dc)
 
+        # we use the last extension's 'radius' here...
         rr = np.array(rr)
         dd = np.array(dd)
         I,J,d = match_radec(rr, dd, self.cat.ra, self.cat.dec, radius)
@@ -158,7 +174,7 @@ class NgcBot(NewFileWatcher):
         print('Matched', len(I), 'NGC objects')
         print(self.cat.name[J])
 
-        cutouts = []
+        tweets = []
         
         for i,j in zip(I,J):
             ext = exts[i]
@@ -166,78 +182,82 @@ class NgcBot(NewFileWatcher):
             r,d = obj.ra, obj.dec
             hdr = F[ext].read_header()
             extname = hdr['EXTNAME'].strip()
+            expnum = primhdr['EXPNUM']
             if 'F' in extname:
                 # Skip focus chips
                 continue
 
-            zpt = self.nom.zeropoint(band, ext)
-            print('Nominal zeropoint:', zpt)
-
-
-            raw,hdr = meas.read_raw(F, ext)
             wcs = meas.get_wcs(hdr)
-
-
-
-            print('raw shape:', raw.shape)
-            print('WCS shape:', wcs.shape)
-
-            median,hi = np.percentile(raw.ravel(), [50, 99])
-            ok,x,y = wcs.radec2pixelxy(r, d)
+            #print('Original WCS:', wcs)
+            #print('WCS shape:', wcs.shape)
+            ok,x,y = wcs.radec2pixelxy(obj.ra, obj.dec)
+            #print('X,Y in original WCS:', x,y)
             x = x - 1
             y = y - 1
-            # print('x,y', x,y)
 
             pixrad = obj.radius * 3600. / wcs.pixel_scale()
             pixrad = max(pixrad, 100)
             print('radius:', obj.radius, 'pixel radius:', pixrad)
             r = pixrad
-            tt = '%s in exp %i ext %s (%i)' % (obj.name, primhdr['EXPNUM'], extname, ext)
+            tt = '%s in exp %i ext %s (%i)' % (obj.name, expnum, extname, ext)
             print(tt)
-            
-            # plt.clf()
-            # plt.imshow(raw, interpolation='nearest', origin='lower',
-            #            vmin=median, vmax=hi, cmap='hot')
-            # ax = plt.axis()
-            # plt.plot([x-r, x-r, x+r, x+r, x-r], [y-r, y+r, y+r, y-r, y-r],
-            #          'r-')
-            # plt.title(tt)
-            # ps.savefig()
 
-            #H,W = wcs.shape
-            H,W = raw.shape
+            H,W = wcs.shape
             xl,xh = int(np.clip(x-r, 0, W-1)), int(np.clip(x+r, 0, W-1))
             yl,yh = int(np.clip(y-r, 0, H-1)), int(np.clip(y+r, 0, H-1))
             if xl == xh or yl == yh:
                 continue
-            subimg = raw[yl:yh, xl:xh]
-            sh,sw = subimg.shape
+            sh,sw = yh-yl, xh-xl
             if sh < 25 or sw < 25:
                 continue
-            print('Subimage size:', subimg.shape)
-
-            print('subimage:', xl, yl, xh-xl, yh-yl)
-            print('x range', xl, xh, 'y range', yl,yh)
-
-            subwcs = wcs.get_subimage(xl, yl, xh-xl, yh-yl)
-            print('Subwcs:', subwcs.shape)
-
-
-            # Has the copilot measured this exposure yet?
+            #print('subimage:', xl, yl, xh-xl, yh-yl)
+            #print('x range', xl, xh, 'y range', yl,yh)
 
             meas.ext = ext
-            M = meas.run(n_fwhm=1, verbose=False)
-            print('Measured:', M.keys())
+            meas.edge_trim = 20
+            M = meas.run(n_fwhm=1, verbose=False, get_image=True)
+            #print('Measured:', M.keys())
 
-            dx = int(np.round(M['dx']))
-            dy = int(np.round(M['dy']))
-            print('DX,DY', dx,dy)
+            raw = M['image']
+            #print('Raw image:', raw.shape)
+            # Now repeat the cutout check with the trimmed image
+            wcs = M['wcs']
+            #print('WCS:', wcs)
+            #print('WCS:', wcs.shape)
+            # Trim WCS to trimmed raw image shape
+            trim_x0, trim_y0 = M['trim_x0'], M['trim_y0']
+            #print('Trim:', trim_x0, trim_y0)
+            H,W = raw.shape
+            wcs = wcs.get_subimage(trim_x0, trim_y0, W, H)
+            #print('Trimmed WCS:', wcs.shape)
+            #print('Trimmed WCS:', wcs)
+            ok,x,y = wcs.radec2pixelxy(obj.ra, obj.dec)
+            #print('X,Y in trimmed WCS:', x,y)
+            x = x - 1
+            y = y - 1
+            xl,xh = int(np.clip(x-r, 0, W-1)), int(np.clip(x+r, 0, W-1))
+            yl,yh = int(np.clip(y-r, 0, H-1)), int(np.clip(y+r, 0, H-1))
+            #print('Trimmed X', xl, xh, 'Y', yl, yh)
+            if xl == xh or yl == yh:
+                continue
+            subimg = raw[yl:yh, xl:xh]
+            sh,sw = subimg.shape
+            #print('Subimage shape', subimg.shape)
+            if sh < 25 or sw < 25:
+                continue
+            subwcs = wcs.get_subimage(xl, yl, sw, sh)
 
+            #dx = int(np.round(M['dx']))
+            #dy = int(np.round(M['dy']))
+            #print('DX,DY', dx,dy)
+            dx = M['dx']
+            dy = M['dy']
+            
             aff = M['affine']
             x = (xl+xh)/2
             y = (yl+yh)/2
-            print('x,y', x,y)
-            print('Affine correction terms:', aff)
+            #print('x,y', x,y)
+            #print('Affine correction terms:', aff)
             adx = x - aff[0]
             ady = y - aff[1]
             corrx = aff[2] + aff[3] * adx + aff[4] * ady - adx
@@ -246,39 +266,9 @@ class NgcBot(NewFileWatcher):
 
             ### Shift the 'subwcs' to account for astrometric offset
             cx,cy = subwcs.get_crpix()
-            subwcs.set_crpix((cx - dx, cy - dy))
+            #subwcs.set_crpix((cx - dx, cy - dy))
+            subwcs.set_crpix((cx - dx - corrx, cy - dy - corry))
 
-            subimg2 = raw[(yl-dy):(yh-dy), (xl-dx):(xh-dx)]
-
-            lo,hi = np.percentile(subimg.ravel(), [50, 99.5])
-
-            # plt.clf()
-            # plt.imshow(subimg, interpolation='nearest', origin='lower',
-            #            vmin=lo, vmax=hi, cmap='hot')
-            # plt.title(tt)
-            # plt.colorbar()
-            # ps.savefig()
-
-            lo,q3,hiX = np.percentile(subimg.ravel(), [25, 75, 99.9])
-            mid = median
-
-            def nlmap(x):
-                Q = 10.
-                return np.arcsinh((x-mid) / (q3-mid) * Q) / np.sqrt(Q)
-            
-            # plt.clf()
-            # plt.imshow(nlmap(subimg), interpolation='nearest', origin='lower',
-            #            vmin=nlmap(lo),
-            #            cmap='hot')
-            # # vmin=nlmap(lo),
-            # # vmax=nlmap(mid + 100.*(q3-mid)),
-            # # vmax=nlmap(hi),
-            # plt.title(tt)
-            # plt.colorbar()
-            # ps.savefig()
-
-            #
-            
             urlpat = 'http://legacysurvey.org/viewer/%s-cutout/?ra=%.4f&dec=%.4f&pixscale=%.3f&width=%i&height=%i&layer=%s'
 
             scale = 1.
@@ -287,86 +277,57 @@ class NgcBot(NewFileWatcher):
             elif max(sh,sw) > 512:
                 scale = 2.
 
-            jpegs = []
+            fitsimgs = []
+
             for layer in ['decals-dr3', 'sdssco']:
                 rh,rw = int(np.ceil(sh/scale)),int(np.ceil(sw/scale))
 
-                url = urlpat % ('jpeg', obj.ra, obj.dec, subwcs.pixel_scale() * scale, rw, rh, layer)
-                print('URL:', url)
-                r = requests.get(url)
-
-                #jpg = Image.open(BytesIO(r.content))
-
-                ftmp = tempfile.NamedTemporaryFile()
-                ftmp.write(r.content)
-                ftmp.flush()
-                jpg = plt.imread(ftmp.name)
-                ftmp.close()
-
-                jpg = np.flipud(jpg)
-
-                print('Got jpg', jpg.shape)
-
-                pixsc = subwcs.pixel_scale() * scale / 3600.
-                thiswcs = Tan(*[float(x) for x in
-                                [obj.ra, obj.dec, 0.5 + rw/2., 0.5 + rh/2.,
-                                 -pixsc, 0., 0., pixsc, rw, rh]])
-
-                # print('Thiswcs shape:', thiswcs.shape)
+                mx = max(rh, rw)
+                rw = rh = mx
                 
-                try:
-                    Yo,Xo,Yi,Xi,rims = resample_with_wcs(subwcs, thiswcs)
-                except:
-                    continue
-
-                print('subwcs:', subwcs)
-                print('thiswcs:', thiswcs)
+                # url = urlpat % ('jpeg', obj.ra, obj.dec, subwcs.pixel_scale() * scale, rw, rh, layer)
+                # print('URL:', url)
+                # r = requests.get(url)
                 # 
-                # print('subwcs RA,Dec bounds:', subwcs.radec_bounds())
-                # print('thiswcs RA,Dec bounds:', thiswcs.radec_bounds())
+                # ftmp = tempfile.NamedTemporaryFile()
+                # ftmp.write(r.content)
+                # ftmp.flush()
+                # jpg = plt.imread(ftmp.name)
+                # ftmp.close()
                 # 
-                print('Yo', Yo.min(), Yo.max())
-                print('Xo', Xo.min(), Xo.max())
-                print('Yi', Yi.min(), Yi.max())
-                print('Xi', Xi.min(), Xi.max())
-
-                resamp = np.zeros((sh,sw,3), dtype=jpg.dtype)
-
-                print('resamp shape', resamp.shape)
-                print('vs subwcs.shape', subwcs.shape)
-                print('jpg shape', jpg.shape)
-                print('vs thiswcs.shape',thiswcs.shape)
-
-                for k in range(3):
-                    resamp[Yo,Xo,k] = jpg[Yi,Xi,k]
-
-                #jpegs.append((layer + ' resamp', resamp))
-                #jpegs.append((layer + ' jpg', jpg))
-
-                # resamp2 = np.zeros((rh,rw), dtype=subimg.dtype)
+                # jpg = np.flipud(jpg)
+                # #print('Got jpg', jpg.shape)
+                # 
+                # pixsc = subwcs.pixel_scale() * scale / 3600.
+                # thiswcs = Tan(*[float(x) for x in
+                #                 [obj.ra, obj.dec, 0.5 + rw/2., 0.5 + rh/2.,
+                #                  -pixsc, 0., 0., pixsc, rw, rh]])
+                # 
+                # # print('Thiswcs shape:', thiswcs.shape)
+                # 
                 # try:
-                #     Yo,Xo,Yi,Xi,rims = resample_with_wcs(thiswcs, subwcs)
+                #     Yo,Xo,Yi,Xi,rims = resample_with_wcs(subwcs, thiswcs)
                 # except:
                 #     continue
-                # resamp2[Yo,Xo] = subimg[Yi,Xi]
                 # 
-                # nl = nlmap(resamp2)
-                # v = np.clip((nl - nlmap(lo)) / (nl.max() - nlmap(lo)), 0., 1.)
-                # rgb = matplotlib.cm.hot(v)
-                # jpegs.append(('resamp2 '+layer, rgb))
-
-                resamp3 = np.zeros((rh,rw), dtype=subimg.dtype)
-                try:
-                    Yo,Xo,Yi,Xi,rims = resample_with_wcs(thiswcs, subwcs)
-                except:
-                    continue
-                resamp3[Yo,Xo] = subimg[Yi,Xi]
-
-                nl = nlmap(resamp3)
-                v = np.clip((nl - nlmap(lo)) / (nl.max() - nlmap(lo)), 0., 1.)
-                rgb = matplotlib.cm.hot(v)
-                jpegs.append(('resamp3 '+layer, rgb))
-
+                # print('subwcs:', subwcs)
+                # print('thiswcs:', thiswcs)
+                # # 
+                # # 
+                # print('Yo', Yo.min(), Yo.max())
+                # print('Xo', Xo.min(), Xo.max())
+                # print('Yi', Yi.min(), Yi.max())
+                # print('Xi', Xi.min(), Xi.max())
+                # 
+                # resamp = np.zeros((sh,sw,3), dtype=jpg.dtype)
+                # 
+                # print('resamp shape', resamp.shape)
+                # print('vs subwcs.shape', subwcs.shape)
+                # print('jpg shape', jpg.shape)
+                # print('vs thiswcs.shape',thiswcs.shape)
+                # 
+                # for k in range(3):
+                #     resamp[Yo,Xo,k] = jpg[Yi,Xi,k]
 
                 url = urlpat % ('fits', obj.ra, obj.dec, subwcs.pixel_scale() * scale, rw, rh, layer)
                 print('URL:', url)
@@ -384,102 +345,234 @@ class NgcBot(NewFileWatcher):
                 print('Wrote FITS to', tmpfn)
 
                 print('Got:', fits.shape)
-                fwcs = Tan(hdr)
-                # print('Got WCS:', thiswcs)
+                thiswcs = Tan(hdr)
                 print('Bands:', hdr['BANDS'])
-                print('Guessed WCS for JPEG:', thiswcs)
-                print('WCS from FITS:', fwcs)
+                print('WCS from FITS:', thiswcs)
 
+                ### HACK -- surface brightness correction...
+                if layer == 'sdssco':
+                    s = (subwcs.pixel_scale() / 0.396)
+                    fits *= s**2
+                
                 N,ww,hh = fits.shape
                 imgs = [fits[n,:,:] for n in range(N)]
-
                 bands = hdr['BANDS'].strip()
-                S = 0.5
-                rgb = sdss_rgb(imgs, bands,
-                               #scales=dict(g=6.0, r=3.4, z=2.2),
-                               scales=dict(g=6.0*S, r=3.4*S, z=2.2*S),
-                               m=0)
-                               #m=0.03)
-                jpegs.append((layer + ' fits', rgb))
 
-                if band in bands:
-                    ii = bands.index(band)
-                    if not np.all(imgs[ii] == 0):
-                        plt.clf()
-                        plt.subplot(1,2,1)
-                        plt.imshow(imgs[ii], interpolation='nearest', origin='lower', cmap='hot')
-                        plt.title(layer)
-                        plt.colorbar()
-                        cl,ch = plt.gci().get_clim()
-                        plt.subplot(1,2,2)
-                        
-                        zp = M['zp']
-                        print('measured zeropoint:', zp)
-                        zpscale = 10.**((zp - 22.5)/2.5)
-                        print('zpscale', zpscale)
-                        exptime = primhdr['EXPTIME']
+                # Resample the new image to this layer's WCS
+                # FIXME -- we do this multiple times into all-assumed-the-same WCS.
+                resamp3 = np.zeros((rh,rw), dtype=subimg.dtype)
+                try:
+                    #Yo,Xo,Yi,Xi,rims = resample_with_wcs(thiswcs, subwcs)
+                    Yo,Xo,Yi,Xi,rims = resample_with_wcs(thiswcs, subwcs, [subimg])
+                except:
+                    continue
+                #resamp3[Yo,Xo] = subimg[Yi,Xi]
+                resamp3[Yo,Xo] = rims[0]
 
-                        plt.imshow(resamp3 / (zpscale * exptime), interpolation='nearest', origin='lower',
-                                   vmin=cl, vmax=ch, cmap='hot')
-                        plt.colorbar()
-                        ps.savefig()
+                if not np.all(fits == 0):
+                    fitsimgs.append((layer, bands, imgs))
 
+            if len(fitsimgs) == 0:
+                return
+    
+            print()
+            print('New image is', newband)
+    
+            plt.clf()
+            plt.subplots_adjust(left=0.03, right=0.97, bottom=0.03)
+            NC = 1 + len(fitsimgs)
+            NR = 2
+    
+            zp = M['zp']
+            zpscale = 10.**((zp - 22.5)/2.5)
+            exptime = primhdr['EXPTIME']
+            newimg = resamp3 / (zpscale * exptime)
 
-            tt = '%s in %s' % (obj.name, extname)
-            cutouts.append((tt, nlmap(subimg), nlmap(lo), None, nlmap(subimg2), jpegs))
-
-
-        if len(cutouts) == 0:
-            return
+            def my_rgb(imgs, bands, **kwargs):
+                #return get_rgb(imgs, bands, **rgbkwargs)
+                #return sdss_rgb(imgs, bands, scales=dict(g=6.0, r=3.4, i=2.5, z=2.2), m=0.03, **kwargs)
+                return sdss_rgb(imgs, bands, scales=dict(g=6.0, r=3.4, i=2.5, z=2.2), m=-0.02, clip=False, **kwargs)
+    
+            #return sdss_rgb(rimgs, bands, 
+            def grayscale(img, band):
+                #oldrgb = my_rgb([img], [band])
+                #oldrgb = my_rgb([img,img,img], [band,band,band])
+                rgb = my_rgb([img,img,img], [band,band,band])
+                #clip=False)
+                index = 'zrg'.index(newband)
+                gray = rgb[:,:,index]
+                return gray
+    
+            targs = dict(fontsize=8)
             
-        # plt.clf()
-        # NC = int(np.ceil(np.sqrt(len(cutouts)) * 1.3))
-        # NR = int(np.ceil(len(cutouts) / float(NC)))
-        # for i,(tt,img,lo,hi,jpegs) in enumerate(cutouts):
-        #     plt.subplot(NR, NC, i+1)
-        #     plt.imshow(img, interpolation='nearest', origin='lower',
-        #                vmin=lo, vmax=hi, cmap='hot')
-        #     plt.title(tt)
-        #     plt.xticks([])
-        #     plt.yticks([])
-        # plt.suptitle('Exposure %i' % (primhdr['EXPNUM']))
-        # 
-        # if self.opt.show:
-        #     plt.draw()
-        #     plt.show(block=False)
-        #     plt.pause(0.001)
-        # 
-        # plt.savefig('cutouts.png')
+            newgray = grayscale(newimg, newband)
+    
+            hi = np.percentile(newgray, 99.9)
+            grayargs = dict(interpolation='nearest', origin='lower',
+                            vmin=0., vmax=hi, cmap='gray')
+            plt.subplot(NR, NC, 1)
+            plt.imshow(newgray, **grayargs)
+            plt.xticks([]); plt.yticks([])
+            plt.title('New image (%s)' % newband, **targs)
+            
+            newimgs = [None, None, None]
+            #newbands = ['z','r','g']
+            # sdss_rgb reverses the order, so do like grz.
+            newbands = ['g','r','z']
+            newindex = dict(g=0, r=1, i=2, z=2)
+    
+            j = newindex[newband]
+            newimgs [j] = newimg
+            newbands[j] = newband
 
-        plt.clf()
-        NC = len(cutouts)
-        NR = 5
-        for i,(tt,img,lo,hi,img2, jpegs) in enumerate(cutouts):
-            plt.subplot(NR, NC, i+1)
-            plt.imshow(img2, interpolation='nearest', origin='lower',
-                       vmin=lo, vmax=hi, cmap='hot')
-            plt.title(tt)
-            plt.xticks([])
-            plt.yticks([])
+            print('Setting band', newband, '(index %i)'%j, 'to new image')
+            
+            rgbs = []
 
-            print(len(jpegs), 'jpegs')
+            bestdata = None
+            bestn = 0
+            
+            for i,(layer, bands, imgs) in enumerate(fitsimgs):
 
-            for j,(layer,pix) in enumerate(jpegs[:NR-1]):
-                plt.subplot(NR, NC, i+1 + (j+1)*NC)
-                plt.imshow(pix, interpolation='nearest', origin='lower')
-                plt.title(layer, fontsize=8)
-                plt.xticks([])
-                plt.yticks([])
-        plt.suptitle('Exposure %i: %s band' % (primhdr['EXPNUM'], band))
-        
-        if self.opt.show:
-            plt.draw()
-            plt.show(block=False)
-            plt.pause(0.001)
-        
-        plt.savefig('cutouts.png')
+                origlayer = layer
+                layer = {'decals-dr3': 'DECaLS DR3',
+                         'sdssco': 'SDSS'}.get(layer, layer)
+    
+                # plt.subplot(NR, NC, 2+i)
+                # plt.title(layer, **targs)
+                # # empty white plot if not replaced
+                # plt.imshow(np.ones_like(newimg), interpolation='nearest', origin='lower', vmin=0, vmax=1, cmap='hot')
+                # plt.xticks([]); plt.yticks([])
 
-        
+                nicebands = []
+
+                goodbands = []
+                goodimgs = []
+                
+                for band,img in zip(bands, imgs):
+                    if np.all(img == 0.):
+                        print('Band', band, 'of', layer, 'is all zero')
+                        nicebands.append('-')
+                        continue
+                    goodbands.append(band)
+                    goodimgs.append(img)
+                    nicebands.append(band)
+                    print('  ', layer, band)
+                    j = newindex[band]
+                    if newimgs[j] is None:
+                        print('    Setting band', band, '(index %i)'%j, 'to', layer)
+                        newimgs[j] = img
+                        newbands[j] = band
+                    elif band == newbands[j]:
+                        # patch empty regions if same band
+                        print('    Patching index %i from' % j, layer, 'band', band)
+                        Z = (newimgs[j] == 0)
+                        newimgs[j][Z] = img[Z]
+
+                    #if band == newband:
+                    # z -> i
+                    if newindex[band] == newindex[newband]:
+                        # grab out grayscale
+                        oldgray = grayscale(img, band)
+                        plt.subplot(NR, NC, 2+i)
+                        plt.imshow(oldgray, **grayargs)
+                        plt.xticks([]); plt.yticks([])
+                        plt.title('%s (%s)' % (layer, band), **targs)
+
+                if len(goodbands) == 1:
+                    #rgb = grayscale(goodimgs[0], goodbands[0])
+                    img,band = goodimgs[0], goodbands[0]
+                    rgb = my_rgb([img,img,img], [band,band,band])
+                else:
+                    rgb = my_rgb(imgs, bands)
+
+                if len(goodbands) > bestn:
+                    bestn = len(goodbands)
+                    bestdata = origlayer
+
+                nicebands = ''.join(nicebands)
+                print('bands for', layer, ':', bands, ', actually', nicebands)
+                rgbs.append((2+i+NC, rgb, '%s (%s)' % (layer, nicebands)))
+    
+            # list to string
+            newbands = ''.join(newbands)
+            print('Newbands:', newbands)
+            
+            plt.subplot(NR, NC, 1 + NC)
+            rgb = my_rgb(newimgs, newbands)
+            lo = 0.
+            hi = np.percentile(rgb.ravel(), 99.9)
+
+            rgb = np.clip((rgb - lo) / (hi - lo), 0., 1.)
+            plt.imshow(rgb, interpolation='nearest', origin='lower')
+            plt.xticks([]); plt.yticks([])
+            plt.title('New+Old (%s)' % newbands, **targs)
+    
+            for sp, rgb, tt in rgbs:
+                plt.subplot(NR, NC, sp)
+                rgb = np.clip((rgb - lo) / (hi - lo), 0., 1.)
+                plt.imshow(rgb, interpolation='nearest', origin='lower')
+                plt.xticks([]); plt.yticks([])
+                plt.title(tt, **targs)
+
+            plt.suptitle('%s in DECam %i-%s: %s band' %
+                         (obj.name, expnum, extname, newband))
+    
+            if self.opt.show:
+                plt.draw()
+                plt.show(block=False)
+                plt.pause(0.001)
+
+            plotfn = 'ngcbot-%i-%s-%s.png' % (expnum, extname, obj.name.replace(' ','_'))
+            plt.savefig(plotfn)
+            plt.savefig('ngcbot-latest.png')
+            #plotfn = ps.pattern % (ps.format % ps.ploti, ps.suffixes[0])
+            #ps.savefig()
+
+            if self.opt.tweet:
+                import urllib
+                url = 'http://legacysurvey.org/viewer/?ra=%.3f&dec=%.3f' % (obj.ra, obj.dec)
+                url2 = ('http://ned.ipac.caltech.edu/cgi-bin/objsearch?' + 
+                         urllib.urlencode(dict(objname=obj.name, corr_z=1, list_limit=5, img_stamp='YES')))
+
+                if bestdata is not None:
+                    url += '&layer=%s' % bestdata
+
+                dateobs = primhdr['DATE-OBS'].strip()
+                print('Dateobs:', dateobs)
+                # 2017-03-06T00:15:40.101482
+                dateobs = dateobs[:19]
+                dateobs = dateobs.replace('T', ' ')
+                txt = ('DECam observed %s in image %i-%s: %s band' %
+                       (obj.name, expnum, extname, newband)
+                       + ' at %s UT' % dateobs
+                       + '\n' + url + '\n' + url2)
+                print('Tweet text:', txt)
+
+                tweets.append((txt, plotfn))
+
+        # Send one NGC object per exposure, chosen randomly.
+        if self.opt.tweet and len(tweets):
+            i = np.random.randint(0, len(tweets))
+            txt,plotfn = tweets[i]
+            send_tweet(txt, plotfn)
+
+def send_tweet(txt, imgfn):
+    from twython import Twython
+    try:
+        import secrets as s
+    except:
+        print('You need a "secrets.py" file with Twitter credentials')
+        return
+
+    twitter = Twython(s.APP_KEY, s.APP_SECRET,
+                      s.OAUTH_TOKEN, s.OAUTH_TOKEN_SECRET)
+
+    upload_response = twitter.upload_media(media=open(imgfn, 'rb'))
+    media_id = upload_response['media_id']
+    response = twitter.update_status(status=txt, media_ids=media_id)
+    print(response)
+
 if __name__ == '__main__':
     main()
             
