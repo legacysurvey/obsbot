@@ -742,22 +742,24 @@ class Decbot(Obsbot):
 
         # Write a FITS table of the exposures we think we've queued,
         # the ones we have planned, and the future tiles in passes 1,2,3.
-        P = ([(j,'Q') for j in self.queued_tiles] +
-             [(j,'P') for j in upcoming])
-
-        for i,J in enumerate([self.J1,self.J2,self.J3]):
-            passnum = i+1
-            P.append((j,'%i' % passnum))
+        J,types = [],[]
+        for t,j in [
+                ('Q', self.queued_tiles),
+                ('P', upcoming),
+                ('1', self.J1),
+                ('2', self.J2),
+                ('3', self.J3),]:
+            J.extend(j)
+            types.extend(t * len(j))
              
-        J = [j for j,t in P]
         T = fits_table()
-        T.type = np.array([t for j,t in P])
-        T.tilename = np.array([str(j['object']) for j in J])
-        T.filter = np.array([str(j['filter'])[0] for j in J])
-        T.exptime = np.array([j['expTime'] for j in J])
-        T.ra  = np.array([j['RA'] for j in J])
-        T.dec = np.array([j['dec'] for j in J])
-        T.planpass = np.array([j['planpass'] for j in J])
+        T.type = np.array(types)
+        T.tilename = np.array([str(j['object'])    for j in J])
+        T.filter   = np.array([str(j['filter'])[0] for j in J])
+        T.exptime  = np.array([    j['expTime']    for j in J])
+        T.planpass = np.array([    j['planpass']   for j in J])
+        T.ra       = np.array([    j['RA']         for j in J])
+        T.dec      = np.array([    j['dec']        for j in J])
         fn = 'decbot-plan.fits'
         tmpfn = fn + '.tmp'
         T.writeto(tmpfn)
