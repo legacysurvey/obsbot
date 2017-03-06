@@ -415,7 +415,7 @@ class NgcBot(NewFileWatcher):
             plt.xticks([]); plt.yticks([])
             plt.title('New image (%s)' % newband, **targs)
             
-            newimgs = [None, None, None]
+            newimgs = [np.zeros_like(newimg) for i in range(3)]
             #newbands = ['z','r','g']
             # sdss_rgb reverses the order, so do like grz.
             newbands = ['g','r','z']
