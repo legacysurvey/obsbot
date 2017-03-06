@@ -574,7 +574,7 @@ class Decbot(Obsbot):
 
         self.obs.date = ephem.now()
         for ii,jplan in enumerate(J):
-            print('jplan:', jplan)
+            #print('jplan:', jplan)
             s = (('%s (pass %i), band %s, RA,Dec (%.3f,%.3f), ' +
                   'exptime %i.') %
                   (jplan['object'], jplan['tilepass'], jplan['filter'],
