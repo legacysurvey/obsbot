@@ -17,24 +17,38 @@ import pylab as plt
 
 import fitsio
 
-from measure_raw import measure_raw, get_default_extension, camera_name, DECamMeasurer
-from obsbot import (exposure_factor, get_tile_from_name, NewFileWatcher,
-                    mjdnow, datenow)
+# Mosaic or Decam is selected via a symlink:
+#   camera.py -> camera_decam.py    OR
+#   camera.py -> camera_mosaic.py
+from camera import nominal_cal, nice_camera_name, data_env_var, min_n_exts
+
+from measure_raw import get_measurer_class_for_file
+from obsbot import NewFileWatcher
 
 from astrometry.libkd.spherematch import match_radec
 from astrometry.util.fits import fits_table, merge_tables
 from astrometry.util.util import Tan
 from astrometry.util.resample import resample_with_wcs
 
-def main():
-    from camera_decam import nominal_cal, data_env_var
+# We'll want to modify this for MzLS...
+if nice_camera_name == 'DECam':
+    legacy_survey_layers = ['decals-dr3', 'sdssco']
+else:
+    legacy_survey_layers = ['mobo-dr4', 'sdssco']
 
+nicelayernames = { 'decals-dr3': 'DECaLS DR3',
+                   'mobo-dr4': 'MzLS+BASS DR4',
+                   'sdssco': 'SDSS'}
+def main():
     import optparse
     parser = optparse.OptionParser(usage='%prog')
 
-    parser.add_option('--rawdata', help='Directory to monitor for new images: default $%s if set, else "rawdata"' % data_env_var, default=None)
+    parser.add_option('--rawdata', default=None,
+                      help=('Directory to monitor for new images: default ' +
+                            '$%s if set, else "rawdata"' % data_env_var))
 
-    parser.add_option('--no-show', dest='show', default=True, action='store_false',
+    parser.add_option('--no-show', dest='show', default=True,
+                      action='store_false',
                       help='Do not show plot window, just save it.')
 
     parser.add_option('--plotdir', help='Save plots in this directory')
@@ -104,25 +118,26 @@ class NgcBot(NewFileWatcher):
         self.nom = nom
         self.opt = opt
 
+        # Read catalogs
         TT = []
-
         import astrometry
-        fn = os.path.join(os.path.dirname(astrometry.__file__),
-                          'catalogs', 'ngc2000.fits')
+        catdir = os.path.join(os.path.dirname(astrometry.__file__),
+                              'catalogs')
+        fn = os.path.join(catdir, 'ngc2000.fits')
         print('Reading', fn)
         T = fits_table(fn)
         T.delete_column('ngcnum')
         TT.append(T)
 
-        fn = os.path.join(os.path.dirname(astrometry.__file__),
-                          'catalogs', 'ic2000.fits')
+        fn = os.path.join(catdir, 'ic2000.fits')
         print('Reading', fn)
         T = fits_table(fn)
         T.delete_column('icnum')
         TT.append(T)
         self.cat = merge_tables(TT, columns='fillzero')
+        del TT
 
-        print('Total of', len(T), 'NGC/IC objects')
+        print('Total of', len(self.cat), 'NGC/IC objects')
         omit = [
             'OC', # open cluster
             'Ast', # asterism
@@ -134,16 +149,16 @@ class NgcBot(NewFileWatcher):
             ]
         # '?', # uncertain type or may not exist
         # '', # unidentified or type unknown
-        print(Counter(T.classification))
+        print(Counter(self.cat.classification))
 
-        T.cut([t.strip() not in omit for t in T.classification])
-        print('Cut to', len(T), 'NGC/IC objects')
+        self.cat.cut([t.strip() not in omit for t in self.cat.classification])
+        print('Cut to', len(self.cat), 'NGC/IC objects')
 
     def try_open_file(self, path):
         print('Trying to open file: %s' % path)
         F = fitsio.FITS(path)
         ## HACK
-        if len(F) < 60:
+        if len(F) < min_n_exts:
             print('Got', len(F), 'extensions')
             raise RuntimeError('fewer extensions than expected')
 
@@ -152,7 +167,9 @@ class NgcBot(NewFileWatcher):
         F = fitsio.FITS(path)
         primhdr = F[0].read_header()
         print(len(F), 'extensions')
-        meas = DECamMeasurer(path, 0, self.nom)
+        # measure_raw . DECamMeasurer or Mosaic3Measurer
+        meas_class = get_measurer_class_for_file(path)
+        meas = meas_class(path, 0, self.nom)
 
         # We read the WCS headers from all extensions and then spherematch
         # against the catalog.
@@ -162,8 +179,8 @@ class NgcBot(NewFileWatcher):
         for ext in exts:
             hdr = F[ext].read_header()
             extname = hdr['EXTNAME'].strip()
+            # HACK -- skip DECam focus chips.
             if 'F' in extname:
-                # Skip focus chips
                 continue
             meas.ext = ext
             meas.primhdr = primhdr
@@ -190,6 +207,7 @@ class NgcBot(NewFileWatcher):
         for i,j in zip(I,J):
             ext = exts[i]
             obj = self.cat[j]
+            obj.name = obj.name.strip()
             hdr = F[ext].read_header()
             extname = hdr['EXTNAME'].strip()
             expnum = primhdr['EXPNUM']
@@ -254,7 +272,7 @@ class NgcBot(NewFileWatcher):
             corrx = aff[2] + aff[3] * adx + aff[4] * ady - adx
             corry = aff[5] + aff[6] * adx + aff[7] * ady - ady
             print('Affine correction', corrx, corry)
-            ### Shift the 'subwcs' to account for astrometric offset
+            # Shift the 'subwcs' to account for astrometric offset
             cx,cy = subwcs.get_crpix()
             subwcs.set_crpix((cx - dx - corrx, cy - dy - corry))
 
@@ -275,7 +293,7 @@ class NgcBot(NewFileWatcher):
             # We'll resample the new image into the existing-image WCS.
             newimg = None
 
-            for layer in ['decals-dr3', 'sdssco']:
+            for layer in [legacy_survey_layers]:
 
                 url = ('http://legacysurvey.org/viewer/fits-cutout/?ra=%.4f&dec=%.4f&pixscale=%.3f&width=%i&height=%i&layer=%s' %
                        (obj.ra, obj.dec, subwcs.pixel_scale() * scale, rw, rh, layer))
@@ -292,7 +310,6 @@ class NgcBot(NewFileWatcher):
                 # os.close(f)
                 # fits,hdr = fitsio.read(tmpfn, header=True)
                 # print('Wrote FITS to', tmpfn)
-
                 if np.all(fits == 0):
                     continue
 
@@ -310,8 +327,8 @@ class NgcBot(NewFileWatcher):
                 # Resample the new image to this layer's WCS
                 if newimg is not None:
                     continue
-                thiswcs = Tan(hdr)
 
+                thiswcs = Tan(hdr)
                 newimg = np.zeros((rh,rw), dtype=subimg.dtype)
                 try:
                     #Yo,Xo,Yi,Xi,rims = resample_with_wcs(thiswcs, subwcs)
@@ -319,7 +336,7 @@ class NgcBot(NewFileWatcher):
                     Yo,Xo,Yi,Xi,rims = resample_with_wcs(thiswcs, subwcs, [subimg])
                 except:
                     continue
-                #resamp3[Yo,Xo] = subimg[Yi,Xi]
+                #newimg[Yo,Xo] = subimg[Yi,Xi]
                 newimg[Yo,Xo] = rims[0]
 
             if len(fitsimgs) == 0:
@@ -390,8 +407,7 @@ class NgcBot(NewFileWatcher):
             bestn = 0
 
             for i,(layer, bands, imgs) in enumerate(fitsimgs):
-                nicelayer = {'decals-dr3': 'DECaLS DR3',
-                             'sdssco': 'SDSS'}.get(layer, layer)
+                nicelayer = nicelayernames.get(layer, layer)
                 # For DECaLS missing bands: "--z"
                 nicebands = ''
 
@@ -463,8 +479,8 @@ class NgcBot(NewFileWatcher):
                 plt.xticks([]); plt.yticks([])
                 plt.title(tt, **targs)
 
-            plt.suptitle('%s in DECam %i-%s: %s band' %
-                         (obj.name, expnum, extname, newband))
+            plt.suptitle('%s in %s %i-%s: %s band' %
+                         (obj.name, nice_camera_name, expnum, extname, newband))
 
             # Save / show plot
             if self.opt.show:
@@ -506,8 +522,8 @@ class NgcBot(NewFileWatcher):
                 if len(info):
                     info = '(' + info + ') '
 
-                txt = ('DECam observed %s %sin image %i-%s: %s band' %
-                       (obj.name.strip(), info, expnum, extname, newband)
+                txt = ('%s observed %s %sin image %i-%s: %s band' %
+                       (nice_camera_name, obj.name, info, expnum, extname, newband)
                        + ' at %s UT' % dateobs
                        + '\n' + url + '\n' + url2)
                 print('Tweet text:', txt)
