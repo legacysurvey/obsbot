@@ -608,6 +608,8 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     yl,yh = plt.ylim()
 
     mx = np.percentile(np.abs(np.append(dra, ddec)), 95)
+    # make the range at least +- 10 arcsec.
+    mx = max(mx, 10)
     mx *= 1.2
     
     plt.axhline(0.0, color='k', alpha=0.5)
