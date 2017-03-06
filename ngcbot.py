@@ -461,7 +461,7 @@ class NgcBot(NewFileWatcher):
                     nicebands.append(band)
                     print('  ', layer, band)
                     j = newindex[band]
-                    if newimgs[j] == zeroimg:
+                    if newimgs[j] is zeroimg:
                         print('    Setting band', band, '(index %i)'%j, 'to', layer)
                         newimgs[j] = img
                         newbands[j] = band
@@ -555,7 +555,7 @@ class NgcBot(NewFileWatcher):
                 coverage = np.sum(newimg_orig != 0) / float(nw*nh)
                 print('Fraction', coverage, 'of new image is covered')
 
-                if coverage > 0.8:
+                if coverage > 0.75:
                     tweets.append((txt, plotfn))
 
         # Send one NGC object per exposure, chosen randomly.

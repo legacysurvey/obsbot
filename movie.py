@@ -12,6 +12,8 @@ import ephem
 
 from astrometry.util.starutil_numpy import degrees_between
 
+from obsbot import get_tile_from_name
+
 def main():
     import optparse
     import sys
@@ -214,6 +216,8 @@ def main():
                   overhead, 'seconds overhead')
             obs.date += (exptime[i] + overhead) / (24 * 3600.)
 
+    alsocolors = 'kbr'
+
     also = []
     for Ja in Jalso:
         atimes = np.array([ephem.Date(str(j['approx_datetime'])) for j in Ja])
@@ -222,25 +226,26 @@ def main():
         afilts = np.array([j['filter'] for j in Ja])
         aexptime = np.array([j['expTime'] for j in Ja])
         afieldname = [j['object'] for j in Ja]
-        also.append((atimes, aras, adecs, afilts, aexptime, afieldname))
+        apassnum = np.zeros(len(Ja), int)
+        if tiles is not None:
+            for i,f in enumerate(afieldname):
+                tile = get_tile_from_name(f, tiles)
+                if tile is None:
+                    continue
+                pa = tile.get('pass')
+                apassnum[i] = pa
+        also.append((atimes, aras, adecs, afilts, aexptime, afieldname, apassnum))
             
     # Try to get the pass number via parsing the field name to get tile id
     # and looking up the pass number in the tiles table.
     if tiles is not None:
         for i,f in enumerate(fieldname):
-            # "DECaLS_7884_z"
-            parts = f.split('_')
-            if len(parts) < 3:
+            tile = get_tile_from_name(f, tiles)
+            if tile is None:
                 continue
-            if parts[0] != 'DECaLS':
-                continue
-            tileid = int(parts[1])
-            I = np.flatnonzero(tileid == tiles.tileid)
-            if len(I) != 1:
-                continue
-            pa = tiles.get('pass')[I[0]]
-            print('Field', f, 'tileid', tileid, 'pass', pa)
+            pa = tile.get('pass')
             passnum[i] = pa
+            print('Field', f, 'tileid', tile.tileid, 'pass', pa)
 
     for i in reversed(range(0,len(J),opt.skip)):
 
@@ -273,11 +278,14 @@ def main():
                     edgecolors='k')
         plt.plot(transform_ra(rr), dd, 'k-', alpha=0.5, zorder=40)
 
+        edgecolor = 'none'
+        if len(also):
+            edgecolor = alsocolors[0]
         plt.text(transform_ra(rr[i]-5), dd[i], fieldname[i],
-                 bbox=dict(facecolor='w', alpha=0.8, edgecolor='none'),
-                 zorder=60)
+                 bbox=dict(facecolor='w', alpha=0.8, edgecolor=edgecolor,
+                           zorder=60), zorder=61)
 
-        for (atimes, aras, adecs, afilts, aexptime, afieldname) in also:
+        for ia,(atimes, aras, adecs, afilts, aexptime, afieldname, apassnum) in enumerate(also):
             I = np.flatnonzero(atimes <= times[i])
             afiltcc = np.array([fcmap[f]  for f in afilts])
             addecs = np.array([ddecmap[f] for f in afilts])
@@ -285,11 +293,13 @@ def main():
             dd = adecs[I] + addecs[I]
             plt.scatter(transform_ra(rr), dd, c=filtcc[:i+1], s=40, zorder=50,
                         edgecolors='k', alpha=0.5)
-            plt.plot(transform_ra(rr), dd, 'k-', alpha=0.25, zorder=40)
+            cc = alsocolors[(1 + ia) % len(alsocolors)]
+            plt.plot(transform_ra(rr), dd, '-', color=cc,
+                     alpha=0.25, zorder=40)
             ii = I[-1]
             plt.text(transform_ra(rr[-1]-5), dd[-1], afieldname[ii],
-                     bbox=dict(facecolor='w', alpha=0.8, edgecolor='none'),
-                     zorder=50)
+                     bbox=dict(facecolor='w', alpha=0.8, edgecolor=cc,
+                               zorder=55), zorder=56)
 
         
         print('time:', times[i])
@@ -363,13 +373,18 @@ def main():
         plt.ylabel('Dec (deg)')
         tt = ('%s: (%.1f,%.1f), pass %i, UT: %s, %i sec' %
               (fieldname[i], ras[i], decs[i],passnum[i], times[i], exptime[i]))
-        for (atimes, aras, adecs, afilts, aexptime, afieldname) in also:
+        for (atimes, aras, adecs, afilts, aexptime, afieldname, apassnum) in also:
             I = np.flatnonzero(atimes <= times[i])
             ii = I[-1]
-            tt += ('\n%s, (%.1f, %.1f), %i sec' %
-                   (afieldname[ii], aras[ii], adecs[ii], aexptime[ii]))
+            tt += ('\n%s, (%.1f, %.1f), pass %i, %i sec' %
+                   (afieldname[ii], aras[ii], adecs[ii], apassnum[i], aexptime[ii]))
 
-        plt.title(tt)
+        if len(also):
+            for ia,txt in enumerate(tt.split('\n')):
+                plt.figtext(0.5, 0.96 - ia*0.03, txt, fontsize='large',
+                            color=alsocolors[ia], ha ='center')
+        else:
+            plt.title(tt)
 
         fn = '%s-%03i.png' % (opt.base, i)
 
