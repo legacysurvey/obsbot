@@ -1,5 +1,7 @@
 from __future__ import print_function
 
+from collections import Counter
+
 import sys
 import os
 import re
@@ -117,23 +119,39 @@ class NgcBot(NewFileWatcher):
                           'catalogs', 'ngc2000.fits')
         print('Reading', fn)
         T = fits_table(fn)
-        T.name = np.array(['NGC %i' % n for n in T.ngcnum])
+        T.delete_column('ngcnum')
         TT.append(T)
         
         fn = os.path.join(os.path.dirname(astrometry.__file__),
                           'catalogs', 'ic2000.fits')
         print('Reading', fn)
         T = fits_table(fn)
-        T.name = np.array(['IC %i' % n for n in T.icnum])
+        T.delete_column('icnum')
         TT.append(T)
         self.cat = merge_tables(TT, columns='fillzero')
 
+        print('Total of', len(T), 'NGC/IC objects')
+        omit = [
+            'OC', # open cluster
+            'Ast', # asterism
+            '***', # triple star
+            'D*', # double star
+            '*', # star
+            '-', # called nonexistent in RNGC
+            'PD' # plate defect
+            ]
+        # '?', # uncertain type or may not exist
+        # '', # unidentified or type unknown
+        print(Counter(T.classification))
+        
+        T.cut([t.strip() not in omit for t in T.classification])
+        print('Cut to', len(T), 'NGC/IC objects')
+        
         # import obsdb
         # from camera_decam import database_filename
         # obsdb.django_setup(database_filename=database_filename)
         # self.copilot_db = obsdb.MeasuredCCD.objects
 
-        
     def try_open_file(self, path):
         print('Trying to open file: %s' % path)
         F = fitsio.FITS(path)
@@ -199,7 +217,7 @@ class NgcBot(NewFileWatcher):
             x = x - 1
             y = y - 1
 
-            pixrad = obj.radius * 3600. / wcs.pixel_scale()
+            pixrad = 1.4 * obj.radius * 3600. / wcs.pixel_scale()
             pixrad = max(pixrad, 100)
             print('radius:', obj.radius, 'pixel radius:', pixrad)
             r = pixrad
@@ -549,8 +567,23 @@ class NgcBot(NewFileWatcher):
                 # 2017-03-06T00:15:40.101482
                 dateobs = dateobs[:19]
                 dateobs = dateobs.replace('T', ' ')
-                txt = ('DECam observed %s in image %i-%s: %s band' %
-                       (obj.name, expnum, extname, newband)
+
+                info = ''
+
+                typenames = {
+                    'Gx': 'galaxy',
+                    'Gb': 'globular cluster',
+                    'Nb': 'nebula',
+                    'Pl': 'planetary nebula',
+                    'C+N': 'cluster+nebulosity',
+                    'Kt': 'knot in galaxy',
+                }
+                info = typenames.get(obj.classification.strip(), '')
+                if len(info):
+                    info = '(' + info + ') '
+                
+                txt = ('DECam observed %s %sin image %i-%s: %s band' %
+                       (obj.name.strip(), info, expnum, extname, newband)
                        + ' at %s UT' % dateobs
                        + '\n' + url + '\n' + url2)
                 print('Tweet text:', txt)
