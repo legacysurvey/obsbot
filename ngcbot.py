@@ -1,21 +1,18 @@
 from __future__ import print_function
 
 from collections import Counter
-
 import sys
 import os
-import re
-
-import requests
 import tempfile
-
-from PIL import Image
-from io import BytesIO
-
+import requests
 import numpy as np
 import pylab as plt
-
 import fitsio
+
+from astrometry.libkd.spherematch import match_radec
+from astrometry.util.fits import fits_table, merge_tables
+from astrometry.util.util import Tan
+from astrometry.util.resample import resample_with_wcs
 
 # Mosaic or Decam is selected via a symlink:
 #   camera.py -> camera_decam.py    OR
@@ -25,12 +22,6 @@ from camera import nominal_cal, nice_camera_name, data_env_var, min_n_exts
 from measure_raw import get_measurer_class_for_file
 from obsbot import NewFileWatcher
 
-from astrometry.libkd.spherematch import match_radec
-from astrometry.util.fits import fits_table, merge_tables
-from astrometry.util.util import Tan
-from astrometry.util.resample import resample_with_wcs
-
-# We'll want to modify this for MzLS...
 if nice_camera_name == 'DECam':
     legacy_survey_layers = ['decals-dr3', 'sdssco']
 else:
