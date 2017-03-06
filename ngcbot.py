@@ -151,9 +151,13 @@ class NgcBot(NewFileWatcher):
         exts = np.arange(1, len(F))
         for i in exts:
             ext = i
+            hdr = F[ext].read_header()
+            extname = hdr['EXTNAME'].strip()
+            if 'F' in extname:
+                # Skip focus chips
+                continue
             meas = DECamMeasurer(path, ext, self.nom)
             meas.primhdr = primhdr
-            hdr = F[ext].read_header()
             wcs = meas.get_wcs(hdr)
             #print('WCS:', wcs)
             rc,dc = wcs.radec_center()
@@ -162,6 +166,7 @@ class NgcBot(NewFileWatcher):
             rr.append(rc)
             dd.append(dc)
 
+        # we use the last extension's 'radius' here...
         rr = np.array(rr)
         dd = np.array(dd)
         I,J,d = match_radec(rr, dd, self.cat.ra, self.cat.dec, radius)
@@ -169,12 +174,15 @@ class NgcBot(NewFileWatcher):
         print('Matched', len(I), 'NGC objects')
         print(self.cat.name[J])
 
+        tweets = []
+        
         for i,j in zip(I,J):
             ext = exts[i]
             obj = self.cat[j]
             r,d = obj.ra, obj.dec
             hdr = F[ext].read_header()
             extname = hdr['EXTNAME'].strip()
+            expnum = primhdr['EXPNUM']
             if 'F' in extname:
                 # Skip focus chips
                 continue
@@ -191,7 +199,7 @@ class NgcBot(NewFileWatcher):
             pixrad = max(pixrad, 100)
             print('radius:', obj.radius, 'pixel radius:', pixrad)
             r = pixrad
-            tt = '%s in exp %i ext %s (%i)' % (obj.name, primhdr['EXPNUM'], extname, ext)
+            tt = '%s in exp %i ext %s (%i)' % (obj.name, expnum, extname, ext)
             print(tt)
 
             H,W = wcs.shape
@@ -508,15 +516,18 @@ class NgcBot(NewFileWatcher):
                 plt.title(tt, **targs)
 
             plt.suptitle('%s in DECam %i-%s: %s band' %
-                         (obj.name, primhdr['EXPNUM'], extname, newband))
+                         (obj.name, expnum, extname, newband))
     
             if self.opt.show:
                 plt.draw()
                 plt.show(block=False)
                 plt.pause(0.001)
 
-            plotfn = ps.pattern % (ps.format % ps.ploti, ps.suffixes[0])
-            ps.savefig()
+            plotfn = 'ngcbot-%i-%s-%s.png' % (expnum, extname, obj.name.replace(' ','_'))
+            plt.savefig(plotfn)
+            plt.savefig('ngcbot-latest.png')
+            #plotfn = ps.pattern % (ps.format % ps.ploti, ps.suffixes[0])
+            #ps.savefig()
 
             if self.opt.tweet:
                 import urllib
@@ -527,12 +538,24 @@ class NgcBot(NewFileWatcher):
                 if bestdata is not None:
                     url += '&layer=%s' % bestdata
 
+                dateobs = primhdr['DATE-OBS'].strip()
+                print('Dateobs:', dateobs)
+                # 2017-03-06T00:15:40.101482
+                dateobs = dateobs[:19]
+                dateobs = dateobs.replace('T', ' ')
                 txt = ('DECam observed %s in image %i-%s: %s band' %
-                       (obj.name, primhdr['EXPNUM'], extname, newband)
+                       (obj.name, expnum, extname, newband)
+                       + ' at %s UT' % dateobs
                        + '\n' + url + '\n' + url2)
                 print('Tweet text:', txt)
 
-                send_tweet(txt, plotfn)
+                tweets.append((txt, plotfn))
+
+        # Send one NGC object per exposure, chosen randomly.
+        if self.opt.tweet and len(tweets):
+            i = np.random.randint(0, len(tweets))
+            txt,plotfn = tweets[i]
+            send_tweet(txt, plotfn)
 
 def send_tweet(txt, imgfn):
     from twython import Twython
