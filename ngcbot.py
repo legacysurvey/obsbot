@@ -388,6 +388,8 @@ class NgcBot(NewFileWatcher):
             exptime = primhdr['EXPTIME']
             newimg = resamp3 / (zpscale * exptime)
 
+            newimg_orig = newimg.copy()
+
             def my_rgb(imgs, bands, **kwargs):
                 #return get_rgb(imgs, bands, **rgbkwargs)
                 #return sdss_rgb(imgs, bands, scales=dict(g=6.0, r=3.4, i=2.5, z=2.2), m=0.03, **kwargs)
@@ -549,7 +551,7 @@ class NgcBot(NewFileWatcher):
                 print('Tweet text:', txt)
 
                 nh,nw = newimg.shape
-                coverage = np.sum(newimg != 0) / float(nw*nh)
+                coverage = np.sum(newimg_orig != 0) / float(nw*nh)
                 print('Fraction', coverage, 'of new image is covered')
 
                 if coverage > 0.8:
