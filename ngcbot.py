@@ -46,6 +46,8 @@ def main():
 
     parser.add_option('--tweet', default=False, action='store_true',
                       help='Send a tweet for each galaxy?')
+    parser.add_option('--only', default=False, action='store_true',
+                      help='Only run the command-line files, then quit')
     
     opt,args = parser.parse_args()
 
@@ -59,6 +61,8 @@ def main():
     if len(args):
         for a in args:
             bot.process_file(a)
+        if opt.only:
+            return 0
 
     bot.run()
     return 0
