@@ -416,7 +416,6 @@ class NgcBot(NewFileWatcher):
             plt.title('New image (%s)' % newband, **targs)
             
             newimgs = [np.zeros_like(newimg) for i in range(3)]
-            #newbands = ['z','r','g']
             # sdss_rgb reverses the order, so do like grz.
             newbands = ['g','r','z']
             newindex = dict(g=0, r=1, i=2, z=2)
@@ -549,7 +548,12 @@ class NgcBot(NewFileWatcher):
                        + '\n' + url + '\n' + url2)
                 print('Tweet text:', txt)
 
-                tweets.append((txt, plotfn))
+                nh,nw = newimg.shape
+                coverage = np.sum(newimg != 0) / float(nw*nh)
+                print('Fraction', coverage, 'of new image is covered')
+
+                if coverage > 0.8:
+                    tweets.append((txt, plotfn))
 
         # Send one NGC object per exposure, chosen randomly.
         if self.opt.tweet and len(tweets):
