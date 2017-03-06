@@ -248,6 +248,7 @@ def get_tile_id_from_name(name):
         tileid = int(parts[1])
     except:
         return None
+    return tileid
 
 def get_tile_from_name(name, tiles):
     tileid = get_tile_id_from_name(name)

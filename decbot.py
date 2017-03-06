@@ -32,7 +32,7 @@ from astrometry.util.starutil_numpy import dec2dmsstring as dec2dms
 
 from measure_raw import measure_raw
 from obsbot import (
-    exposure_factor, get_tile_from_name, get_airmass,
+    exposure_factor, get_tile_from_name, get_tile_id_from_name, get_airmass,
     Obsbot, datenow, unixtime_to_ephem_date,
     ephem_date_to_mjd, choose_pass, get_forced_pass)
 
@@ -126,16 +126,6 @@ def main(cmdlineargs=None, get_decbot=False):
     
     print('Reading tiles table', opt.tiles)
     tiles = fits_table(opt.tiles)
-
-    # Annotate plans with 'tilepass' field
-    # - build map from tileid to tile pass number
-    tileid_to_pass = np.zeros(tile.tileid.max() + 1, np.uint8)
-    tileid_to_pass[tile.tileid] = tile.get('pass')
-    for i,J in enumerate([J1,J2,J3]):
-        for j in J:
-            tileid = get_tile_id_from_name(j['object'])
-            j['tileid'] = tileid
-            j['tilepass'] = tile_to_pass[tileid]
 
     if opt.rawdata is None:
         opt.rawdata = os.environ.get('DECAM_DATA', 'rawdata')
@@ -242,7 +232,18 @@ class Decbot(Obsbot):
         self.adjust_previous = opt.adjust
         self.nextpass = opt.passnum
         self.latest_measurement = None
-        
+
+        # Annotate plans with 'tilepass' field
+        # - build map from tileid to tile pass number
+        tileid_to_pass = np.zeros(self.tiles.tileid.max() + 1, dtype=np.uint8)
+        tileid_to_pass[self.tiles.tileid] = self.tiles.get('pass')
+        for J in [self.J1,self.J2,self.J3]:
+            for j in J:
+                tileid = get_tile_id_from_name(j['object'])
+                j['tileid'] = tileid
+                j['tilepass'] = int(tileid_to_pass[tileid])
+        del tileid_to_pass
+
         # Read existing files,recording their tile names as vetoes.
         self.observed_tiles = {}
 
@@ -573,6 +574,7 @@ class Decbot(Obsbot):
 
         self.obs.date = ephem.now()
         for ii,jplan in enumerate(J):
+            print('jplan:', jplan)
             s = (('%s (pass %i), band %s, RA,Dec (%.3f,%.3f), ' +
                   'exptime %i.') %
                   (jplan['object'], jplan['tilepass'], jplan['filter'],
