@@ -121,12 +121,22 @@ def main(cmdlineargs=None, get_decbot=False):
     for i,J in enumerate([J1,J2,J3]):
         for j in J:
             j['planpass'] = i+1
-    
+
     obs = ephem_observer()
     
     print('Reading tiles table', opt.tiles)
     tiles = fits_table(opt.tiles)
-    
+
+    # Annotate plans with 'tilepass' field
+    # - build map from tileid to tile pass number
+    tileid_to_pass = np.zeros(tile.tileid.max() + 1, np.uint8)
+    tileid_to_pass[tile.tileid] = tile.get('pass')
+    for i,J in enumerate([J1,J2,J3]):
+        for j in J:
+            tileid = get_tile_id_from_name(j['object'])
+            j['tileid'] = tileid
+            j['tilepass'] = tile_to_pass[tileid]
+
     if opt.rawdata is None:
         opt.rawdata = os.environ.get('DECAM_DATA', 'rawdata')
 
@@ -565,7 +575,7 @@ class Decbot(Obsbot):
         for ii,jplan in enumerate(J):
             s = (('%s (pass %i), band %s, RA,Dec (%.3f,%.3f), ' +
                   'exptime %i.') %
-                  (jplan['object'], jplan['planpass'], jplan['filter'],
+                  (jplan['object'], jplan['tilepass'], jplan['filter'],
                    jplan['RA'], jplan['dec'], jplan['expTime']))
             if ii < 3:
                 airmass = self.airmass_for_tile(jplan)

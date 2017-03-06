@@ -235,8 +235,7 @@ def get_airmass(alt):
     airm = secz-0.0018167*seczm1-0.002875*seczm1**2-0.0008083*seczm1**3
     return airm
 
-
-def get_tile_from_name(name, tiles):
+def get_tile_id_from_name(name):
     # Parse objname like 'MzLS_5623_z'
     parts = name.split('_')
     ok = (len(parts) == 3)
@@ -248,6 +247,11 @@ def get_tile_from_name(name, tiles):
     try:
         tileid = int(parts[1])
     except:
+        return None
+
+def get_tile_from_name(name, tiles):
+    tileid = get_tile_id_from_name(name)
+    if tileid is None:
         return None
     # Find this tile in the tiles table.
     I = np.flatnonzero(tiles.tileid == tileid)
