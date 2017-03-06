@@ -416,8 +416,9 @@ class NgcBot(NewFileWatcher):
             plt.imshow(newgray, **grayargs)
             plt.xticks([]); plt.yticks([])
             plt.title('New image (%s)' % newband, **targs)
-            
-            newimgs = [np.zeros_like(newimg) for i in range(3)]
+
+            zeroimg = np.zeros_like(newimg)
+            newimgs = [zeroimg, zeroimg, zeroimg]
             # sdss_rgb reverses the order, so do like grz.
             newbands = ['g','r','z']
             newindex = dict(g=0, r=1, i=2, z=2)
@@ -460,7 +461,7 @@ class NgcBot(NewFileWatcher):
                     nicebands.append(band)
                     print('  ', layer, band)
                     j = newindex[band]
-                    if newimgs[j] is None:
+                    if newimgs[j] == zeroimg:
                         print('    Setting band', band, '(index %i)'%j, 'to', layer)
                         newimgs[j] = img
                         newbands[j] = band
