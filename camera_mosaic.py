@@ -2,6 +2,10 @@ from mosaic import *
 
 camera_name = 'mosaic3'
 
+nice_camera_name = 'Mosaic3'
+# minimum number of extensions in a valid raw FITS file from this cam
+min_n_exts = 16
+
 bot_name = 'mosbot'
 
 data_env_var = 'MOS3_DATA'

@@ -32,7 +32,7 @@ from astrometry.util.starutil_numpy import dec2dmsstring as dec2dms
 
 from measure_raw import measure_raw
 from obsbot import (
-    exposure_factor, get_tile_from_name, get_airmass,
+    exposure_factor, get_tile_from_name, get_tile_id_from_name, get_airmass,
     Obsbot, datenow, unixtime_to_ephem_date,
     ephem_date_to_mjd, choose_pass, get_forced_pass)
 
@@ -121,12 +121,12 @@ def main(cmdlineargs=None, get_decbot=False):
     for i,J in enumerate([J1,J2,J3]):
         for j in J:
             j['planpass'] = i+1
-    
+
     obs = ephem_observer()
     
     print('Reading tiles table', opt.tiles)
     tiles = fits_table(opt.tiles)
-    
+
     if opt.rawdata is None:
         opt.rawdata = os.environ.get('DECAM_DATA', 'rawdata')
 
@@ -232,7 +232,18 @@ class Decbot(Obsbot):
         self.adjust_previous = opt.adjust
         self.nextpass = opt.passnum
         self.latest_measurement = None
-        
+
+        # Annotate plans with 'tilepass' field
+        # - build map from tileid to tile pass number
+        tileid_to_pass = np.zeros(self.tiles.tileid.max() + 1, dtype=np.uint8)
+        tileid_to_pass[self.tiles.tileid] = self.tiles.get('pass')
+        for J in [self.J1,self.J2,self.J3]:
+            for j in J:
+                tileid = get_tile_id_from_name(j['object'])
+                j['tileid'] = tileid
+                j['tilepass'] = int(tileid_to_pass[tileid])
+        del tileid_to_pass
+
         # Read existing files,recording their tile names as vetoes.
         self.observed_tiles = {}
 
@@ -563,9 +574,10 @@ class Decbot(Obsbot):
 
         self.obs.date = ephem.now()
         for ii,jplan in enumerate(J):
+            #print('jplan:', jplan)
             s = (('%s (pass %i), band %s, RA,Dec (%.3f,%.3f), ' +
                   'exptime %i.') %
-                  (jplan['object'], jplan['planpass'], jplan['filter'],
+                  (jplan['object'], jplan['tilepass'], jplan['filter'],
                    jplan['RA'], jplan['dec'], jplan['expTime']))
             if ii < 3:
                 airmass = self.airmass_for_tile(jplan)
@@ -730,22 +742,24 @@ class Decbot(Obsbot):
 
         # Write a FITS table of the exposures we think we've queued,
         # the ones we have planned, and the future tiles in passes 1,2,3.
-        P = ([(j,'Q') for j in self.queued_tiles] +
-             [(j,'P') for j in upcoming])
-
-        for i,J in enumerate([self.J1,self.J2,self.J3]):
-            passnum = i+1
-            P.append((j,'%i' % passnum))
+        J,types = [],[]
+        for t,j in [
+                ('Q', self.queued_tiles),
+                ('P', upcoming),
+                ('1', self.J1),
+                ('2', self.J2),
+                ('3', self.J3),]:
+            J.extend(j)
+            types.extend(t * len(j))
              
-        J = [j for j,t in P]
         T = fits_table()
-        T.type = np.array([t for j,t in P])
-        T.tilename = np.array([str(j['object']) for j in J])
-        T.filter = np.array([str(j['filter'])[0] for j in J])
-        T.exptime = np.array([j['expTime'] for j in J])
-        T.ra  = np.array([j['RA'] for j in J])
-        T.dec = np.array([j['dec'] for j in J])
-        T.planpass = np.array([j['planpass'] for j in J])
+        T.type = np.array(types)
+        T.tilename = np.array([str(j['object'])    for j in J])
+        T.filter   = np.array([str(j['filter'])[0] for j in J])
+        T.exptime  = np.array([    j['expTime']    for j in J])
+        T.planpass = np.array([    j['planpass']   for j in J])
+        T.ra       = np.array([    j['RA']         for j in J])
+        T.dec      = np.array([    j['dec']        for j in J])
         fn = 'decbot-plan.fits'
         tmpfn = fn + '.tmp'
         T.writeto(tmpfn)

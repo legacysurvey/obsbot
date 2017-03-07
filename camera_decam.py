@@ -2,6 +2,10 @@ from decam import *
 
 camera_name = 'decam'
 
+nice_camera_name = 'DECam'
+# arbitrary minimum number of extensions in a valid raw FITS file from this cam
+min_n_exts = 60
+
 bot_name = 'decbot'
 
 data_env_var = 'DECAM_DATA'
