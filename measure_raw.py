@@ -1056,6 +1056,7 @@ def camera_name(primhdr):
 def get_measurer_class_for_file(fn):
     primhdr = fitsio.read_header(fn)
     cam = camera_name(primhdr)
+    #print('Camera:', cam)
     if cam == 'mosaic3':
         return Mosaic3Measurer
     elif cam == 'decam':

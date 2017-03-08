@@ -6,8 +6,9 @@ import os
 import tempfile
 import requests
 import numpy as np
-import pylab as plt
 import fitsio
+#import pylab as plt
+plt = None
 
 from astrometry.libkd.spherematch import match_radec
 from astrometry.util.fits import fits_table, merge_tables
@@ -30,6 +31,18 @@ else:
 nicelayernames = { 'decals-dr3': 'DECaLS DR3',
                    'mobo-dr4': 'MzLS+BASS DR4',
                    'sdssco': 'SDSS'}
+
+ngc_typenames = {
+    'Gx': 'galaxy',
+    'Gb': 'globular cluster',
+    'Nb': 'nebula',
+    'Pl': 'planetary nebula',
+    'C+N': 'cluster+nebulosity',
+    'Kt': 'knot in galaxy',
+}
+
+ps = None
+
 def main():
     import optparse
     parser = optparse.OptionParser(usage='%prog')
@@ -50,6 +63,16 @@ def main():
                       help='Only run the command-line files, then quit')
 
     opt,args = parser.parse_args()
+
+    global plt
+    if not opt.show:
+        import matplotlib
+        matplotlib.use('Agg')
+    import pylab
+    plt = pylab
+    from astrometry.util.plotutils import PlotSequence
+    global ps
+    ps = PlotSequence('ngcbot')
 
     imagedir = opt.rawdata
     if imagedir is None:
@@ -142,8 +165,10 @@ class NgcBot(NewFileWatcher):
         # '', # unidentified or type unknown
         print(Counter(self.cat.classification))
 
-        self.cat.cut([t.strip() not in omit for t in self.cat.classification])
+        self.cat.cut(np.flatnonzero(np.array([t.strip() not in omit for t in self.cat.classification])))
         print('Cut to', len(self.cat), 'NGC/IC objects')
+
+        print('Remaining classifications:', np.unique(self.cat.classification))
 
     def try_open_file(self, path):
         print('Trying to open file: %s' % path)
@@ -160,6 +185,9 @@ class NgcBot(NewFileWatcher):
         print(len(F), 'extensions')
         # measure_raw . DECamMeasurer or Mosaic3Measurer
         meas_class = get_measurer_class_for_file(path)
+        if meas_class is None:
+            print('Failed to identify camera in', path)
+            return
         meas = meas_class(path, 0, self.nom)
 
         # We read the WCS headers from all extensions and then spherematch
@@ -189,8 +217,22 @@ class NgcBot(NewFileWatcher):
         dd = np.array(dd)
         I,J,d = match_radec(rr, dd, self.cat.ra, self.cat.dec, radius)
 
+        # plt.clf()
+        # angles = np.linspace(0, 2.*np.pi, 40)
+        # for r,d in zip(rr, dd):
+        #     plt.plot(r + radius * np.sin(angles) / np.cos(np.deg2rad(d)), d + radius * np.cos(angles), 'b-')
+        # plt.plot(rr, dd, 'bo')
+        # ax = plt.axis()
+        # plt.plot(self.cat.ra, self.cat.dec, 'r.')
+        # plt.axis(ax)
+        # ps.savefig()
+
         print('Matched', len(I), 'NGC objects')
-        print(self.cat.name[J])
+        if len(I) == 0:
+            return
+        for j in J:
+            info = ngc_typenames.get(self.cat.classification[j].strip(), '')
+            print('  ', self.cat.name[j], info)
 
         # Potential tweet texts and plot filenames
         tweets = []
@@ -220,9 +262,11 @@ class NgcBot(NewFileWatcher):
             xl,xh = int(np.clip(x-r, 0, W-1)), int(np.clip(x+r, 0, W-1))
             yl,yh = int(np.clip(y-r, 0, H-1)), int(np.clip(y+r, 0, H-1))
             if xl == xh or yl == yh:
+                print('no actual overlap with image')
                 continue
             sh,sw = yh-yl, xh-xl
             if sh < 25 or sw < 25:
+                print('tiny overlap', sw, 'x', sh)
                 continue
 
             # Measure the image!
@@ -244,10 +288,12 @@ class NgcBot(NewFileWatcher):
             xl,xh = int(np.clip(x-r, 0, W-1)), int(np.clip(x+r, 0, W-1))
             yl,yh = int(np.clip(y-r, 0, H-1)), int(np.clip(y+r, 0, H-1))
             if xl == xh or yl == yh:
+                print('no actual overlap with image')
                 continue
             subimg = raw[yl:yh, xl:xh]
             sh,sw = subimg.shape
             if sh < 25 or sw < 25:
+                print('tiny overlap', sw, 'x', sh)
                 continue
             subwcs = wcs.get_subimage(xl, yl, sw, sh)
 
@@ -284,17 +330,26 @@ class NgcBot(NewFileWatcher):
             # We'll resample the new image into the existing-image WCS.
             newimg = None
 
-            for layer in [legacy_survey_layers]:
+            for layer in legacy_survey_layers:
 
-                url = ('http://legacysurvey.org/viewer/fits-cutout/?ra=%.4f&dec=%.4f&pixscale=%.3f&width=%i&height=%i&layer=%s' %
+                url = ('http://legacysurvey.org/viewer-dev/fits-cutout/?ra=%.4f&dec=%.4f&pixscale=%.3f&width=%i&height=%i&layer=%s' %
                        (obj.ra, obj.dec, subwcs.pixel_scale() * scale, rw, rh, layer))
                 print('URL:', url)
                 r = requests.get(url)
                 ftmp = tempfile.NamedTemporaryFile()
                 ftmp.write(r.content)
                 ftmp.flush()
-                fits,hdr = fitsio.read(ftmp.name, header=True)
+                #fits,hdr = fitsio.read(ftmp.name, header=True)
+                fitsfile = fitsio.FITS(ftmp.name)
                 ftmp.close()
+                print('FITS file:', len(fitsfile), 'extensions')
+                hdr = fitsfile[0].read_header()
+                fits = fitsfile[0].read()
+                #print('fits:', fits)
+                if fits is None:
+                    print('no coverage in layer', layer)
+                    continue
+
                 # If you need to keep a copy (debugging...)
                 # f,tmpfn = tempfile.mkstemp(suffix='.fits')
                 # os.write(f, r.content)
@@ -348,7 +403,7 @@ class NgcBot(NewFileWatcher):
             newimg /= (zpscale * exptime)
 
             nh,nw = newimg.shape
-            coverage = np.sum(newimg_orig != 0) / float(nw*nh)
+            coverage = np.sum(newimg != 0) / float(nw*nh)
             print('Fraction', coverage, 'of new image has data')
 
             def my_rgb(imgs, bands, **kwargs):
@@ -470,8 +525,14 @@ class NgcBot(NewFileWatcher):
                 plt.xticks([]); plt.yticks([])
                 plt.title(tt, **targs)
 
-            plt.suptitle('%s in %s %i-%s: %s band' %
-                         (obj.name, nice_camera_name, expnum, extname, newband))
+            # NGC classification
+            info = ''
+            info = ngc_typenames.get(obj.classification.strip(), '')
+            if len(info):
+                info = '(' + info + ') '
+
+            plt.suptitle('%s %sin %s %i-%s: %s band' %
+                         (obj.name, info, nice_camera_name, expnum, extname, newband))
 
             # Save / show plot
             if self.opt.show:
@@ -483,6 +544,7 @@ class NgcBot(NewFileWatcher):
             if self.opt.plotdir:
                 plotfn = os.path.join(self.opt.plotdir, plotfn)
             plt.savefig(plotfn)
+            print('Saved', plotfn)
             plt.savefig('ngcbot-latest.png')
 
             # Compose tweet text
@@ -498,20 +560,6 @@ class NgcBot(NewFileWatcher):
                 # 2017-03-06T00:15:40.101482
                 dateobs = dateobs[:19]
                 dateobs = dateobs.replace('T', ' ')
-
-                # NGC classification
-                info = ''
-                typenames = {
-                    'Gx': 'galaxy',
-                    'Gb': 'globular cluster',
-                    'Nb': 'nebula',
-                    'Pl': 'planetary nebula',
-                    'C+N': 'cluster+nebulosity',
-                    'Kt': 'knot in galaxy',
-                }
-                info = typenames.get(obj.classification.strip(), '')
-                if len(info):
-                    info = '(' + info + ') '
 
                 txt = ('%s observed %s %sin image %i-%s: %s band' %
                        (nice_camera_name, obj.name, info, expnum, extname, newband)
