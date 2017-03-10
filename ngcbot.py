@@ -237,7 +237,8 @@ class NgcBot(NewFileWatcher):
 
         # Potential tweet texts and plot filenames
         tweets = []
-
+        goodplots = []
+        
         for i,j in zip(I,J):
             ext = exts[i]
             obj = self.cat[j]
@@ -556,6 +557,10 @@ class NgcBot(NewFileWatcher):
             print('Saved', plotfn)
             #plt.savefig('ngcbot-latest.png')
 
+            good_coverage = 0.75
+            if coverage > good_coverage:
+                goodplots.append(plotfn)
+            
             # Compose tweet text
             if self.opt.tweet:
                 import urllib
@@ -576,17 +581,21 @@ class NgcBot(NewFileWatcher):
                        + '\n' + url + '\n' + url2)
                 print('Tweet text:', txt)
 
-                if coverage > 0.75:
+                if coverage > good_coverage:
                     tweets.append((txt, plotfn))
 
+        # Select a random good-looking plot
+        if len(goodplots):
+            irandom = np.random.randint(0, len(goodplots))
+            # Copy that plot to ngcbot-latest.png
+            plotfn = goodplots[irandom]
+            os.rename(plotfn, 'ngcbot-latest.png')
         # Tweet one NGC object per exposure, chosen randomly.
         if len(tweets):
-            i = np.random.randint(0, len(tweets))
-            txt,plotfn = tweets[i]
+            assert(len(tweets) == len(goodplots))
+            txt,plotfn = tweets[irandom]
             if self.opt.tweet:
                 send_tweet(txt, plotfn)
-            # Copy one plot to ngcbot-latest.png
-            os.rename(plotfn, 'ngcbot-latest.png')
 
 def send_tweet(txt, imgfn):
     from twython import Twython
