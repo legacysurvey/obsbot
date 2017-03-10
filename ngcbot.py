@@ -555,7 +555,6 @@ class NgcBot(NewFileWatcher):
                 plotfn = os.path.join(self.opt.plotdir, plotfn)
             plt.savefig(plotfn)
             print('Saved', plotfn)
-            #plt.savefig('ngcbot-latest.png')
 
             good_coverage = 0.75
             if coverage > good_coverage:
@@ -589,7 +588,10 @@ class NgcBot(NewFileWatcher):
             irandom = np.random.randint(0, len(goodplots))
             # Copy that plot to ngcbot-latest.png
             plotfn = goodplots[irandom]
-            os.rename(plotfn, 'ngcbot-latest.png')
+            import shutil
+            latest = 'ngcbot-latest.png'
+            print('Copying', plotfn, 'to', latest)
+            shutil.copy(plotfn, latest)
         # Tweet one NGC object per exposure, chosen randomly.
         if len(tweets):
             assert(len(tweets) == len(goodplots))
