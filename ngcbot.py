@@ -273,7 +273,13 @@ class NgcBot(NewFileWatcher):
             # Measure the image!
             meas.ext = ext
             meas.edge_trim = 20
-            M = meas.run(n_fwhm=1, verbose=False, get_image=True)
+            try:
+                M = meas.run(n_fwhm=1, verbose=False, get_image=True)
+            except:
+                import traceback
+                print('Failed to measure file', path, 'ext', ext, ':')
+                traceback.print_exc()
+                continue
             #print('Measured:', M.keys())
             raw = M['image']
 
