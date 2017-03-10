@@ -275,6 +275,8 @@ class NgcBot(NewFileWatcher):
             meas.edge_trim = 20
             try:
                 M = meas.run(n_fwhm=1, verbose=False, get_image=True)
+            except KeyboardInterrupt:
+                sys.exit(0)
             except:
                 import traceback
                 print('Failed to measure file', path, 'ext', ext, ':')
