@@ -55,7 +55,8 @@ def main():
                       action='store_false',
                       help='Do not show plot window, just save it.')
 
-    parser.add_option('--plotdir', help='Save plots in this directory')
+    parser.add_option('--plotdir', help='Save plots in this directory',
+                      default='ngcbot-plots')
 
     parser.add_option('--tweet', default=False, action='store_true',
                       help='Send a tweet for each galaxy?')
@@ -545,7 +546,7 @@ class NgcBot(NewFileWatcher):
                 plotfn = os.path.join(self.opt.plotdir, plotfn)
             plt.savefig(plotfn)
             print('Saved', plotfn)
-            plt.savefig('ngcbot-latest.png')
+            #plt.savefig('ngcbot-latest.png')
 
             # Compose tweet text
             if self.opt.tweet:
@@ -571,10 +572,13 @@ class NgcBot(NewFileWatcher):
                     tweets.append((txt, plotfn))
 
         # Tweet one NGC object per exposure, chosen randomly.
-        if self.opt.tweet and len(tweets):
+        if len(tweets):
             i = np.random.randint(0, len(tweets))
             txt,plotfn = tweets[i]
-            send_tweet(txt, plotfn)
+            if self.opt.tweet:
+                send_tweet(txt, plotfn)
+            # Copy one plot to ngcbot-latest.png
+            os.rename(plotfn, 'ngcbot-latest.png')
 
 def send_tweet(txt, imgfn):
     from twython import Twython
