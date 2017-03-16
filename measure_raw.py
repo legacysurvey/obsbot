@@ -1052,7 +1052,18 @@ def camera_name(primhdr):
     Returns 'mosaic3' or 'decam'
     '''
     return primhdr.get('INSTRUME','').strip().lower()
-    
+
+def get_measurer_class_for_file(fn):
+    primhdr = fitsio.read_header(fn)
+    cam = camera_name(primhdr)
+    #print('Camera:', cam)
+    if cam == 'mosaic3':
+        return Mosaic3Measurer
+    elif cam == 'decam':
+        if 'PLVER' in primhdr:
+            # CP-processed DECam image
+            return DECamCPMeasurer
+        return DECamMeasurer
 
 def measure_raw(fn, **kwargs):
     primhdr = fitsio.read_header(fn)

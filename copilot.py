@@ -252,7 +252,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     '''
     import pylab as plt
     T = db_to_fits(mm)
-    T.band = np.core.defchararray.replace(T.band, 'zd', 'z')
+    #T.band = np.core.defchararray.replace(T.band, 'zd', 'z')
     print(len(T), 'exposures')
 
     T.mjd_end = T.mjd_obs + T.exptime / 86400.
@@ -266,7 +266,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     if len(T) == 0:
         return
     
-    ccmap = dict(g='g', r='r', z='m')
+    ccmap = dict(g='g', r='r', z='m', zd='m', rd='r')
 
     #bands = 'grz'
     bands = np.unique(T.band)
@@ -608,6 +608,8 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     yl,yh = plt.ylim()
 
     mx = np.percentile(np.abs(np.append(dra, ddec)), 95)
+    # make the range at least +- 10 arcsec.
+    mx = max(mx, 10)
     mx *= 1.2
     
     plt.axhline(0.0, color='k', alpha=0.5)
@@ -1119,17 +1121,17 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart):
     mlast   = msorted[-1]
     mrecent = msorted[-10:]
 
-    ccmap = dict(g='g', r='r', z='m', zd='m')
+    ccmap = dict(g='g', r='r', z='m', zd='m', rd='r')
     lp,lt = [],[]
-    
+
     plt.clf()
     I = (tiles.in_desi == 1) * (tiles.z_done == 0)
     plt.plot(tiles.ra[I], tiles.dec[I], 'k.', alpha=0.05)
     I = (tiles.in_desi == 1) * (tiles.z_done > 0)
-    plt.plot(tiles.ra[I], tiles.dec[I], 'k.', alpha=0.5)
+    plt.plot(tiles.ra[I], tiles.dec[I], 'k.', alpha=0.25)
 
     plt.plot([m.rabore for m in msorted], [m.decbore for m in msorted], 'k-',
-             lw=2, alpha=0.5)
+             lw=2, alpha=0.1)
     pr = plt.scatter([m.rabore for m in msorted], [m.decbore for m in msorted],
                      color=[ccmap.get(m.band[:1],'k') for m in msorted],
                      marker='o', s=20)
@@ -1142,6 +1144,7 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart):
                    np.array([m.decbore for m in msorted])))
     
     if not nightly:
+        # Plot the planned exposures per pass.
         P.color = np.array([ccmap.get(f[:1],'k') for f in P.filter])
         I = np.flatnonzero(P.type == '1')
         I = I[:10]
@@ -1178,17 +1181,33 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart):
 
     if not nightly:
         I = np.flatnonzero(P.type == 'P')
-        plt.plot(P.ra[I], P.dec[I], 'k-', lw=3, alpha=0.5)
+        # Bold the first few ones
+        II = I[:6]
+        plt.plot(P.ra[II], P.dec[II], 'k-', lw=3, alpha=0.5)
+        II = I[:5]
+        pplan = plt.scatter(P.ra[II], P.dec[II], c=P.color[II], marker='*',
+                            s=100, alpha=1.0)
+        # Faint the rest
+        II = I[5:]
+        plt.plot(P.ra[II], P.dec[II], 'k-', lw=3, alpha=0.2)
+        pplan = plt.scatter(P.ra[II], P.dec[II], c=P.color[II], marker='*',
+                            s=100, alpha=0.4)
+
         rd.append((P.ra[I], P.dec[I]))
-        pplan = plt.scatter(P.ra[I], P.dec[I], c=P.color[I], marker='*',
-                            s=100)
         lp.append(pplan)
         lt.append('Planned')
+
+        # Bold line from "most recent" to "first planned"
+        if len(I) > 0:
+            p = P[I[0]]
+            plt.plot([mlast.rabore, p.ra], [mlast.decbore, p.dec], '-', lw=3, alpha=0.5, color=ccmap.get(p.filter,'k'))
     
     plt.xlabel('RA (deg)')
     plt.ylabel('Dec (deg)')
 
-    plt.figlegend(lp, lt, 'upper right')
+    plt.legend(lp, lt, 'lower left', prop={'size': 10}, ncol=2, 
+               bbox_to_anchor=(0.0, 0.0), numpoints=1, framealpha=0.5,
+               frameon=False)
 
     rr = np.hstack([r for r,d in rd])
     dd = np.hstack([d for r,d in rd])
@@ -1396,9 +1415,9 @@ def main(cmdlineargs=None, get_copilot=False):
 
         now = mjdnow()
         
-        #ccds = obsdb.MeasuredCCD.objects.all()
+        ccds = obsdb.MeasuredCCD.objects.all()
         #ccds = obsdb.MeasuredCCD.objects.all().filter(mjd_obs__gt=now - 0.25)
-        ccds = obsdb.MeasuredCCD.objects.all().filter(mjd_obs__gt=57434)
+        #ccds = obsdb.MeasuredCCD.objects.all().filter(mjd_obs__gt=57434)
         
         print(ccds.count(), 'measured CCDs')
         for ccd in ccds:
