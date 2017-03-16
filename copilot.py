@@ -252,7 +252,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     '''
     import pylab as plt
     T = db_to_fits(mm)
-    #T.band = np.core.defchararray.replace(T.band, 'zd', 'z')
+    T.band = np.core.defchararray.replace(T.band, 'zd', 'z')
     print(len(T), 'exposures')
 
     T.mjd_end = T.mjd_obs + T.exptime / 86400.
@@ -270,7 +270,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
 
     #bands = 'grz'
     bands = np.unique(T.band)
-    #print('Unique bands:', bands)
+    print('Unique bands:', bands)
     
     TT = []
     for band in bands:
@@ -1205,9 +1205,8 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart):
     plt.xlabel('RA (deg)')
     plt.ylabel('Dec (deg)')
 
-    plt.legend(lp, lt, 'lower left', prop={'size': 10}, ncol=2, 
-               bbox_to_anchor=(0.0, 0.0), numpoints=1, framealpha=0.5,
-               frameon=False)
+    plt.figlegend(lp, lt, 'upper right', prop={'size': 10}, ncol=2, numpoints=1,
+                  bbox_to_anchor=(0.9, 0.97), framealpha=0.5, frameon=True)
 
     rr = np.hstack([r for r,d in rd])
     dd = np.hstack([d for r,d in rd])
