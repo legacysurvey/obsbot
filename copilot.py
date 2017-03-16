@@ -252,7 +252,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     '''
     import pylab as plt
     T = db_to_fits(mm)
-    T.band = np.core.defchararray.replace(T.band, 'zd', 'z')
+    #T.band = np.core.defchararray.replace(T.band, 'zd', 'z')
     print(len(T), 'exposures')
 
     T.mjd_end = T.mjd_obs + T.exptime / 86400.
@@ -266,7 +266,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     if len(T) == 0:
         return
     
-    ccmap = dict(g='g', r='r', z='m')
+    ccmap = dict(g='g', r='r', z='m', zd='m', rd='r')
 
     #bands = 'grz'
     bands = np.unique(T.band)
@@ -1121,7 +1121,7 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart):
     mlast   = msorted[-1]
     mrecent = msorted[-10:]
 
-    ccmap = dict(g='g', r='r', z='m', zd='m')
+    ccmap = dict(g='g', r='r', z='m', zd='m', rd='r')
     lp,lt = [],[]
 
     plt.clf()
@@ -1198,13 +1198,16 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart):
         lt.append('Planned')
 
         # Bold line from "most recent" to "first planned"
-        p = P[I[0]]
-        plt.plot([mlast.rabore, p.ra], [mlast.decbore, p.dec], '-', lw=3, alpha=0.5, color=ccmap.get(p.filter,'k'))
+        if len(I) > 0:
+            p = P[I[0]]
+            plt.plot([mlast.rabore, p.ra], [mlast.decbore, p.dec], '-', lw=3, alpha=0.5, color=ccmap.get(p.filter,'k'))
     
     plt.xlabel('RA (deg)')
     plt.ylabel('Dec (deg)')
 
-    plt.figlegend(lp, lt, 'upper right')
+    plt.legend(lp, lt, 'lower left', prop={'size': 10}, ncol=2, 
+               bbox_to_anchor=(0.0, 0.0), numpoints=1, framealpha=0.5,
+               frameon=False)
 
     rr = np.hstack([r for r,d in rd])
     dd = np.hstack([d for r,d in rd])
@@ -1412,9 +1415,9 @@ def main(cmdlineargs=None, get_copilot=False):
 
         now = mjdnow()
         
-        #ccds = obsdb.MeasuredCCD.objects.all()
+        ccds = obsdb.MeasuredCCD.objects.all()
         #ccds = obsdb.MeasuredCCD.objects.all().filter(mjd_obs__gt=now - 0.25)
-        ccds = obsdb.MeasuredCCD.objects.all().filter(mjd_obs__gt=57434)
+        #ccds = obsdb.MeasuredCCD.objects.all().filter(mjd_obs__gt=57434)
         
         print(ccds.count(), 'measured CCDs')
         for ccd in ccds:
