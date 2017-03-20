@@ -3,3 +3,16 @@ obsdb/migrations/*.pyc
 *.png
 *.pdf
 *.json
+*.fits
+*.log
+#*
+*~
+*.DS_Store
+*TemporaryItems
+camera.py
+jnox.py
+legacyanalysis
+legacypipe
+obstatus
+testdata
+tractor
