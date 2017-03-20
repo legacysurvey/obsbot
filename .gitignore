@@ -1,0 +1,5 @@
+*.pyc
+obsdb/migrations/*.pyc
+*.png
+*.pdf
+*.json
