@@ -179,6 +179,11 @@ class NgcBot(NewFileWatcher):
             print('Got', len(F), 'extensions')
             raise RuntimeError('fewer extensions than expected')
 
+    def filter_new_files(self, fns):
+        # MzLS: ignore .dat files
+        return [fn for fn in fns if
+                fn.endswith('.fits.fz') or fn.endswith('.fits')]
+
     def process_file(self, path):
         print('Reading', path)
         F = fitsio.FITS(path)
