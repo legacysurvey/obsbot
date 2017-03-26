@@ -171,6 +171,9 @@ class NgcBot(NewFileWatcher):
 
         print('Remaining classifications:', np.unique(self.cat.classification))
 
+        self.spec = fits_table('specObj-dr12-trim-2.fits')
+
+        
     def try_open_file(self, path):
         print('Trying to open file: %s' % path)
         F = fitsio.FITS(path)
@@ -221,6 +224,231 @@ class NgcBot(NewFileWatcher):
         # we use the last extension's 'radius' here...
         rr = np.array(rr)
         dd = np.array(dd)
+
+        if self.match_ngc(rr, dd, radius, exts, F, primhdr, meas):
+            return
+
+        # No match with NGC catalog -- look at SDSS spectro objects.
+        I,J,d = match_radec(rr, dd, self.spec.ra, self.spec.dec, radius)
+        print(len(I), 'matches to spectra')
+        if len(I) == 0:
+            return False
+
+        #meas_exts = set()
+        #K = []
+        measures = {}
+
+        specobjs = []
+        
+        for k,(i,j) in enumerate(zip(I,J)):
+            ext = exts[i]
+            obj = self.spec[j]
+            obj.name = obj.label.strip()
+            hdr = F[ext].read_header()
+            extname = hdr['EXTNAME'].strip()
+            expnum = primhdr['EXPNUM']
+            wcs = meas.get_wcs(hdr)
+            ok,x,y = wcs.radec2pixelxy(obj.ra, obj.dec)
+            x = x - 1
+            y = y - 1
+            # Choose cutout area
+            pixrad = 1.4 * 50
+            r = pixrad
+            tt = '%s in exp %i ext %s (%i)' % (obj.name, expnum, extname, ext)
+            print(tt)
+
+            # Find the cutout region... does it actually overlap the chip?
+            H,W = wcs.shape
+            xl,xh = int(np.clip(x-r, 0, W-1)), int(np.clip(x+r, 0, W-1))
+            yl,yh = int(np.clip(y-r, 0, H-1)), int(np.clip(y+r, 0, H-1))
+            if xl == xh or yl == yh:
+                print('no actual overlap with image')
+                continue
+            sh,sw = yh-yl, xh-xl
+            if sh < 25 or sw < 25:
+                print('tiny overlap', sw, 'x', sh)
+                continue
+
+            #meas_exts.add(ext)
+            #K.append(k)
+            if ext in measures:
+                M = measures[ext]
+            else:
+                # Measure the image!
+                meas.ext = ext
+                meas.edge_trim = 20
+                try:
+                    M = meas.run(n_fwhm=1, verbose=False, get_image=True)
+                except KeyboardInterrupt:
+                    sys.exit(0)
+                except:
+                    import traceback
+                    print('Failed to measure file', path, 'ext', ext, ':')
+                    traceback.print_exc()
+                    continue
+                measures[ext] = M
+
+            raw = M['image']
+                
+            # Now repeat the cutout check with the trimmed image
+            wcs = M['wcs']
+            # Trim WCS to trimmed raw image shape
+            trim_x0, trim_y0 = M['trim_x0'], M['trim_y0']
+            H,W = raw.shape
+            wcs = wcs.get_subimage(trim_x0, trim_y0, W, H)
+            ok,x,y = wcs.radec2pixelxy(obj.ra, obj.dec)
+            x = x - 1
+            y = y - 1
+            xl,xh = int(np.clip(x-r, 0, W-1)), int(np.clip(x+r, 0, W-1))
+            yl,yh = int(np.clip(y-r, 0, H-1)), int(np.clip(y+r, 0, H-1))
+            if xl == xh or yl == yh:
+                print('no actual overlap with image')
+                continue
+            subimg = raw[yl:yh, xl:xh]
+            sh,sw = subimg.shape
+            if sh < 25 or sw < 25:
+                print('tiny overlap', sw, 'x', sh)
+                continue
+            subwcs = wcs.get_subimage(xl, yl, sw, sh)
+
+            # Astrometric shifts
+            dx = M['dx']
+            dy = M['dy']
+            aff = M['affine']
+            x = (xl+xh)/2
+            y = (yl+yh)/2
+            #print('Affine correction terms:', aff)
+            adx = x - aff[0]
+            ady = y - aff[1]
+            corrx = aff[2] + aff[3] * adx + aff[4] * ady - adx
+            corry = aff[5] + aff[6] * adx + aff[7] * ady - ady
+            print('Affine correction', corrx, corry)
+            # Shift the 'subwcs' to account for astrometric offset
+            cx,cy = subwcs.get_crpix()
+            subwcs.set_crpix((cx - dx - corrx, cy - dy - corry))
+
+            specobjs.append((tt, subwcs, subimg))
+            
+            # # What size of image are we going to request?
+            # scale = 1.
+            # 
+            # rh,rw = int(np.ceil(sh/scale)),int(np.ceil(sw/scale))
+            # # make it square
+            # mx = max(rh, rw)
+            # rw = rh = mx
+            # 
+            # fitsimgs = []
+            # # We'll resample the new image into the existing-image WCS.
+            # newimg = None
+            # 
+            # # HACK
+            # imgs = []
+            # layer = 'sdssco'
+            # bands = 'gri'
+            # for band in bands:
+            #     fn = 'sdssco-1679p492-%s.fits' % band
+            #     fitsfile = fitsio.FITS(fn)
+            #     wcs = Tan(fn, 0)
+            #     hh,ww = wcs.shape
+            #     ok,x,y = wcs.radec2pixelxy(obj.ra, obj.dec)
+            #     x = x - 1
+            #     y = y - 1
+            #     print('x,y', x,y)
+            #     sz = pixrad * 0.262/0.396
+            #     xl,xh = int(np.clip(x-sz, 0, ww-1)), int(np.clip(x+sz, 0, ww-1))
+            #     yl,yh = int(np.clip(y-sz, 0, hh-1)), int(np.clip(y+sz, 0, hh-1))
+            #     if xl == xh or yl == yh:
+            #         print('no overlap with SDSS image')
+            #         continue
+            #     
+            #     img = fitsfile[1][yl:yh+1, xl:xh+1]
+            #     s = (subwcs.pixel_scale() / 0.396)
+            #     img *= s**2
+            #     imgs.append(img)
+            #     thiswcs = wcs
+            #     
+            # if len(imgs) == 0:
+            #     continue
+            # 
+            # fitsimgs.append((layer, bands, imgs))
+            # 
+            # # Resample the new image to this layer's WCS
+            # newimg = np.zeros((rh,rw), dtype=subimg.dtype)
+            # try:
+            #     # Laczos
+            #     Yo,Xo,Yi,Xi,rims = resample_with_wcs(thiswcs, subwcs, [subimg])
+            # except:
+            #     continue
+            # newimg[Yo,Xo] = rims[0]
+            # 
+            # if len(fitsimgs) == 0:
+            #     # No overlap with existing surveys
+            #     continue
+            # 
+            # newband = primhdr['FILTER'][0]
+            
+            
+        # I = I[K]
+        # J = J[K]
+        # print('Cut to', len(I), 'matches in', len(meas_exts), 'extensions')
+        # if len(I) == 0:
+        #     return
+        # measures = {}
+        # for ext in meas_ext:
+        #     measures[ext] = 
+        print(len(specobjs), 'objects')
+
+        def my_rgb(imgs, bands, **kwargs):
+            return sdss_rgb(imgs, bands,
+                            scales=dict(g=6.0, r=3.4, i=2.5, z=2.2),
+                            m=-0.02, clip=False, **kwargs)
+
+        def grayscale(img, band):
+            rgb = my_rgb([img,img,img], [band,band,band])
+            index = 'zrg'.index(newband)
+            gray = rgb[:,:,index]
+            return gray
+
+        newband = primhdr['FILTER'][0]
+
+        plt.figure(2)
+        plt.clf()
+        plt.subplots_adjust(left=0.03, right=0.97, bottom=0.03,
+                            hspace=0, wspace=0)
+        
+        N = len(specobjs)
+        C = int(np.ceil(np.sqrt(N * 1.2)))
+        R = int(np.ceil(N / float(C)))
+        print('Rows,cols, N', R,C, N)
+
+        gray = grayscale(raw, newband)
+        hi = np.percentile(gray, 99.9)
+        grayargs = dict(interpolation='nearest', origin='lower',
+                        vmin=0., vmax=hi, cmap='gray')
+
+        print('Plotting:')
+        plt.clf()
+        for i,(tt, subwcs,subimg) in enumerate(specobjs):
+            plt.subplot(R, C, i+1)
+
+            print('  ', tt)
+            
+            newimg = subimg
+            # New Image plot
+            newgray = grayscale(newimg, newband)
+            #hi = np.percentile(newgray, 99.9)
+            plt.imshow(newgray, **grayargs)
+            plt.xticks([]); plt.yticks([])
+        ps.savefig()
+            
+    def match_ngc(self, rr, dd, radius, exts, F, primhdr, meas):
+        '''
+        rr, dd: np arrays: RA,Dec centers of chips/amps
+        radius: scalar, radius of chips/amps
+        exts: list (same len as rr,dd) of extension indices
+        F: fitsio.FITS object
+        meas: measurement class
+        '''
         I,J,d = match_radec(rr, dd, self.cat.ra, self.cat.dec, radius)
 
         # plt.clf()
@@ -235,7 +463,7 @@ class NgcBot(NewFileWatcher):
 
         print('Matched', len(I), 'NGC objects')
         if len(I) == 0:
-            return
+            return False
         for j in J:
             info = ngc_typenames.get(self.cat.classification[j].strip(), '')
             print('  ', self.cat.name[j], info)
@@ -401,7 +629,8 @@ class NgcBot(NewFileWatcher):
                 newimg[Yo,Xo] = rims[0]
 
             if len(fitsimgs) == 0:
-                return
+                # No overlap with existing surveys
+                continue
 
             #print()
             newband = primhdr['FILTER'][0]
@@ -603,6 +832,7 @@ class NgcBot(NewFileWatcher):
             txt,plotfn = tweets[irandom]
             if self.opt.tweet:
                 send_tweet(txt, plotfn)
+        return True
 
 def send_tweet(txt, imgfn):
     from twython import Twython
