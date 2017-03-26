@@ -283,13 +283,32 @@ class Mosbot(Obsbot):
         print('Wrote', scriptfn)
 
     def process_file(self, fn):
-        ext = self.opt.ext
-
         print('%s: found new image %s' % (str(ephem.now()), fn))
 
+        if not self.check_header(fn):
+            return False
+
+        # Measure the new image
+        kwa = {}
+        ext = self.opt.ext
+        if ext is not None:
+            kwa.update(ext=ext)
+        ps = None
+        M = measure_raw(fn, ps=ps, **kwa)
+
+        # Basic checks
+        ok = (M['nmatched'] >= 20) and (M.get('zp',None) is not None)
+        if not ok:
+            print('Failed basic checks in our measurement of', fn,
+                  '-- not updating anything')
+            # FIXME -- we could fall back to pass 3 here.
+            return False
+
+        return self.update_for_image(M)
+
+    def check_header(self, fn):
         # Read primary FITS header
         phdr = fitsio.read_header(fn)
-        expnum = phdr.get('EXPNUM', 0)
     
         obstype = phdr.get('OBSTYPE','').strip()
         print('obstype:', obstype)
@@ -311,23 +330,8 @@ class Mosbot(Obsbot):
         if filt == 'solid':
             print('Solid (block) filter.')
             return False
-    
-        # Measure the new image
-        kwa = {}
-        if ext is not None:
-            kwa.update(ext=ext)
-        ps = None
-        M = measure_raw(fn, ps=ps, **kwa)
-    
-        # Basic checks
-        ok = (M['nmatched'] >= 20) and (M.get('zp',None) is not None)
-        if not ok:
-            print('Failed basic checks in our measurement of', fn, '-- not updating anything')
-            # FIXME -- we could fall back to pass 3 here.
-            return False
 
-        return self.update_for_image(M)
-
+        return True
 
     def update_for_image(self, M):
         # filename patterns for the exposure and slew scripts
@@ -352,22 +356,16 @@ class Mosbot(Obsbot):
 
         nextpass = choose_pass(trans, seeing, skybright, nomsky,
                                forcedir=self.scriptdir)
+
+        print()
+        print('Selected pass:', nextpass)
+        print()
+
         # Choose the next tile from the right JSON tile list Jp
         J = [self.J1,self.J2,self.J3][nextpass-1]
+
         now = ephem.now()
-        iplan = None
-        for i,j in enumerate(J):
-            tstart = ephem.Date(str(j['approx_datetime']))
-            if tstart > now:
-                print('Found tile', j['object'], 'which starts at', str(tstart))
-                iplan = i
-                break
-        if iplan is None:
-            print('Could not find a JSON observation in pass', nextpass,
-                  'with approx_datetime after now =', str(now),
-                  '-- latest one', str(tstart))
-            return False
-    
+
         # Read the current sequence number
         print('%s: reading sequence number from %s' %
               (str(ephem.now()), self.seqnumpath))
@@ -375,11 +373,33 @@ class Mosbot(Obsbot):
         s = f.read()
         f.close()
         seqnum = int(s)
-        print('%s: sequence number: %i' % (str(ephem.now()), seqnum))
+        print('%s: sequence number: %i' % (str(now), seqnum))
         
+        # 'iplan': the tile index we will use for exposure # 'seqnum'
+        iplan = None
+        if self.opt.cut_before_now:
+            # The usual case
+            for i,j in enumerate(J):
+                tstart = ephem.Date(str(j['approx_datetime']))
+                if tstart <= now:
+                    continue
+                print('Found tile', j['object'], 'which starts at', str(tstart))
+                iplan = i
+                break
+            if iplan is None:
+                print('Could not find a JSON observation in pass', nextpass,
+                      'with approx_datetime after now =', str(now),
+                      '-- latest one', str(tstart))
+                return False
+        else:
+            # For when we want to observe every tile in the plan:
+            # 'seqnum' is the exposure currently running;
+            # seqnum is 1-indexed, so that's the index we want for iplan.
+            iplan = seqnum
+
         # Set observing conditions for computing exposure time
         self.obs.date = now
-    
+
         # Planned exposures:
         P = fits_table()
         P.type = []
@@ -398,11 +418,12 @@ class Mosbot(Obsbot):
             nextseq = seqnum + 1 + iahead
 
             if self.n_exposures > 0 and nextseq > self.n_exposures:
-                print('Planned tile is beyond the exposure number in tonight.sh -- RESTART MOSBOT')
+                print('Planned tile is beyond the exposure number in ',
+                      'tonight.sh -- RESTART MOSBOT')
                 return False
             
-            print('Considering planning tile %s for exp %i' % (tilename, nextseq))
-            
+            print('Considering planning tile %s for exp %i'%(tilename,nextseq))
+
             # Check all planned tiles before this one for a duplicate tile.
             dup = False
             for s in range(nextseq-1, 0, -1):
@@ -414,7 +435,7 @@ class Mosbot(Obsbot):
                     break
             if dup:
                 continue
-    
+
             self.planned_tiles[nextseq] = tilename
             iahead += 1
 
@@ -443,7 +464,6 @@ class Mosbot(Obsbot):
                     print()
                     print()
                     os.system('tput bel; sleep 0.2; ' * 5)
-
                 
             # Find this tile in the tiles table.
             tile = get_tile_from_name(tilename, self.tiles)
@@ -504,11 +524,15 @@ class Mosbot(Obsbot):
                 if exptime > t_sat:
                     exptime_satclipped = t_sat
                     exptime = t_sat
-                    print('Reduced exposure time to avoid z-band saturation: %.1f' % exptime)
+                    print('Reduced exposure time to avoid z-band saturation:',
+                    '%.1f' % exptime)
             exptime = int(np.ceil(exptime))
 
             print('Changing exptime from', jplan['expTime'], 'to', exptime)
             jplan['expTime'] = exptime
+
+            print('Predict tile will be observed at', str(self.obs.date),
+                  'vs approx_datetime', jplan['approx_datetime'])
 
             # Update the computed exposure-time database.
             if self.opt.db:
@@ -587,7 +611,6 @@ class Mosbot(Obsbot):
                 f = open(path, 'w')
                 f.write('\n')
                 f.close()
-
 
         for i,J in enumerate([self.J1,self.J2,self.J3]):
             passnum = i+1

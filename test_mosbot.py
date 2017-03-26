@@ -5,11 +5,7 @@ import os
 
 class TestMosbot(unittest.TestCase):
 
-    def setUp(self):
-        self.testdatadir = os.path.join(os.path.dirname(__file__),
-                                        'testdata')
-        import tempfile
-
+    def set_json_files(self, start_time):
         fn1 = os.path.join(self.testdatadir, 'pass1.json')
         fn2 = os.path.join(self.testdatadir, 'pass2.json')
         fn3 = os.path.join(self.testdatadir, 'pass3.json')
@@ -25,10 +21,8 @@ class TestMosbot(unittest.TestCase):
             J = json.loads(open(fn, 'r').read())
             t0 = ephem.Date(str(J[0]['approx_datetime']))
             print('First exposure:', t0)
-            now = ephem.now()
-            print('Now:', now)
             for j in J:
-                tnew = now + ephem.Date(str(j['approx_datetime'])) - t0
+                tnew = start_time + ephem.Date(str(j['approx_datetime'])) - t0
                 tnew = str(ephem.Date(tnew))
                 j['approx_datetime'] = tnew
                 print('Updated datetime to', tnew)
@@ -36,9 +30,15 @@ class TestMosbot(unittest.TestCase):
             f = open(tmpfn, 'w')
             json.dump(J, f, sort_keys=True, indent=4, separators=(',', ': '))
             f.close()
-                
         self.jsonfiles = [tmpfn1, tmpfn2, tmpfn3]
 
+    def setUp(self):
+        self.testdatadir = os.path.join(os.path.dirname(__file__),
+                                        'testdata')
+        import ephem
+        now = ephem.now()
+        print('Now:', now)
+        self.set_json_files(now)
         
     def test_new_file(self):
         from mosbot import main
@@ -66,7 +66,6 @@ class TestMosbot(unittest.TestCase):
         for cc in c:
             print(cc)
         self.assertEqual(len(c), 19)
-        
 
     def test_new_file_blank(self):
         from mosbot import main
@@ -96,7 +95,6 @@ class TestMosbot(unittest.TestCase):
             'skybright': 19.372964228396995, 'dy': -50.904994833603581,
             'transparency': 0.94911683705518535, 'seeing': 0.9776841626480679,
             'dx': 9.0965935687085278, 'nmatched': 199})
-
 
     def test_large_slew(self):
         from mosbot import main
@@ -142,6 +140,59 @@ class TestMosbot(unittest.TestCase):
 
         mosbot.run()
 
+    def test_no_cut_past(self):
+        from mosbot import main
+        import tempfile
+        import ephem
+
+        now = ephem.now()
+        print('Now:', now)
+        # Make the plans start an hour ago.
+        now -= (1./24.)
+        self.set_json_files(now)
+
+        tempdir = tempfile.mkdtemp()
+        args = ['--script', os.path.join(tempdir, 'tonight.sh'),
+                '--no-cut-past', '--pass', '1']
+        args += self.jsonfiles
+        mosbot = main(cmdlineargs=args, get_mosbot=True)
+
+        # Touch forcepass1
+        f = open(os.path.join(tempdir, 'forcepass1'), 'w')
+        f.close()
+        
+        tiles = [650124, 650123, 652527, 654902, 652528,
+                 654903, 657247, 650125, 657246, 657248]
+        
+        # BEFORE: check tile numbers
+        for i,tile in enumerate(tiles):
+            fn = os.path.join(tempdir, 'expose-%i.sh' % (i+1))
+            txt = open(fn).read()
+            tilename = 'MzLS_%i_z' % tile
+            print('Checking for tile', tilename, 'in file', fn)
+            assert(tilename in txt)
+        
+        # write sequence number
+        f = open(mosbot.seqnumpath, 'w')
+        f.write('5\n')
+        f.close()
+
+        mosbot.update_for_image({
+            'airmass': 1.019,
+            'skybright': 19.372964228396995,
+            'transparency': 0.94911683705518535,
+            'zp': 26.348159194305978,
+            'seeing': 0.9776841626480679,
+            'band': 'z'})
+
+        # AFTER: check that tile numbers remain the same!
+        for i,tile in enumerate(tiles):
+            fn = os.path.join(tempdir, 'expose-%i.sh' % (i+1))
+            txt = open(fn).read()
+            tilename = 'MzLS_%i_z' % tile
+            print('Checking for tile', tilename, 'in file', fn)
+            assert(tilename in txt)
+        
         
 if __name__ == '__main__':
     import obsdb
