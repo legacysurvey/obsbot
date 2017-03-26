@@ -532,7 +532,7 @@ class Mosbot(Obsbot):
             jplan['expTime'] = exptime
 
             print('Predict tile will be observed at', str(self.obs.date),
-                  'vs approx_datetime', jplan['approx_datetime'])
+                  'vs approx_datetime', jplan.get('approx_datetime',None))
 
             # Update the computed exposure-time database.
             if self.opt.db:
@@ -616,7 +616,7 @@ class Mosbot(Obsbot):
             passnum = i+1
             for j in J:
                 tstart = ephem.Date(str(j['approx_datetime']))
-                if tstart < now:
+                if self.opt.cut_before_now and tstart < now:
                     continue
                 P.tilename.append(str(j['object']))
                 filt = str(j['filter'])[0]
@@ -686,33 +686,34 @@ class Mosbot(Obsbot):
 
 def expscript_for_json(j, status=None):
 
-    ss = ('# Exposure scheduled for: %s UT\n' % j['approx_datetime'])
-
-    # Expected start time of this script, in "date -u +%s" units -- seconds since unixepoch = 1970-01-01 00:00:00
-    unixepoch = 25567.5
-    tj = ephem.Date(str(j['approx_datetime']))
-
-    ss = ['dt=$(($(date -u +%%s) - %i))' % (int((tj - unixepoch) * 86400))]
-    #ss.append('echo DT: $dt\n')
-    ss.append('if [ $dt -gt 3600 ]; then\n' +
-              '  echo; echo "WARNING: This exposure is happening more than an hour late!";\n' +
-              '  echo "Scheduled time: %s UT";\n' % j['approx_datetime'] +
-              '  echo; tput bel; sleep 0.25; tput bel; sleep 0.25; tput bel;\n' +
-              'fi\n' +
-              'if [ $dt -lt -3600 ]; then\n' +
-              '  echo; echo "WARNING: This exposure is happening more than an hour early!";\n' +
-              '  echo "Scheduled time: %s UT";\n' % j['approx_datetime'] +
-              '  echo; tput bel; sleep 0.25; tput bel; sleep 0.25; tput bel;\n' +
-              'fi\n')
-    #ADM force exit if observation is more than 4 hours late
-    ss.append('if [ $dt -gt 14400 ]; then\n' +
-              '  echo; echo "ERROR: This exposure is happening more than 4 hours late!";\n' +
-              '  echo "Scheduled time: %s UT";\n' % j['approx_datetime'] +
-              '  echo "YOU SHOULD RERUN mosbot.py TO CREATE A NEW tonight.sh FILE!";\n' +
-              '  touch quit\n' +
-              '  exit 1\n' +
-              'fi\n')
+    ss = []
+    if 'approx_datetime' in j:
+        # Expected start time of this script, in "date -u +%s" units -- seconds since unixepoch = 1970-01-01 00:00:00
+        unixepoch = 25567.5
+        tj = ephem.Date(str(j['approx_datetime']))
     
+        ss = ['# Exposure scheduled for: %s UT\n' % j['approx_datetime'],
+              'dt=$(($(date -u +%%s) - %i))' % (int((tj - unixepoch) * 86400))]
+        #ss.append('echo DT: $dt\n')
+        ss.append('if [ $dt -gt 3600 ]; then\n' +
+                  '  echo; echo "WARNING: This exposure is happening more than an hour late!";\n' +
+                  '  echo "Scheduled time: %s UT";\n' % j['approx_datetime'] +
+                  '  echo; tput bel; sleep 0.25; tput bel; sleep 0.25; tput bel;\n' +
+                  'fi\n' +
+                  'if [ $dt -lt -3600 ]; then\n' +
+                  '  echo; echo "WARNING: This exposure is happening more than an hour early!";\n' +
+                  '  echo "Scheduled time: %s UT";\n' % j['approx_datetime'] +
+                  '  echo; tput bel; sleep 0.25; tput bel; sleep 0.25; tput bel;\n' +
+                  'fi\n')
+        #ADM force exit if observation is more than 4 hours late
+        ss.append('if [ $dt -gt 14400 ]; then\n' +
+                  '  echo; echo "ERROR: This exposure is happening more than 4 hours late!";\n' +
+                  '  echo "Scheduled time: %s UT";\n' % j['approx_datetime'] +
+                  '  echo "YOU SHOULD RERUN mosbot.py TO CREATE A NEW tonight.sh FILE!";\n' +
+                  '  touch quit\n' +
+                  '  exit 1\n' +
+                  'fi\n')
+
     ra  = j['RA']
     dec = j['dec']
     ss.append(jnox_moveto(ra, dec))
