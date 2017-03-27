@@ -4,8 +4,9 @@ import sys
 
 import matplotlib
 import pylab as plt
+import numpy as np
 
-from legacypipe.common import LegacySurveyData
+from legacypipe.survey import LegacySurveyData
 
 from astrometry.util.fits import *
 from astrometry.libkd.spherematch import match_radec
@@ -21,6 +22,7 @@ def main():
 
     if opt.mzls:
         from mosaic import MosaicNominalCalibration
+        from camera_mosaic import database_filename
         nom = MosaicNominalCalibration()
 
         obstatus_fn = 'obstatus/mosaic-tiles_obstatus.fits'
@@ -32,6 +34,7 @@ def main():
 
     else:
         from decam import DecamNominalCalibration
+        from camera_decam import database_filename
         nom = DecamNominalCalibration()
 
         obstatus_fn = 'obstatus/decam-tiles_obstatus.fits'
@@ -40,13 +43,56 @@ def main():
         bands = 'grz'
 
         declo,dechi = -20,35
-        
+
+    # Convert copilot db to fits.
+    import obsdb
+    from copilot import db_to_fits
+    obsdb.django_setup(database_filename=database_filename)
+    ccds = obsdb.MeasuredCCD.objects.all()
+    copilot = db_to_fits(ccds)
+    print(len(copilot), 'measured CCDs in copilot database')
+    copilot.cut(copilot.expnum > 0)
+    print(len(copilot), 'measured CCDs in copilot database with EXPNUM')
+
+    print('Copilot expfactor extremes:', np.percentile(copilot.expfactor[copilot.expfactor != 0], [1,99]))
+
+    
     survey = LegacySurveyData()
+    print('Reading annotated CCDs files...')
     ccds = survey.get_annotated_ccds()
     print(len(ccds), 'CCDs')
 
+    # Fix parsing of OBJECT field to tileid...
+    from obsbot import get_tile_id_from_name
+    tileids = []
+    for o in ccds.object:
+        tid = get_tile_id_from_name(o.strip())
+        if tid is None:
+            tid = 0
+        tileids.append(tid)
+    tileids = np.array(tileids)
+    print(len(np.unique(tileids)), 'unique tile ids in annotated file, from OBJECT')
+    print(len(np.unique(ccds.tileid)), 'unique tile ids in ann file from TILEID')
+    D = np.flatnonzero(tileids != ccds.tileid)
+    print(len(D), 'different tileids')
+    print('From OBJECT:', tileids[D])
+    print('From TILEID:', ccds.tileid[D])
+    ccds.tileid = tileids
+
     O = fits_table(obstatus_fn)
     print(len(O), 'tiles')
+
+    if opt.mzls:
+        from camera_mosaic import fix_expnums
+        # Fix MzLS exposure numbers with wrong leading "3".
+        fix_expnums(ccds.expnum)
+        # Also fix leading "3" in expnums in OBSTATUS file
+        fix_expnums(O.z_expnum)
+        # And copilot database
+        fix_expnums(copilot.expnum)
+        
+    # *after* fixing tileids
+    allccds = ccds.copy()
 
     # Map tile IDs back to index in the obstatus file.
     tileid_to_index = np.empty(max(O.tileid)+1, int)
@@ -96,7 +142,7 @@ def main():
     plt.hist(d*3600, bins=50, range=(0,30))
     plt.xlabel('Distance to nearest tile center (arcsec)')
     plt.savefig('tiledist2.png')
-    
+
     ccds.cut(ccds.tileid > 0)
     print(len(ccds), 'CCDs with tileid')
 
@@ -198,41 +244,153 @@ def main():
 
         galdepth[iv == 0] = 0.
 
-        print('galdepth deciles:', np.percentile(galdepth, [0,10,20,30,40,50,60,70,80,90,100]))
-        
+        #print('galdepth deciles:', np.percentile(galdepth, [0,10,20,30,40,50,60,70,80,90,100]))
+
+        # Z_DONE, Z_EXPNUM but no Z_DEPTH
+        missing_depth = np.flatnonzero((O.get('%s_expnum' % band) > 0) * (O.get('%s_done' % band) == 1) * (galdepth == 0))
+        print('Found', len(missing_depth), 'tiles with', band, 'DONE and EXPNUM but no DEPTH; setting to DEPTH=30')
+        # Don't actually update 'galdepth[missing_depth]' until after this next check...
+
         # Flag tiles that have *only* non-photometric exposures with depth = 1.
-        I = np.flatnonzero((E.filter == band) * (E.photometric == False))
+        I = np.flatnonzero((E.filter == band) * np.logical_not(E.photometric))
         print(len(I), 'exposures are non-photometric in', band, 'band')
-        only_nonphot = np.flatnonzero(
-            galdepth[tileid_to_index[E.tileid[I]]] == 0.)
+        J = tileid_to_index[E.tileid[I]]
+        only_nonphot = J[galdepth[J] == 0.]
         print(len(only_nonphot), 'tiles have only non-photometric exposures')
-        galdepth[only_nonphot] = 1.
         print('Marking', len(only_nonphot),'non-photometric exposures in', band)
 
+        orig_galdepth = galdepth.copy()
+        
+        galdepth[missing_depth] = 30.
+        galdepth[only_nonphot] = 1.
+
+        # Do we have measurements for any of these missing tiles in the copilot db?
+        Igal = np.flatnonzero((O.get('%s_expnum' % band) > 0) *
+                           (O.get('%s_done' % band) == 1) *
+                           (galdepth == 30))
+        expnums = O.get('%s_expnum' % band)[Igal]
+        print(len(expnums), 'still with missing DEPTH')
+        
+        # expnum_to_copilot = np.empty(expnums.max()+1, int)
+        # expnum_to_copilot[:] = -1
+        # expnum_to_copilot[copilot.expnum] = np.arange(len(copilot))
+        expnum_to_copilot = dict([(e,i) for i,e in enumerate(copilot.expnum)])
+
+        if False:
+            # Let's check the accuracy of the copilot's depth estimates...
+            target_exptime = copilot.expfactor * fid.exptime
+            # What fraction of the target exposure time did we take?
+            depth_factor = copilot.exptime / target_exptime
+            nomdepth = fid.single_exposure_depth
+            depth = nomdepth + 2.5 * np.log10(np.sqrt(depth_factor))
+            #print('Copilot predicted depths:', depth)
+            IC = np.array([expnum_to_copilot.get(e, -1) for e in allccds.expnum])
+            extinction = allccds.decam_extinction[:, np.array(['ugrizY'.index(f) for f in allccds.filter])]
+            dd = allccds.galdepth - extinction
+            K = np.flatnonzero(IC >= 0)
+            print('Making scatterplot...')
+            plt.clf()
+            #plt.plot(dd[K], depth[IC[K]], 'b.', alpha=0.2, mec='none')
+            plt.scatter(dd[K], depth[IC[K]],
+                        c=np.clip(copilot.expfactor[IC[K]], 0, 2), s=10, alpha=0.2, edgecolors='none')
+            plt.colorbar()
+            plt.xlabel('Pipeline depth')
+            plt.ylabel('Copilot depth proxy')
+            plt.plot([20,25],[20,25], 'k-', alpha=0.25)
+            plt.plot([20,25],[20+0.1,25+0.1], 'k--', alpha=0.25)
+            plt.plot([20,25],[20-0.1,25-0.1], 'k--', alpha=0.25)
+            plt.axis([20.5, 23, 21, 23.5])
+            plt.title('Copilot vs Pipeline depth estimates.  (color = exp.factor)')
+            plt.savefig('depth-copilot-%s.png' % band)
+            print('Made scatterplot')
+
+        IC = np.array([expnum_to_copilot.get(e, -1) for e in expnums])
+        K = np.flatnonzero(IC >= 0)
+        expnums = expnums[K]
+        # these are the indices into O / galdepth
+        Igal = Igal[K]
+        co = copilot[IC[K]]
+        print(len(expnums), 'matched to copilot database')
+
+        target_exptime = co.expfactor * fid.exptime
+        # What fraction of the target exposure time did we take?
+        depth_factor = co.exptime / target_exptime
+
+        nomdepth = fid.single_exposure_depth
+        print('Nominal single-exposure depth:', nomdepth)
+
+        co.depth = nomdepth + 2.5 * np.log10(np.sqrt(depth_factor))
+        print('Copilot predicted depths:', co.depth)
+
+        J = np.flatnonzero(np.isfinite(co.depth))
+        co = co[J]
+        # indices into O
+        Igal = Igal[J]
+        print(len(Igal), 'good copilot depth estimates')
+        
+        pcts = [0,1,5,25,50,75,95,99,100]
+        print('Copilot depth percentiles:', np.percentile(co.depth, pcts))
+
+        print('Before:', galdepth[Igal])
+        galdepth[Igal] = co.depth
+        print('After:', galdepth[Igal])
+        
         O.set('%s_depth' % band, galdepth)
 
-        print('Depth deciles: [', ', '.join(['%.3f' % f for f in np.percentile(O.get('%s_depth' % band), [0,10,20,30,40,50,60,70,80,90,100])]) + ']')
+        #print('Depth deciles: [', ', '.join(['%.3f' % f for f in np.percentile(O.get('%s_depth' % band), [0,10,20,30,40,50,60,70,80,90,100])]) + ']')
 
-        from astrometry.util.plotutils import antigray
         rlo,rhi = 0,360
         dlo,dhi = declo,dechi
-        rr,dd = np.meshgrid(np.linspace(rlo,rhi,720), np.linspace(dlo,dhi,360))
-        JJ,II,d = match_radec(rr.ravel(), dd.ravel(), O.ra, O.dec, 1.5,
-                              nearest=True)
-        indesi = np.zeros(rr.shape, bool)
-        indesi.flat[JJ] = ((O.in_desi[II] == 1) * (O.in_des[II] == 0))
-
         J = np.flatnonzero((O.in_desi == 1) * (O.in_des == 0) *
                            (O.dec > dlo) * (O.dec < dhi))
         print('Median E(B-V) in DECaLS area:', np.median(O.ebv_med[J]))
         print('Median extinction in DECaLS area, %s band:' % band, np.median(extinction[J]))
 
-        I = np.flatnonzero((O.get('%s_expnum' % band) > 0) * (O.get('%s_depth' % band) == 0))
-        print('Found', len(I), 'tiles with', band, 'EXPNUM but no DEPTH; setting to DEPTH=30')
-        O.get('%s_depth' % band)[I] = 30.
+        I2 = np.flatnonzero((O.get('%s_expnum' % band) > 0) *
+                            (O.get('%s_depth' % band) == 30) *
+                            (O.get('%s_done' % band) == 1) *
+                            (O.in_desi == 1))
+        print(len(I2), 'with EXPNUM and DONE and IN_DESI, but no DEPTH')
+        print('Exposure numbers:', O.get('%s_expnum' % band)[I2])
+        # Sort by expnum
+        # I2 = I2[np.argsort(O.get('%s_expnum' % band)[I2])]
+        # for i2,o in zip(I2, O[I2]):
+        #     print()
+        #     e = o.get('%s_expnum' % band)
+        #     print('  Expnum', e, 'orig galdepth', orig_galdepth[i2])
+        #     date = o.get('%s_date' % band)
+        #     print('  Date', date)
+        #     print('  Pass', o.get('pass'), 'Tile', o.tileid)
+        #     jj = np.flatnonzero(allccds.expnum == e)
+        #     print('  In DESI:', o.in_desi, 'In DES:', o.in_des)
+        #     print('  ', len(jj), 'matching CCDs')
+        #     if len(jj) == 0:
+        #         continue
+        #     print('  CCDs OBJECT', [ob.strip() for ob in allccds.object[jj]])
+        #     print('  CCDs Tileid', allccds.tileid[jj])
+        #     print('  CCDs galdepth', allccds.galdepth[jj])
+        #     print('  CCDs photometric', allccds.photometric[jj])
+        # 
+        #     ii = np.flatnonzero(E.expnum == e)
+        #     print('  ', len(ii), 'Exposures matching')
+        #     if len(ii):
+        #         ee = E[ii[0]]
+        #         print('  exposure tileid', ee.tileid)
+        #         print('  index', tileid_to_index[ee.tileid])
+        #         print('  vs i2=', i2)
+        #         print('  only_nonphot', only_nonphot[i2], 'missing_depth', missing_depth[i2])
+        #     
+        #     kk = np.flatnonzero(allccds.tileid == o.tileid)
+        #     kk = np.array(sorted(set(kk) - set(jj)))
+        #     print('  ', len(kk), 'other CCDs of this tile')
+        # #print('Dates:', O.get('%s_date' % band)[I])
 
-        # print('Exposure numbers:', O.get('%s_expnum' % band)[I])
-        # print('Dates:', O.get('%s_date' % band)[I])
+        from astrometry.util.plotutils import antigray
+        rr,dd = np.meshgrid(np.linspace(rlo,rhi,720), np.linspace(dlo,dhi,360))
+        JJ,II,d = match_radec(rr.ravel(), dd.ravel(), O.ra, O.dec, 1.5,
+                              nearest=True)
+        indesi = np.zeros(rr.shape, bool)
+        indesi.flat[JJ] = ((O.in_desi[II] == 1) * (O.in_des[II] == 0))
         
         plt.figure(figsize=(14,6))
         plt.subplots_adjust(left=0.1, right=0.99)

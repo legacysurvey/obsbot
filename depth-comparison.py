@@ -10,7 +10,7 @@ from astrometry.util.starutil_numpy import mjdtodate
 import pylab as plt
 import numpy as np
 
-from legacypipe.common import *
+from legacypipe.survey import *
 
 import tractor
 
