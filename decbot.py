@@ -32,13 +32,13 @@ from astrometry.util.starutil_numpy import dec2dmsstring as dec2dms
 
 from measure_raw import measure_raw
 from obsbot import (
-    exposure_factor, get_tile_from_name, get_airmass,
+    exposure_factor, get_tile_from_name, get_tile_id_from_name, get_airmass,
     Obsbot, datenow, unixtime_to_ephem_date,
     ephem_date_to_mjd, choose_pass, get_forced_pass)
 
 def main(cmdlineargs=None, get_decbot=False):
     import optparse
-    parser = optparse.OptionParser(usage='%prog <pass1.json> <pass2.json> <pass3.json>')
+    parser = optparse.OptionParser(usage='%prog [<pass1.json> <pass2.json> <pass3.json>]')
 
     from camera_decam import (ephem_observer, default_extension, nominal_cal,
                               tile_path)
@@ -121,12 +121,12 @@ def main(cmdlineargs=None, get_decbot=False):
     for i,J in enumerate([J1,J2,J3]):
         for j in J:
             j['planpass'] = i+1
-    
+
     obs = ephem_observer()
     
     print('Reading tiles table', opt.tiles)
     tiles = fits_table(opt.tiles)
-    
+
     if opt.rawdata is None:
         opt.rawdata = os.environ.get('DECAM_DATA', 'rawdata')
 
@@ -232,7 +232,18 @@ class Decbot(Obsbot):
         self.adjust_previous = opt.adjust
         self.nextpass = opt.passnum
         self.latest_measurement = None
-        
+
+        # Annotate plans with 'tilepass' field
+        # - build map from tileid to tile pass number
+        tileid_to_pass = np.zeros(self.tiles.tileid.max() + 1, dtype=np.uint8)
+        tileid_to_pass[self.tiles.tileid] = self.tiles.get('pass')
+        for J in [self.J1,self.J2,self.J3]:
+            for j in J:
+                tileid = get_tile_id_from_name(j['object'])
+                j['tileid'] = tileid
+                j['tilepass'] = int(tileid_to_pass[tileid])
+        del tileid_to_pass
+
         # Read existing files,recording their tile names as vetoes.
         self.observed_tiles = {}
 
@@ -298,6 +309,9 @@ class Decbot(Obsbot):
             # eg, nominal = 20, sky = 19, brighter is 1 mag brighter than nom.
             nomsky = self.nom.sky(M['band'])
             self.nextpass = choose_pass(trans, seeing, skybright, nomsky)
+            print()
+            print('Selected pass:', self.nextpass)
+            print()
         return self.nextpass
 
     def try_open_file(self, path):
@@ -353,6 +367,11 @@ class Decbot(Obsbot):
             return
 
         # Is "now" after the next tile in any pass?  If so, replan!
+
+        # (but only if cut_before_now is set)
+        if not self.opt.cut_before_now:
+            return
+
         replan = False
         for J in [self.J1, self.J2, self.J3]:
             if len(J):
@@ -386,14 +405,9 @@ class Decbot(Obsbot):
         return [fn for fn in fns if
                 fn.endswith('.fits.fz') or fn.endswith('.fits')]
 
-    def process_file(self, fn):
-        ext = self.opt.ext
-        #print('%s: found new image %s' % (str(ephem.now()), fn))
-
+    def check_header(self, fn):
         # Read primary FITS header
         phdr = fitsio.read_header(fn)
-        expnum = phdr.get('EXPNUM', 0)
-    
         obstype = phdr.get('OBSTYPE','').strip()
         #print('Obstype:', obstype)
         if obstype in ['zero', 'focus', 'dome flat']:
@@ -418,11 +432,10 @@ class Decbot(Obsbot):
 
         obj = phdr.get('OBJECT', '')
         print('Object:', obj, 'exptime', exptime, 'filter', filt)
-        
-        # Measure the new image
-        kwa = dict(verbose=self.verbose, ps=None)
+        return True
 
-        # multiple extensions?
+    def measure_extensions(self, fn, ext, kwa):
+        # If we're checking multiple extensions, build argument lists for each.
         args = []
         if ext is not None:
             exts = ext.split(',')
@@ -432,13 +445,15 @@ class Decbot(Obsbot):
                 args.append((fn, thiskwa))
         else:
             args.append((fn, kwa))
-
+        # Measure extensions in parallel.
         from astrometry.util.multiproc import multiproc
         mp = multiproc(self.opt.threads)
         MM = mp.map(bounce_measure_raw, args)
         mp.close()
         del mp
+        return MM
 
+    def check_measurements(self, MM, fn):
         # Reasonableness checks
         keep = []
         for M in MM:
@@ -449,23 +464,39 @@ class Decbot(Obsbot):
             print('Failed checks in our measurement of', fn,
                   '-- not updating anything')
             # FIXME -- we could fall back to pass 3 here.
+            return []
+        return keep
+
+    def average_measurements(self, MM):
+        # Average the measurements -- but start by copying one of
+        # the measurements.
+        M = MM[0].copy()
+        # FIXME -- means?
+        for key,nice in [('skybright','Sky'),
+                         ('transparency','Transparency'),
+                         ('seeing','Seeing')]:
+            print('Measurements of %-12s:' % nice,
+                  ', '.join(['%6.3f' % mi[key] for mi in MM]))
+            M[key] = np.mean([mi[key] for mi in MM])
+        return M
+
+    def process_file(self, fn):
+        ok = self.check_header(fn)
+        if not ok:
             return False
-        MM = keep
+        # Measure the new image
+        kwa = dict(verbose=self.verbose, ps=None)
+        MM = self.measure_extensions(fn, self.opt.ext, kwa)
+
+        MM = self.check_measurements(MM, fn)
+        if len(MM) == 0:
+            return False
         
         if len(MM) == 1:
             M = MM[0]
         else:
-            # Average the measurements -- but start by copying one of
-            # the measurements.
-            M = MM[0].copy()
-            # FIXME -- means?
-            for key,nice in [('skybright','Sky'),
-                             ('transparency','Transparency'),
-                             ('seeing','Seeing')]:
-                print('Measurements of %-12s:' % nice,
-                      ', '.join(['%6.3f' % mi[key] for mi in MM]))
-                M[key] = np.mean([mi[key] for mi in MM])
-        
+            M = self.average_measurements(MM)
+
         trans  = M['transparency']
         seeing = M['seeing']
         skybright = M['skybright']
@@ -517,41 +548,43 @@ class Decbot(Obsbot):
         # Update plans (exposure times) for all three passes
         for j,J in enumerate([self.J1, self.J2, self.J3]):
             passnum = j+1
+            self.update_plans_for_pass(passnum, J, exptime)
+        self.write_plans()
 
-            if len(J) == 0:
-                print('Could not find a JSON observation in pass', passnum,
-                      'with approx_datetime after now =', str(ephem.now()))
-                return False
+    def update_plans_for_pass(self, passnum, J, exptime):
+        if len(J) == 0:
+            print('Could not find a JSON observation in pass', passnum,
+                  'with approx_datetime after now =', str(ephem.now()))
+            return
 
-            M = self.latest_measurement
-            if M is not None:
-                # Update the exposure times in plan J based on measured conditions.
-                print('Updating exposure times for pass', passnum)
-                # Keep track of expected time of observations
-                # FIXME -- should add margin for the images currently in the queue...
-                self.obs.date = ephem.now()
-                for ii,jplan in enumerate(J):
-                    exptime = self.exptime_for_tile(jplan, debug=(ii < 3))
-                    jplan['expTime'] = exptime
-                    self.obs.date += (exptime + self.nom.overhead) / 86400.
-            elif exptime is not None: 
-                for ii,jplan in enumerate(J):
-                    jplan['expTime'] = exptime
-
+        M = self.latest_measurement
+        if M is not None:
+            # Update the exposure times in plan J based on measured conditions.
+            print('  Updating exposure times for pass', passnum)
+            # Keep track of expected time of observations
+            # FIXME -- should add margin for the images currently in the queue.
             self.obs.date = ephem.now()
             for ii,jplan in enumerate(J):
-                s = (('Plan tile %s (pass %i), band %s, RA,Dec (%.3f,%.3f), ' +
-                      'exptime %i.') %
-                      (jplan['object'], jplan['planpass'], jplan['filter'],
-                       jplan['RA'], jplan['dec'], jplan['expTime']))
-                if ii <= 3:
-                    airmass = self.airmass_for_tile(jplan)
-                    s += '  Airmass if observed now: %.2f' % airmass
-                    self.log(s)
-                else:
-                    self.debug(s)
-                
-        self.write_plans()
+                exptime = self.exptime_for_tile(jplan)
+                jplan['expTime'] = exptime
+                self.obs.date += (exptime + self.nom.overhead) / 86400.
+        elif exptime is not None: 
+            for ii,jplan in enumerate(J):
+                jplan['expTime'] = exptime
+
+        self.obs.date = ephem.now()
+        for ii,jplan in enumerate(J):
+            #print('jplan:', jplan)
+            s = (('%s (pass %i), band %s, RA,Dec (%.3f,%.3f), ' +
+                  'exptime %i.') %
+                  (jplan['object'], jplan['tilepass'], jplan['filter'],
+                   jplan['RA'], jplan['dec'], jplan['expTime']))
+            if ii < 3:
+                airmass = self.airmass_for_tile(jplan)
+                s += '  Airmass if observed now: %.2f' % airmass
+                print('   ', s)
+            else:
+                self.debug('  ', s)
             
     def airmass_for_tile(self, jplan):
         '''
@@ -564,8 +597,8 @@ class Decbot(Obsbot):
         etile.compute(self.obs)
         airmass = get_airmass(float(etile.alt))
         return airmass
-    
-    def exptime_for_tile(self, jplan, debug=False):
+
+    def exptime_for_tile(self, jplan):
         '''
         Note, uses self.obs(.date) to compute airmass.
         '''
@@ -579,66 +612,21 @@ class Decbot(Obsbot):
         M = self.latest_measurement
         trans  = M['transparency']
         seeing = M['seeing']
-        msky = M['skybright']
+        msky  = M['skybright']
         grsky = M.get('grsky', None)
         grsee = M.get('grsee', None)
         mband = M['band']
         mairmass = M['airmass']
         assert(mairmass >= 1.0 and mairmass < 4.0)
-        
-        if mband == band:
-            sky = msky
-        else:
-            sky = None
-            if ((grsky is not None) and
-                ((mband == 'g' and band == 'r') or
-                 (mband == 'r' and band == 'g'))):
-                if debug:
-                    print('g-r color:', grsky)
-                    print('measured sky in', mband, '=', msky)
-                if band == 'r':
-                    sky = msky - grsky
-                else:
-                    sky = msky + grsky
-                    if debug:
-                        print('predicted sky in', band, '=', sky)
-                
-            if sky is None:
-                # Guess that the sky is as much brighter than canonical
-                # in the next band as it is in this one!
-                nomsky = self.nom.sky(mband)
-                sky = ((msky - nomsky) + self.nom.sky(band))
 
-        if (grsee is not None) and (band in 'gr'):
-            g_see,r_see,G,R = grsee
-            oldsee = seeing
-            oldair = mairmass
-            if band == 'r':
-                seeing = r_see
-                mairmass = np.median(R.airmass)
-            else:
-                seeing = g_see
-                mairmass = np.median(G.airmass)
-            if debug:
-                print('Using g,r seeing estimate', seeing, 'rather than most',
-                      'recent measurement', oldsee)
-                print('Updating airmass from', oldair, 'to', mairmass,
-                      'used for seeing estimate')
-
-        seeing_wrt_airmass = self.nom.seeing_wrt_airmass(band)
-        oldsee = seeing
-        seeing += (airmass - mairmass) * seeing_wrt_airmass
-        if debug:
-            print('Updated seeing prediction from', oldsee, 'to', seeing,
-                  'for airmass %.2f to %.2f' % (mairmass, airmass))
+        sky = self.predict_sky(mband, msky, band, grsky)
+        seeing = self.predict_seeing(band, seeing, mairmass, airmass, grsee)
 
         fid = self.nom.fiducial_exptime(band)
-        expfactor = exposure_factor(fid, self.nom,
-                                    airmass, ebv, seeing, sky, trans)
+        expfactor = exposure_factor(fid, self.nom, airmass,ebv,seeing,sky,trans)
 
         if self.adjust_previous:
-            adjfactor = self.adjust_for_previous(tile, band, fid,
-                                                 debug=debug)
+            adjfactor = self.adjust_for_previous(tile, band, fid)
             expfactor *= adjfactor
 
         exptime = expfactor * fid.exptime
@@ -659,7 +647,65 @@ class Decbot(Obsbot):
                          'saturation: %.1f s' % exptime, uniq=True)
         exptime = int(exptime)
         return exptime
-            
+
+    def predict_sky(self, mband, msky, band, grsky):
+        '''
+        mband: measured band
+        msky: measured sky in that band
+        band: band that we want to predict the sky level in
+        grsky: estimate of g-r sky color.
+        '''
+        if mband == band:
+            sky = msky
+        else:
+            sky = None
+            if ((grsky is not None) and
+                ((mband == 'g' and band == 'r') or
+                 (mband == 'r' and band == 'g'))):
+                self.debug('g-r color:', grsky, '; measured sky in', mband,
+                           '=', msky)
+                if band == 'r':
+                    sky = msky - grsky
+                else:
+                    sky = msky + grsky
+                    self.debug('predicted sky in', band, '=', sky)
+                
+            if sky is None:
+                # Guess that the sky is as much brighter than canonical
+                # in the next band as it is in this one!
+                nomsky = self.nom.sky(mband)
+                sky = ((msky - nomsky) + self.nom.sky(band))
+        return sky
+
+    def predict_seeing(self, band, seeing, mairmass, airmass, grsee):
+        '''
+        band: band we want to predict the seeing in.
+        seeing: measured seeing
+        mairmass: airmass of measured images
+        airmass: airmass of the image we want to predict for.
+        grsee: recent seeing estimates for g,r bands.
+        '''
+        oldsee = seeing
+        if (grsee is not None) and (band in 'gr'):
+            g_see,r_see,G,R = grsee
+            oldair = mairmass
+            if band == 'r':
+                seeing = r_see
+                mairmass = np.median(R.airmass)
+            else:
+                seeing = g_see
+                mairmass = np.median(G.airmass)
+                self.debug('Using g,r seeing estimate', seeing, 'rather than ',
+                           'most recent measurement', oldsee)
+                self.debug('Updating airmass from', oldair, 'to', mairmass,
+                           'used for seeing estimate')
+
+        seeing_wrt_airmass = self.nom.seeing_wrt_airmass(band)
+        seeing += (airmass - mairmass) * seeing_wrt_airmass
+        self.debug('Updated seeing prediction from', oldsee, 'to', seeing,
+                   'for airmass %.2f to %.2f' % (mairmass, airmass))
+        return seeing
+
     def tiles_after_now(self, J):
         now = ephem.now()
         keep = []
@@ -696,22 +742,24 @@ class Decbot(Obsbot):
 
         # Write a FITS table of the exposures we think we've queued,
         # the ones we have planned, and the future tiles in passes 1,2,3.
-        P = ([(j,'Q') for j in self.queued_tiles] +
-             [(j,'P') for j in upcoming])
-
-        for i,J in enumerate([self.J1,self.J2,self.J3]):
-            passnum = i+1
-            P.append((j,'%i' % passnum))
+        J,types = [],[]
+        for t,j in [
+                ('Q', self.queued_tiles),
+                ('P', upcoming),
+                ('1', self.J1),
+                ('2', self.J2),
+                ('3', self.J3),]:
+            J.extend(j)
+            types.extend(t * len(j))
              
-        J = [j for j,t in P]
         T = fits_table()
-        T.type = np.array([t for j,t in P])
-        T.tilename = np.array([str(j['object']) for j in J])
-        T.filter = np.array([str(j['filter'])[0] for j in J])
-        T.exptime = np.array([j['expTime'] for j in J])
-        T.ra  = np.array([j['RA'] for j in J])
-        T.dec = np.array([j['dec'] for j in J])
-        T.planpass = np.array([j['planpass'] for j in J])
+        T.type = np.array(types)
+        T.tilename = np.array([str(j['object'])    for j in J])
+        T.filter   = np.array([str(j['filter'])[0] for j in J])
+        T.exptime  = np.array([    j['expTime']    for j in J])
+        T.planpass = np.array([    j['planpass']   for j in J])
+        T.ra       = np.array([    j['RA']         for j in J])
+        T.dec      = np.array([    j['dec']        for j in J])
         fn = 'decbot-plan.fits'
         tmpfn = fn + '.tmp'
         T.writeto(tmpfn)
@@ -722,9 +770,10 @@ class Decbot(Obsbot):
         keep = []
         now = ephem.now()
         for j in J:
-            tstart = ephem.Date(str(j['approx_datetime']))
-            if tstart < now:
-                continue
+            if self.opt.cut_before_now:
+                tstart = ephem.Date(str(j['approx_datetime']))
+                if tstart < now:
+                    continue
             tilename = str(j['object'])
             # Was this tile seen in a file on disk? (not incl. backlog)
             if tilename in self.observed_tiles:

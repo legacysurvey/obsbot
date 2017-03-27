@@ -235,8 +235,7 @@ def get_airmass(alt):
     airm = secz-0.0018167*seczm1-0.002875*seczm1**2-0.0008083*seczm1**3
     return airm
 
-
-def get_tile_from_name(name, tiles):
+def get_tile_id_from_name(name):
     # Parse objname like 'MzLS_5623_z'
     parts = name.split('_')
     ok = (len(parts) == 3)
@@ -248,6 +247,12 @@ def get_tile_from_name(name, tiles):
     try:
         tileid = int(parts[1])
     except:
+        return None
+    return tileid
+
+def get_tile_from_name(name, tiles):
+    tileid = get_tile_id_from_name(name)
+    if tileid is None:
         return None
     # Find this tile in the tiles table.
     I = np.flatnonzero(tiles.tileid == tileid)
@@ -491,6 +496,10 @@ class NewFileWatcher(Logger):
 
 # Code shared between mosbot.py and decbot.py
 class Obsbot(NewFileWatcher):
+    def __init__(self, *args, **kwargs):
+        super(Obsbot, self).__init__(*args, **kwargs)
+        self.tiletree = None
+
     def adjust_for_previous(self, tile, band, fid, debug=False,
                             get_others=False):
         '''
@@ -547,7 +556,8 @@ class Obsbot(NewFileWatcher):
 
         thispass = tile.get('pass')
 
-        print('This tile is pass', thispass)
+        if debug:
+            print('This tile is pass', thispass)
 
         # How much extra depth is required due to make up for previous exposures?
         needed = 0.
@@ -561,21 +571,24 @@ class Obsbot(NewFileWatcher):
                                (others.factor > 0))
             if len(I) == 0:
                 continue
-            
-            print('Tiles for pass', passnum, ':', others.tileid[I])
-            print('  with factors:', others.factor[I])
+
+            if debug:
+                print('Tiles for pass', passnum, ':', others.tileid[I])
+                print('  with factors:', others.factor[I])
 
             # We want to make up for the worst "acceptable" surrounding tile
             factor = min(others.factor[I])
 
-            print('Need to make up factor', 1.-factor, 'for this pass')
+            if debug:
+                print('Need to make up factor', 1.-factor, 'for this pass')
 
             # Only increase the depth needed; we would need to know
             # that the whole region is covered to the required depth
             # (incl chip gaps) in order to decrease the depth required.
             needed += max(0, (1. - factor))
 
-        print('Total factor that needs to be made up:', needed)
+        if debug:
+            print('Total factor that needs to be made up:', needed)
 
         # # Split this extra required exposure time between the remaining
         # # passes...
@@ -619,15 +632,26 @@ class Obsbot(NewFileWatcher):
 
         Returns: *otherpasses*, table object
         '''
-        from astrometry.libkd.spherematch import match_radec
-        # Could also use the fact that the passes are offset from each other
-        # by a fixed index (15872 for decam)...
-        # Max separation is about 0.6 degrees for DECam...
-        #### FIXME for Mosaic this is much smaller... and the three passes
-        #### for a tile are not necessarily relatively close to each other.
-        I,J,d = match_radec(tile.ra, tile.dec, tiles.ra, tiles.dec, 1.)
+        if tiles != self.tiles:
+            from astrometry.libkd.spherematch import match_radec
+            # Could also use the fact that the passes are offset from each other
+            # by a fixed index (15872 for decam)...
+            # Max separation is about 0.6 degrees for DECam...
+            #### FIXME for Mosaic this is much smaller... and the three passes
+            #### for a tile are not necessarily relatively close to each other.
+            I,J,d = match_radec(tile.ra, tile.dec, tiles.ra, tiles.dec, 1.)
+            # Omit 'tile' itself...
+            K = np.flatnonzero(tiles.tileid[J] != tile.tileid)
+            J = J[K]
+            return tiles[J]
+
+        if self.tiletree is None:
+            from astrometry.libkd.spherematch import tree_build_radec
+            self.tiletree = tree_build_radec(self.tiles.ra, self.tiles.dec)
+
+        from astrometry.libkd.spherematch import tree_search_radec
+        J = tree_search_radec(self.tiletree, tile.ra, tile.dec, 1.0)
         # Omit 'tile' itself...
         K = np.flatnonzero(tiles.tileid[J] != tile.tileid)
         J = J[K]
         return tiles[J]
-        

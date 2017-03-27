@@ -252,8 +252,9 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     '''
     import pylab as plt
     T = db_to_fits(mm)
-    T.band = np.core.defchararray.replace(T.band, 'zd', 'z')
     print(len(T), 'exposures')
+    # Replace filter "zd" -> "z", "rd" -> "r".
+    T.band = np.array([dict(zd='z', rd='r').get(b, b) for b in T.band])
 
     T.mjd_end = T.mjd_obs + T.exptime / 86400.
 
@@ -267,10 +268,10 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         return
     
     ccmap = dict(g='g', r='r', z='m')
+    xcolor = '0.5'
 
-    #bands = 'grz'
     bands = np.unique(T.band)
-    #print('Unique bands:', bands)
+    print('Unique bands:', bands)
     
     TT = []
     for band in bands:
@@ -282,7 +283,6 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
                         bottom=0.07)
 
     def limitstyle(band):
-        #return dict(mec='k', mfc=ccmap[band], ms=8, mew=1)
         return dict(mec='k', mfc='none', ms=7, mew=1)
 
     # Check for bad things that can happen
@@ -334,7 +334,8 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     for band,Tb in zip(bands, TT):
         I = np.flatnonzero(Tb.seeing > 0)
         if len(I):
-            plt.plot(Tb.mjd_obs[I], Tb.seeing[I], 'o', color=ccmap[band])
+            plt.plot(Tb.mjd_obs[I], Tb.seeing[I], 'o',
+                     color=ccmap.get(band, xcolor))
 
         I = np.flatnonzero(Tb.seeing > mx)
         if len(I):
@@ -360,7 +361,8 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     
     y = yl + 0.01*(yh-yl)
     plt.plot(np.vstack((T.mjd_obs, T.mjd_end)),
-             np.vstack((y, y)), '-', lw=3, alpha=0.5, color=ccmap[band],
+             np.vstack((y, y)), '-', lw=3, alpha=0.5,
+             color=ccmap.get(band, xcolor),
              solid_joinstyle='bevel')
 
     plt.ylim(yl,min(yh,mx))
@@ -385,11 +387,13 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
             sky0 = nom.sky(band)
         except KeyError:
             # unknown filter
+            print('Unknown filter for sky:', band)
             continue
         T.dsky[T.band == band] = Tb.sky - sky0
         I = np.flatnonzero(Tb.sky > 0)
         if len(I):
-            plt.plot(Tb.mjd_obs[I], Tb.sky[I] - sky0, 'o', color=ccmap[band])
+            plt.plot(Tb.mjd_obs[I], Tb.sky[I] - sky0, 'o',
+                     color=ccmap.get(band, xcolor))
             minsky = min(minsky, min(Tb.sky[I] - sky0))
             nomskies.append((band, sky0))
             medskies.append((band, np.median(Tb.sky[I])))
@@ -454,7 +458,8 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     for band,Tb in zip(bands, TT):
         I = np.flatnonzero(Tb.transparency > 0)
         if len(I):
-            plt.plot(Tb.mjd_obs[I], Tb.transparency[I], 'o', color=ccmap[band])
+            plt.plot(Tb.mjd_obs[I], Tb.transparency[I], 'o',
+                     color=ccmap.get(band, xcolor))
         I = np.flatnonzero(Tb.transparency > mx)
         if len(I):
             plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
@@ -487,6 +492,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         fid = nom.fiducial_exptime(band)
         if fid is None:
             # Band not 'g','r', or 'z'
+            print('Unknown band', band)
             continue
         basetime = fid.exptime
         lo,hi = fid.exptime_min, fid.exptime_max
@@ -509,7 +515,8 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         # Actual exposure times taken, marked with filled colored circles.
         I = np.flatnonzero(Tb.exptime > 0)
         if len(I):
-            plt.plot(Tb.mjd_obs[I], Tb.exptime[I], 'o', color=ccmap[band])
+            plt.plot(Tb.mjd_obs[I], Tb.exptime[I], 'o',
+                     color=ccmap.get(band, xcolor))
 
     yl,yh = plt.ylim()
     mx = yh
@@ -533,13 +540,13 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         if len(I):
             plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
 
-        plt.axhline(basetime+dt, color=ccmap[band], alpha=0.2)
-        plt.axhline(lo+dt, color=ccmap[band], ls='--', alpha=0.5)
-        plt.axhline(hi+dt, color=ccmap[band], ls='--', alpha=0.5)
+        plt.axhline(basetime+dt, color=ccmap.get(band, xcolor), alpha=0.2)
+        plt.axhline(lo+dt, color=ccmap.get(band, xcolor), ls='--', alpha=0.5)
+        plt.axhline(hi+dt, color=ccmap.get(band, xcolor), ls='--', alpha=0.5)
         if band == 'z':
             I = np.flatnonzero(Tb.sky > 0)
             if len(I):
-                plt.plot(Tb.mjd_obs[I], t_sat[I], color=ccmap[band],
+                plt.plot(Tb.mjd_obs[I], t_sat[I], color=ccmap.get(band, xcolor),
                          ls='-', alpha=0.5)
 
         if not nightly:
@@ -608,6 +615,8 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     yl,yh = plt.ylim()
 
     mx = np.percentile(np.abs(np.append(dra, ddec)), 95)
+    # make the range at least +- 10 arcsec.
+    mx = max(mx, 10)
     mx *= 1.2
     
     plt.axhline(0.0, color='k', alpha=0.5)
@@ -1100,6 +1109,7 @@ def plot_recent(opt, nom, tiles=None, markmjds=[],
 
     markmjds.extend(mark_twilight(camera, ephem.Date(mjdtodate(mjd_end))))
 
+    import pylab as plt
     plt.figure(1)
     plot_measurements(mm, plotfn, nom, allobs=allobs,
                       mjdrange=(mjd_start, mjd_end), markmjds=markmjds,
@@ -1118,17 +1128,17 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart):
     mlast   = msorted[-1]
     mrecent = msorted[-10:]
 
-    ccmap = dict(g='g', r='r', z='m', zd='m')
+    ccmap = dict(g='g', r='r', z='m', zd='m', rd='r')
     lp,lt = [],[]
-    
+
     plt.clf()
     I = (tiles.in_desi == 1) * (tiles.z_done == 0)
     plt.plot(tiles.ra[I], tiles.dec[I], 'k.', alpha=0.05)
     I = (tiles.in_desi == 1) * (tiles.z_done > 0)
-    plt.plot(tiles.ra[I], tiles.dec[I], 'k.', alpha=0.5)
+    plt.plot(tiles.ra[I], tiles.dec[I], 'k.', alpha=0.25)
 
     plt.plot([m.rabore for m in msorted], [m.decbore for m in msorted], 'k-',
-             lw=2, alpha=0.5)
+             lw=2, alpha=0.1)
     pr = plt.scatter([m.rabore for m in msorted], [m.decbore for m in msorted],
                      color=[ccmap.get(m.band[:1],'k') for m in msorted],
                      marker='o', s=20)
@@ -1141,6 +1151,7 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart):
                    np.array([m.decbore for m in msorted])))
     
     if not nightly:
+        # Plot the planned exposures per pass.
         P.color = np.array([ccmap.get(f[:1],'k') for f in P.filter])
         I = np.flatnonzero(P.type == '1')
         I = I[:10]
@@ -1177,17 +1188,32 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart):
 
     if not nightly:
         I = np.flatnonzero(P.type == 'P')
-        plt.plot(P.ra[I], P.dec[I], 'k-', lw=3, alpha=0.5)
+        # Bold the first few ones
+        II = I[:6]
+        plt.plot(P.ra[II], P.dec[II], 'k-', lw=3, alpha=0.5)
+        II = I[:5]
+        pplan = plt.scatter(P.ra[II], P.dec[II], c=P.color[II], marker='*',
+                            s=100, alpha=1.0)
+        # Faint the rest
+        II = I[5:]
+        plt.plot(P.ra[II], P.dec[II], 'k-', lw=3, alpha=0.2)
+        pplan = plt.scatter(P.ra[II], P.dec[II], c=P.color[II], marker='*',
+                            s=100, alpha=0.4)
+
         rd.append((P.ra[I], P.dec[I]))
-        pplan = plt.scatter(P.ra[I], P.dec[I], c=P.color[I], marker='*',
-                            s=100)
         lp.append(pplan)
         lt.append('Planned')
+
+        # Bold line from "most recent" to "first planned"
+        if len(I) > 0:
+            p = P[I[0]]
+            plt.plot([mlast.rabore, p.ra], [mlast.decbore, p.dec], '-', lw=3, alpha=0.5, color=ccmap.get(p.filter,'k'))
     
     plt.xlabel('RA (deg)')
     plt.ylabel('Dec (deg)')
 
-    plt.figlegend(lp, lt, 'upper right')
+    plt.figlegend(lp, lt, 'upper right', prop={'size': 10}, ncol=2, numpoints=1,
+                  bbox_to_anchor=(0.9, 0.97), framealpha=0.5, frameon=True)
 
     rr = np.hstack([r for r,d in rd])
     dd = np.hstack([d for r,d in rd])
@@ -1395,9 +1421,9 @@ def main(cmdlineargs=None, get_copilot=False):
 
         now = mjdnow()
         
-        #ccds = obsdb.MeasuredCCD.objects.all()
+        ccds = obsdb.MeasuredCCD.objects.all()
         #ccds = obsdb.MeasuredCCD.objects.all().filter(mjd_obs__gt=now - 0.25)
-        ccds = obsdb.MeasuredCCD.objects.all().filter(mjd_obs__gt=57434)
+        #ccds = obsdb.MeasuredCCD.objects.all().filter(mjd_obs__gt=57434)
         
         print(ccds.count(), 'measured CCDs')
         for ccd in ccds:

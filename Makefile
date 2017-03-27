@@ -1,6 +1,12 @@
 
 PYTHON ?= python2.7
 
+# For these tests, you need to check out testdata from a different
+# repository:
+#
+# git clone https://github.com/legacysurvey/obsbot-testdata.git testdata
+#
+
 test:
 	$(PYTHON) obsdb/manage.py test -p test_copilot.py
 	$(PYTHON) obsdb/manage.py test -p test_mosbot.py
@@ -16,6 +22,10 @@ test_copilot_one:
 
 test_focus:
 	$(PYTHON) obsdb/manage.py test test_copilot.TestCopilot.test_focus
+
+test_decbot:
+	$(PYTHON) test_decbot.py
+	$(PYTHON) obsdb/manage.py test -p test_decbot_2.py
 
 coverage_decbot:
 	coverage erase
