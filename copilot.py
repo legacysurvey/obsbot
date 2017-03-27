@@ -252,8 +252,9 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     '''
     import pylab as plt
     T = db_to_fits(mm)
-    T.band = np.core.defchararray.replace(T.band, 'zd', 'z')
     print(len(T), 'exposures')
+    # Replace filter "zd" -> "z", "rd" -> "r".
+    T.band = np.array([dict(zd='z', rd='r').get(b, b) for b in T.band])
 
     T.mjd_end = T.mjd_obs + T.exptime / 86400.
 
@@ -266,9 +267,9 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     if len(T) == 0:
         return
     
-    ccmap = dict(g='g', r='r', z='m', zd='m', rd='r')
+    ccmap = dict(g='g', r='r', z='m')
+    xcolor = '0.5'
 
-    #bands = 'grz'
     bands = np.unique(T.band)
     print('Unique bands:', bands)
     
@@ -282,7 +283,6 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
                         bottom=0.07)
 
     def limitstyle(band):
-        #return dict(mec='k', mfc=ccmap[band], ms=8, mew=1)
         return dict(mec='k', mfc='none', ms=7, mew=1)
 
     # Check for bad things that can happen
@@ -334,7 +334,8 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     for band,Tb in zip(bands, TT):
         I = np.flatnonzero(Tb.seeing > 0)
         if len(I):
-            plt.plot(Tb.mjd_obs[I], Tb.seeing[I], 'o', color=ccmap[band])
+            plt.plot(Tb.mjd_obs[I], Tb.seeing[I], 'o',
+                     color=ccmap.get(band, xcolor))
 
         I = np.flatnonzero(Tb.seeing > mx)
         if len(I):
@@ -360,7 +361,8 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     
     y = yl + 0.01*(yh-yl)
     plt.plot(np.vstack((T.mjd_obs, T.mjd_end)),
-             np.vstack((y, y)), '-', lw=3, alpha=0.5, color=ccmap[band],
+             np.vstack((y, y)), '-', lw=3, alpha=0.5,
+             color=ccmap.get(band, xcolor),
              solid_joinstyle='bevel')
 
     plt.ylim(yl,min(yh,mx))
@@ -385,11 +387,13 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
             sky0 = nom.sky(band)
         except KeyError:
             # unknown filter
+            print('Unknown filter for sky:', band)
             continue
         T.dsky[T.band == band] = Tb.sky - sky0
         I = np.flatnonzero(Tb.sky > 0)
         if len(I):
-            plt.plot(Tb.mjd_obs[I], Tb.sky[I] - sky0, 'o', color=ccmap[band])
+            plt.plot(Tb.mjd_obs[I], Tb.sky[I] - sky0, 'o',
+                     color=ccmap.get(band, xcolor))
             minsky = min(minsky, min(Tb.sky[I] - sky0))
             nomskies.append((band, sky0))
             medskies.append((band, np.median(Tb.sky[I])))
@@ -454,7 +458,8 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     for band,Tb in zip(bands, TT):
         I = np.flatnonzero(Tb.transparency > 0)
         if len(I):
-            plt.plot(Tb.mjd_obs[I], Tb.transparency[I], 'o', color=ccmap[band])
+            plt.plot(Tb.mjd_obs[I], Tb.transparency[I], 'o',
+                     color=ccmap.get(band, xcolor))
         I = np.flatnonzero(Tb.transparency > mx)
         if len(I):
             plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
@@ -487,6 +492,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         fid = nom.fiducial_exptime(band)
         if fid is None:
             # Band not 'g','r', or 'z'
+            print('Unknown band', band)
             continue
         basetime = fid.exptime
         lo,hi = fid.exptime_min, fid.exptime_max
@@ -509,7 +515,8 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         # Actual exposure times taken, marked with filled colored circles.
         I = np.flatnonzero(Tb.exptime > 0)
         if len(I):
-            plt.plot(Tb.mjd_obs[I], Tb.exptime[I], 'o', color=ccmap[band])
+            plt.plot(Tb.mjd_obs[I], Tb.exptime[I], 'o',
+                     color=ccmap.get(band, xcolor))
 
     yl,yh = plt.ylim()
     mx = yh
@@ -533,13 +540,13 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         if len(I):
             plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
 
-        plt.axhline(basetime+dt, color=ccmap[band], alpha=0.2)
-        plt.axhline(lo+dt, color=ccmap[band], ls='--', alpha=0.5)
-        plt.axhline(hi+dt, color=ccmap[band], ls='--', alpha=0.5)
+        plt.axhline(basetime+dt, color=ccmap.get(band, xcolor), alpha=0.2)
+        plt.axhline(lo+dt, color=ccmap.get(band, xcolor), ls='--', alpha=0.5)
+        plt.axhline(hi+dt, color=ccmap.get(band, xcolor), ls='--', alpha=0.5)
         if band == 'z':
             I = np.flatnonzero(Tb.sky > 0)
             if len(I):
-                plt.plot(Tb.mjd_obs[I], t_sat[I], color=ccmap[band],
+                plt.plot(Tb.mjd_obs[I], t_sat[I], color=ccmap.get(band, xcolor),
                          ls='-', alpha=0.5)
 
         if not nightly:
