@@ -276,7 +276,7 @@ def main():
         # expnum_to_copilot[copilot.expnum] = np.arange(len(copilot))
         expnum_to_copilot = dict([(e,i) for i,e in enumerate(copilot.expnum)])
 
-        if False:
+        if True:
             # Let's check the accuracy of the copilot's depth estimates...
             target_exptime = copilot.expfactor * fid.exptime
             # What fraction of the target exposure time did we take?
@@ -285,10 +285,10 @@ def main():
             depth = nomdepth + 2.5 * np.log10(np.sqrt(depth_factor))
             #print('Copilot predicted depths:', depth)
             IC = np.array([expnum_to_copilot.get(e, -1) for e in allccds.expnum])
-            extinction = allccds.decam_extinction[:, np.array(['ugrizY'.index(f) for f in allccds.filter])]
-            dd = allccds.galdepth - extinction
             K = np.flatnonzero(IC >= 0)
-            print('Making scatterplot...')
+            ext = np.array([e['ugrizY'.index(f)] for e,f in zip(allccds.decam_extinction, allccds.filter)])
+            dd = allccds.galdepth - ext
+            print('Making scatterplot...', len(K), 'points')
             plt.clf()
             #plt.plot(dd[K], depth[IC[K]], 'b.', alpha=0.2, mec='none')
             plt.scatter(dd[K], depth[IC[K]],
