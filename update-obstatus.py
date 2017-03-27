@@ -90,6 +90,8 @@ def main():
         fix_expnums(O.z_expnum)
         # And copilot database
         fix_expnums(copilot.expnum)
+
+        print('Z_EXPNUM range:', O.z_expnum.min(), O.z_expnum.max())
         
     # *after* fixing tileids
     allccds = ccds.copy()
@@ -264,19 +266,12 @@ def main():
         galdepth[missing_depth] = 30.
         galdepth[only_nonphot] = 1.
 
-        # Do we have measurements for any of these missing tiles in the copilot db?
-        Igal = np.flatnonzero((O.get('%s_expnum' % band) > 0) *
-                           (O.get('%s_done' % band) == 1) *
-                           (galdepth == 30))
-        expnums = O.get('%s_expnum' % band)[Igal]
-        print(len(expnums), 'still with missing DEPTH')
-        
         # expnum_to_copilot = np.empty(expnums.max()+1, int)
         # expnum_to_copilot[:] = -1
         # expnum_to_copilot[copilot.expnum] = np.arange(len(copilot))
         expnum_to_copilot = dict([(e,i) for i,e in enumerate(copilot.expnum)])
 
-        if True:
+        if False:
             # Let's check the accuracy of the copilot's depth estimates...
             target_exptime = copilot.expfactor * fid.exptime
             # What fraction of the target exposure time did we take?
@@ -304,36 +299,42 @@ def main():
             plt.savefig('depth-copilot-%s.png' % band)
             print('Made scatterplot')
 
-        IC = np.array([expnum_to_copilot.get(e, -1) for e in expnums])
-        K = np.flatnonzero(IC >= 0)
-        expnums = expnums[K]
-        # these are the indices into O / galdepth
-        Igal = Igal[K]
-        co = copilot[IC[K]]
-        print(len(expnums), 'matched to copilot database')
+        # Do we have measurements for any of these missing tiles in the copilot db?
+        for code in [30, 0]:
+            Igal = np.flatnonzero((O.get('%s_expnum' % band) > 0) *
+                                  (O.get('%s_done' % band) == 1) *
+                                  (galdepth == code))
+            expnums = O.get('%s_expnum' % band)[Igal]
+            print(len(expnums), 'still marked DONE, with EXPNUM, but missing DEPTH =', code)
+            if len(expnums) == 0:
+                continue
+            IC = np.array([expnum_to_copilot.get(e, -1) for e in expnums])
+            K = np.flatnonzero(IC >= 0)
+            expnums = expnums[K]
+            # these are the indices into O / galdepth
+            Igal = Igal[K]
+            co = copilot[IC[K]]
+            print(len(expnums), 'matched to copilot database')
 
-        target_exptime = co.expfactor * fid.exptime
-        # What fraction of the target exposure time did we take?
-        depth_factor = co.exptime / target_exptime
-
-        nomdepth = fid.single_exposure_depth
-        print('Nominal single-exposure depth:', nomdepth)
-
-        co.depth = nomdepth + 2.5 * np.log10(np.sqrt(depth_factor))
-        print('Copilot predicted depths:', co.depth)
-
-        J = np.flatnonzero(np.isfinite(co.depth))
-        co = co[J]
-        # indices into O
-        Igal = Igal[J]
-        print(len(Igal), 'good copilot depth estimates')
+            target_exptime = co.expfactor * fid.exptime
+            # What fraction of the target exposure time did we take?
+            depth_factor = co.exptime / target_exptime
+            nomdepth = fid.single_exposure_depth
+            print('Nominal single-exposure depth:', nomdepth)
+            co.depth = nomdepth + 2.5 * np.log10(np.sqrt(depth_factor))
+            print('Copilot predicted depths:', co.depth)
+            J = np.flatnonzero(np.isfinite(co.depth))
+            co = co[J]
+            # indices into O
+            Igal = Igal[J]
+            print(len(Igal), 'good copilot depth estimates')
         
-        pcts = [0,1,5,25,50,75,95,99,100]
-        print('Copilot depth percentiles:', np.percentile(co.depth, pcts))
+            pcts = [0,1,5,25,50,75,95,99,100]
+            print('Copilot depth percentiles:', np.percentile(co.depth, pcts))
 
-        print('Before:', galdepth[Igal])
-        galdepth[Igal] = co.depth
-        print('After:', galdepth[Igal])
+            print('Before:', galdepth[Igal])
+            galdepth[Igal] = co.depth
+            print('After:', galdepth[Igal])
         
         O.set('%s_depth' % band, galdepth)
 
