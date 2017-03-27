@@ -60,9 +60,13 @@ def main():
 
     print('Pass numbers:', np.unique(O.get('pass')))
     
-    goodtiles = np.flatnonzero(O.in_desi * (O.dec > 30) * (O.get('pass') <= 3))
-    print(len(goodtiles), 'tiles of interest')
-    
+    if opt.mzls:
+        goodtiles = np.flatnonzero(O.in_desi * (O.dec > 30) * (O.get('pass') <= 3))
+        print(len(goodtiles), 'tiles of interest')
+    else:
+        goodtiles = np.flatnonzero(O.in_desi * (O.get('pass') <= 3))
+        print(len(goodtiles), 'tiles in the footprint')
+
     # Look at whether exposures from other programs are near our tile centers.
     # Basically nope.
     # plt.clf()
@@ -207,7 +211,7 @@ def main():
 
         O.set('%s_depth' % band, galdepth)
 
-        print('Depth deciles:', np.percentile(O.get('%s_depth' % band), [0,10,20,30,40,50,60,70,80,90,100]))
+        print('Depth deciles: [', ', '.join(['%.3f' % f for f in np.percentile(O.get('%s_depth' % band), [0,10,20,30,40,50,60,70,80,90,100])]) + ']')
 
         from astrometry.util.plotutils import antigray
         rlo,rhi = 0,360
@@ -230,8 +234,8 @@ def main():
         # print('Exposure numbers:', O.get('%s_expnum' % band)[I])
         # print('Dates:', O.get('%s_date' % band)[I])
         
-        plt.figure(figsize=(10,6))
-        plt.subplots_adjust(left=0.1, right=0.9)
+        plt.figure(figsize=(14,6))
+        plt.subplots_adjust(left=0.1, right=0.99)
         
         for passnum in [1,2,3]:
             print('Pass', passnum)
@@ -251,7 +255,9 @@ def main():
             
             J = np.flatnonzero((O.get('pass') == passnum) * (depth > 1) * (depth < 30))
             # print('Depths:', depth[J])
-            print('Depth deciles:', np.percentile(depth[J], [0,10,20,30,40,50,60,70,80,90,100]))
+            pct = np.percentile(depth[J], [0,10,20,30,40,50,60,70,80,90,100])
+            #print('Depth deciles:', np.percentile(depth[J], [0,10,20,30,40,50,60,70,80,90,100]))
+            print('Depth deciles: [', ', '.join(['%.3f' % f for f in pct]) + ']')
 
             if len(J) == 0:
                 sys.exit(0)
