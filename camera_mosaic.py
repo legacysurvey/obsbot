@@ -16,6 +16,31 @@ nominal_cal = MosaicNominalCalibration()
 
 default_extension = 'im4'
 
+def fix_expnums(expnum):
+    '''expnum: numpy array, fixed in-place.
+    '''
+    import numpy as np
+    # Fix 6-digit 3xxxxx exposure numbers
+    I = np.flatnonzero((expnum >= 300000) * (expnum < 400000))
+    if len(I):
+        #print('Set range of EXPNUMs', expnum[I].min(), expnum[I].max())
+        expnum[I] -= 300000
+        #print('  to', expnum[I].min(), expnum[I].max())
+
+    # Also, in the mosaic obstatus file, there are some in the range
+    # 260,223 to 260,355
+    I = np.flatnonzero((expnum >= 260000) * (expnum < 270000))
+    if len(I):
+        expnum[I] -= 200000
+        
+    # Fix 7-digit 3xxxxxx exposure numbers
+    I = np.flatnonzero((expnum >= 3000000))
+    if len(I):
+        #print('Set range of EXPNUMs', expnum[I].min(), expnum[I].max())
+        expnum[I] -= 3000000
+        #print('  to', expnum[I].min(), expnum[I].max())
+    return expnum
+        
 def dradec_to_ref_chip(T, refext = 'im16'):
     import numpy as np
     nom = nominal_cal

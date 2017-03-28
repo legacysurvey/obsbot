@@ -627,6 +627,8 @@ class Decbot(Obsbot):
 
         if self.adjust_previous:
             adjfactor = self.adjust_for_previous(tile, band, fid)
+            # Don't adjust exposure times down, only up.
+            adjfactor = max(adjfactor, 1.0)
             expfactor *= adjfactor
 
         exptime = expfactor * fid.exptime
