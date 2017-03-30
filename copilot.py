@@ -1395,11 +1395,13 @@ def main(cmdlineargs=None, get_copilot=False):
         filters = np.unique(T.band)
         print('Converted to:', filters)
 
+        ras = np.linspace(0, 360, 360)
         decs = np.linspace(-90, 90, 180)
         if camera_name == 'mosaic3':
             decs = np.linspace(30, 90, 60)
         elif camera_name == 'decam':
-            decs = np.linspace(-30, 35, 150)
+            decs = np.linspace(-20, 35, 30)
+            ras = np.linspace(0, 360, 180)
 
         Igood = np.flatnonzero(T.exptime >= 30.)
         print('RA,Dec range of "good" exposures:')
@@ -1424,8 +1426,7 @@ def main(cmdlineargs=None, get_copilot=False):
                 Tp.cut(I)
 
                 plt.clf()
-                plt.hist2d(Tp.rabore, Tp.decbore, bins=(np.linspace(0, 360, 360),
-                                                        decs),
+                plt.hist2d(Tp.rabore, Tp.decbore, bins=(ras, decs),
                             weights=Tp.exptime,
                             norm=mpl.colors.PowerNorm(0.5))
                 plt.colorbar()
@@ -1435,7 +1436,8 @@ def main(cmdlineargs=None, get_copilot=False):
                 plt.ylabel('Dec (deg)')
                 plt.axis('scaled')
                 fn = 'cov-%s-p%i.png' % (band, p)
-                plt.title('Total exposure time: %s' % nice_camera_name)
+                plt.title('Total exposure time: %s, band %s, pass %i' %
+                          (nice_camera_name, band, p))
                 plt.savefig(fn)
                 print('Wrote', fn)
         return
