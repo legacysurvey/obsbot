@@ -55,7 +55,6 @@ def main():
     print(len(copilot), 'measured CCDs in copilot database with EXPNUM')
 
     print('Copilot expfactor extremes:', np.percentile(copilot.expfactor[copilot.expfactor != 0], [1,99]))
-
     
     survey = LegacySurveyData()
     print('Reading annotated CCDs files...')
@@ -157,12 +156,16 @@ def main():
         j = np.flatnonzero(E.expnum == expnum)
         assert(len(j) == 1)
         j = j[0]
-        E.galdepth[j] = np.mean(ccds.galdepth[I])
-
         E.photometric[j] = np.all(ccds.photometric[I])
         if len(np.unique(ccds.photometric[I])) == 2:
-            print('Exposure', expnum, 'has photometric and non- CCDs')
-    
+            print('Exposure', expnum, 'has photometric and non-photometric CCDs')
+        # Don't include zeros in computing average depths!
+        Igood = I[ccds.galdepth[I] > 0]
+        if len(Igood) > 0:
+            E.galdepth[j] = np.mean(ccds.galdepth[Igood])
+        else:
+            E.galdepth[j] = 0.
+            
     # plt.clf()
     # plt.plot(O.ra, O.dec, 'k.')
     # plt.axis([360,0,-25,35])
@@ -205,14 +208,19 @@ def main():
         # actually 5*detsig1...
         detsig = 10.**((E.galdepth - 22.5) / -2.5)
         E.detiv  = 1. / detsig**2
-
+        E.detiv[E.galdepth == 0] = 0.
+        print('Smallest detivs:', E.detiv[np.argsort(E.detiv)[:10]])
+        print('w/ galdepths:', E.galdepth[np.argsort(E.detiv)[:10]])
+        print('Smallest positive detivs:', E.detiv[np.argsort(E.detiv + 1e12*(E.detiv == 0))[:10]])
+        print('w/ galdepths:', E.galdepth[np.argsort(E.detiv + 1e12*(E.detiv == 0))[:10]])
+        
     for band in bands:
         # "I" indexes into exposures E.
         I = np.flatnonzero((E.filter == band) * E.photometric *
                            np.isfinite(E.detiv))
         print(len(I), 'photometric exposures in', band)
 
-        # "iv" is for O.
+        # "iv" is parallel to O; will be converted to "galdepth".
         iv = np.zeros(len(O), np.float32)
         # "J" indexes into obstatus tiles O.
         J = tileid_to_index[E.tileid[I]]
@@ -236,9 +244,18 @@ def main():
         # convert iv back to galdepth in mags
         with np.errstate(divide='ignore'):
             galdepth = -2.5 * (np.log10(np.sqrt(1. / iv)) - 9)
-        # extinction correction...
-        #print('galdepth deciles:', np.percentile(galdepth, [0,10,20,30,40,50,60,70,80,90,100]))
+            galdepth[iv == 0] = 0.
 
+        # Shallowest before extinction correction
+        #I = np.argsort(iv + 1e6*(iv == 0))
+        I = np.argsort(galdepth + 50.*(galdepth == 0))
+        print('Shallowest depth estimates from annotated CCDs file, before extinction:')
+        for i in I[:10]:
+            print('  ', galdepth[i], 'iv', iv[i], 'tile', O.tileid[i], 'expnum', O.get('%s_expnum' % band)[i])
+            e = O.get('%s_expnum' % band)[i]
+            j = np.flatnonzero(E.expnum == e)
+            print('    galdepth', E.galdepth[j])
+            
         fid = nom.fiducial_exptime(band)
         extinction = O.ebv_med * fid.A_co
         #print('Extinction range:', extinction.min(), extinction.max())
@@ -246,6 +263,12 @@ def main():
 
         galdepth[iv == 0] = 0.
 
+        # Shallowest galdepth > 0
+        I = np.argsort(galdepth + 50.*(galdepth == 0))
+        print('Shallowest depth estimates from annotated CCDs file:')
+        for i in I[:10]:
+            print('  ', galdepth[i], 'tile', O.tileid[i], 'expnum', O.get('%s_expnum' % band)[i])
+        
         #print('galdepth deciles:', np.percentile(galdepth, [0,10,20,30,40,50,60,70,80,90,100]))
 
         # Z_DONE, Z_EXPNUM but no Z_DEPTH
@@ -299,6 +322,11 @@ def main():
             plt.savefig('depth-copilot-%s.png' % band)
             print('Made scatterplot')
 
+        plt.clf()
+        ha = dict(bins=60, range=(0,30), log=True, histtype='step')
+        plt.hist(O.get('%s_depth' % band), color='k', label='Before', **ha)
+        plt.hist(orig_galdepth, color='b', label='Annotated CCDs', **ha)
+
         # Do we have measurements for any of these missing tiles in the copilot db?
         for code in [30, 0]:
             Igal = np.flatnonzero((O.get('%s_expnum' % band) > 0) *
@@ -332,11 +360,20 @@ def main():
             pcts = [0,1,5,25,50,75,95,99,100]
             print('Copilot depth percentiles:', np.percentile(co.depth, pcts))
 
+            print('Shallowest exposures:')
+            I = np.argsort(co.depth)
+            for i in I[:10]:
+                print('  Expnum', co.expnum[i], 'depth', co.depth[i], 'exptime', co.exptime[i])
+            co[I].writeto('depths.fits')
+                
             print('Before:', galdepth[Igal])
             galdepth[Igal] = co.depth
             print('After:', galdepth[Igal])
         
         O.set('%s_depth' % band, galdepth)
+
+        plt.hist(O.get('%s_depth' % band), color='r', label='After', **ha)
+        plt.savefig('depth-hist-%s.png' % band)
 
         #print('Depth deciles: [', ', '.join(['%.3f' % f for f in np.percentile(O.get('%s_depth' % band), [0,10,20,30,40,50,60,70,80,90,100])]) + ']')
 
