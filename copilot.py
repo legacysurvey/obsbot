@@ -1273,7 +1273,8 @@ def main(cmdlineargs=None, get_copilot=False):
 
     # Mosaic or Decam?
     from camera import (nominal_cal, ephem_observer, default_extension,
-                        tile_path, camera_name, data_env_var, bot_name)
+                        tile_path, camera_name, data_env_var, bot_name,
+                        nice_camera_name)
     nom = nominal_cal
     obs = ephem_observer()
     
@@ -1304,6 +1305,9 @@ def main(cmdlineargs=None, get_copilot=False):
     
     parser.add_option('--qa-plots', dest='doplots', default=False,
                       action='store_true', help='Create QA plots')
+
+    parser.add_option('--cov', dest='covplots', default=False,
+                      action='store_true', help='Create coverage plots')
 
     parser.add_option('--keep-plots', action='store_true',
                       help='Do not remove PNG-format plots (normally merged into PDF)')
@@ -1364,6 +1368,80 @@ def main(cmdlineargs=None, get_copilot=False):
     import obsdb
 
     import pylab as plt
+
+    if opt.covplots:
+        import matplotlib as mpl
+        
+        plt.figure(figsize=(12,4))
+        plt.subplots_adjust(left=0.05, right=0.99, bottom=0.05, top=0.98)
+        
+        ccds = obsdb.MeasuredCCD.objects.all()
+        print(ccds.count(), 'measured CCDs')
+        T = db_to_fits(ccds)
+        print('Camera(s):', np.unique(T.camera))
+        print('Camera name for this installation:', camera_name)
+        T.cut(T.camera == camera_name)
+        print('Cut to', len(T), 'with camera', camera_name)
+        T.cut(T.tileid > 0)
+        print(len(T), 'with known tile id')
+        T.cut(T.expnum > 0)
+        print(len(T), 'with known exposure number')
+        T.cut(T.exptime > 1)
+        print(len(T), 'with exposure time > 1')
+        filters = np.unique(T.band)
+        print('Filters:', filters)
+        # Cut to just first letter of filter name...
+        T.band = np.array([f[0] for f in T.band])
+        filters = np.unique(T.band)
+        print('Converted to:', filters)
+
+        ras = np.linspace(0, 360, 360)
+        decs = np.linspace(-90, 90, 180)
+        if camera_name == 'mosaic3':
+            decs = np.linspace(30, 90, 60)
+        elif camera_name == 'decam':
+            decs = np.linspace(-20, 35, 30)
+            ras = np.linspace(0, 360, 180)
+
+        Igood = np.flatnonzero(T.exptime >= 30.)
+        print('RA,Dec range of "good" exposures:')
+        print('RA',  T.rabore [Igood].min(),  T.rabore[Igood].max())
+        print('Dec', T.decbore[Igood].min(), T.decbore[Igood].max())
+            
+        for band in filters:
+            Tb = T[T.band == band]
+            print(len(Tb), 'in', band, 'band')
+            passes = np.unique(Tb.passnumber)
+            print('Passes:', passes)
+            for p in passes:
+                Tp = Tb[Tb.passnumber == p]
+                print(len(Tp), 'in band', band, 'and pass', p)
+
+                print('RA', Tp.rabore.min(), Tp.rabore.max())
+                print('Dec', Tp.decbore.min(), Tp.decbore.max())
+
+                # Select one entry per exposure number.
+                expnums,I = np.unique(Tp.expnum, return_index=True)
+                print(len(expnums), 'unique exposure numbers')
+                Tp.cut(I)
+
+                plt.clf()
+                plt.hist2d(Tp.rabore, Tp.decbore, bins=(ras, decs),
+                            weights=Tp.exptime,
+                            norm=mpl.colors.PowerNorm(0.5))
+                plt.colorbar()
+                plt.xticks([0,60,120,180,240,300,360])
+                plt.xlim(360, 0)
+                plt.xlabel('RA (deg)')
+                plt.ylabel('Dec (deg)')
+                plt.axis('scaled')
+                fn = 'cov-%s-p%i.png' % (band, p)
+                plt.title('Total exposure time: %s, band %s, pass %i' %
+                          (nice_camera_name, band, p))
+                plt.savefig(fn)
+                print('Wrote', fn)
+        return
+
     # Mosaic focus plot
     # figure 3
     # RA,Dec plot
