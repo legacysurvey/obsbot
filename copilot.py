@@ -576,6 +576,12 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     dra  = (CD[:,0] * Tx.dx + CD[:,1] * Tx.dy) * 3600.
     ddec = (CD[:,2] * Tx.dx + CD[:,3] * Tx.dy) * 3600.
 
+    mx = np.percentile(np.abs(np.append(dra, ddec)), 95)
+    # make the range at least +- 10 arcsec.
+    mx = max(mx, 10)
+    mx *= 1.2
+    yl,yh = -mx,mx
+
     refdra,refddec = None,None
     print('Camera', Tx.camera[0])
     if Tx.camera[0].strip() == 'mosaic3':
@@ -602,7 +608,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         if not nightly:
             mjd = Tx.mjd_obs[I[-1]]
             r,d = refdra[I[-1]], refddec[I[-1]]
-            yl,yh = plt.ylim()
+
             plt.text(mjd, yl+0.03*(yh-yl), '(%.1f, %.1f)' % (r,d),
                      ha='center', bbox=bbox)
         
@@ -612,18 +618,11 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         pr = plt.plot(Tx.mjd_obs, dra,  'b-', alpha=0.5)
         pd = plt.plot(Tx.mjd_obs, ddec, 'g-', alpha=0.5)
     #plt.legend((pr[0], pd[0]), ('RA', 'Dec'))
-    yl,yh = plt.ylim()
 
-    mx = np.percentile(np.abs(np.append(dra, ddec)), 95)
-    # make the range at least +- 10 arcsec.
-    mx = max(mx, 10)
-    mx *= 1.2
-    
     plt.axhline(0.0, color='k', alpha=0.5)
     plt.axhline(+10., color='k', alpha=0.2)
     plt.axhline(-10., color='k', alpha=0.2)
-    plt.ylim(-mx,mx)
-    
+
     # i = np.argmax(T.mjd_obs)
     # plt.text(T.mjd_obs[i], dra[i], '  RA', ha='left', va='center')
     # plt.text(T.mjd_obs[i], ddec[i], '  Dec', ha='left', va='center')
@@ -664,10 +663,10 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
 
     if refdra is None and not nightly:
         # If refdra is available, only label that.
-        yl,yh = plt.ylim()
         plt.text(Tx.mjd_obs[-1], yl+0.03*(yh-yl),
                  '(%.1f, %.1f)' % (dra[-1], ddec[-1]), ha='center', bbox=bbox)
 
+    plt.ylim(yl, yh)
     plt.ylabel('dRA (blu), dDec (grn)')
     
     plt.xlabel('MJD')
@@ -1382,7 +1381,7 @@ def main(cmdlineargs=None, get_copilot=False):
                       help='Save plot to given file, default %s' % plotfn_default)
 
     parser.add_option('--nightplot', '--night', action='store_true',
-                      help="Plot tonight's data and quit")
+                      help="Plot tonight's data and quit", default=False)
     parser.add_option('--ago', type=int, help='Plot N nights ago; with --night')
     
     parser.add_option('--qa-plots', dest='doplots', default=False,

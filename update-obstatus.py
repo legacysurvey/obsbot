@@ -50,6 +50,9 @@ def main():
     obsdb.django_setup(database_filename=database_filename)
     ccds = obsdb.MeasuredCCD.objects.all()
     copilot = db_to_fits(ccds)
+
+    copilot.writeto('copilot.fits')
+    
     print(len(copilot), 'measured CCDs in copilot database')
     copilot.cut(copilot.expnum > 0)
     print(len(copilot), 'measured CCDs in copilot database with EXPNUM')
@@ -90,7 +93,7 @@ def main():
         # And copilot database
         fix_expnums(copilot.expnum)
 
-        print('Z_EXPNUM range:', O.z_expnum.min(), O.z_expnum.max())
+        print('Z_EXPNUM range:', O.z_expnum.min(), 'min >0:', O.z_expnum[O.z_expnum > 0].min(), O.z_expnum.max())
         
     # *after* fixing tileids
     allccds = ccds.copy()
@@ -159,6 +162,9 @@ def main():
         E.photometric[j] = np.all(ccds.photometric[I])
         if len(np.unique(ccds.photometric[I])) == 2:
             print('Exposure', expnum, 'has photometric and non-photometric CCDs')
+            print('  ccdnames:', ccds.ccdname[I])
+            print('  photometric:', ccds.photometric[I])
+            print('  depth:', ccds.galdepth[I])
         # Don't include zeros in computing average depths!
         Igood = I[ccds.galdepth[I] > 0]
         if len(Igood) > 0:
@@ -389,9 +395,15 @@ def main():
                             (O.get('%s_done' % band) == 1) *
                             (O.in_desi == 1))
         print(len(I2), 'with EXPNUM and DONE and IN_DESI, but no DEPTH')
-        print('Exposure numbers:', O.get('%s_expnum' % band)[I2])
         # Sort by expnum
-        # I2 = I2[np.argsort(O.get('%s_expnum' % band)[I2])]
+        I2 = I2[np.argsort(O.get('%s_expnum' % band)[I2])]
+        print('Exposure numbers:', sorted(O.get('%s_expnum' % band)[I2]))
+        print('Dates:', sorted(O.get('%s_date' % band)[I2]))
+        print('Dates:', np.unique(O.get('%s_date' % band)[I2]))
+
+        for i in I2:
+            print('  date', O.get('%s_date' % band)[i], 'expnum', O.get('%s_expnum' % band)[i])
+        
         # for i2,o in zip(I2, O[I2]):
         #     print()
         #     e = o.get('%s_expnum' % band)
