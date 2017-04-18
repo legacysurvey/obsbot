@@ -419,13 +419,52 @@ def main():
             print('Copilot-matched entries:')
             I = np.argsort(co.expnum)
             for i in I:
-                print('  EXPNUM', co.expnum[i], 'date', mjdtodate(co.mjd_obs[i]))
+                print('  EXPNUM', co.expnum[i], 'date', mjdtodate(co.mjd_obs[i]), '  copilot name', co.filename[i])
                 e = co.expnum[i]
                 I = np.flatnonzero(allccds.expnum == e-1)
-                print('    CCDs file contains', len(I), 'entries for expnum', e-1)
+                fn1 = None
+                fn2 = None
+                if len(I):
+                    print('    CCDs file contains', len(I), 'entries for expnum', e-1)
+                    print('      filename', allccds.image_filename[I[0]])
+                    fn1 = allccds.image_filename[I[0]]
+                else:
+                    print('    No CCDs file entries for expnum', e-1)
                 I = np.flatnonzero(allccds.expnum == e+1)
-                print('    CCDs file contains', len(I), 'entries for expnum', e+1)
-                
+                if len(I):
+                    print('    CCDs file contains', len(I), 'entries for expnum', e+1)
+                    print('      filename', allccds.image_filename[I[0]])
+                    fn2 = allccds.image_filename[I[0]]
+                else:
+                    print('    No CCDs file entries for expnum', e+1)
+
+                if fn1 is not None and fn2 is not None:
+                    full1 = os.path.join(survey.get_image_dir(), fn1)
+                    print('Full path 1:', full1)
+                    if os.path.exists(full1):
+                        print('exists')
+                    full2 = os.path.join(survey.get_image_dir(), fn2)
+                    print('Full path 2:', full2)
+                    if os.path.exists(full2):
+                        print('exists')
+                    if os.path.exists(full1) and os.path.exists(full2):
+                        dir1 = os.path.dirname(full1)
+                        dir2 = os.path.dirname(full2)
+                        if dir1 == dir2:
+                            print('dir:', dir1)
+                            fns = os.listdir(dir1)
+                            fns.sort()
+                            fns = [fn for fn in fns if 'oki' in fn or 'ooi' in fn]
+                            base1 = os.path.basename(full1)
+                            base2 = os.path.basename(full2)
+                            i1 = fns.index(base1)
+                            i2 = fns.index(base2)
+                            print('Files found at list elements', i1, i2)
+                            print(fns[i1:i2+2])
+                            if i1 + 2 == i2:
+                                print('Expected filename:', os.path.join(dir1, fns[i1+1]))
+                            
+
             #print('Before:', galdepth[Igal])
             galdepth[Igal] = co.depth
             #print('After:', galdepth[Igal])
