@@ -177,6 +177,12 @@ def main():
             # 347918: zpt scatter
             # 347920: zpt scatter
 
+            # ...
+
+            # 496918: strangely small ccdnmatch
+            # 496919: fine; bright star in one ccd
+            # 496920: 3" seeing; cirrus?
+            
             
             print('Exposure', expnum, 'has photometric and non-photometric CCDs')
             print('  ccdnames:', ccds.ccdname[I])
