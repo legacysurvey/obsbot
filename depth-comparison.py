@@ -20,7 +20,8 @@ import tractor
 
 ps = PlotSequence('bot')
 
-decam = False
+#decam = False
+decam = True
 mzls = not decam
 
 if decam:

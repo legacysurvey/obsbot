@@ -161,6 +161,29 @@ def main():
         j = j[0]
         E.photometric[j] = np.all(ccds.photometric[I])
         if len(np.unique(ccds.photometric[I])) == 2:
+
+            # 346662: S3 striping
+            # 346664: S3 striping
+            # 346665: S3 striping, S29: striping
+            # 346754: CCDNmatch = 0; wispy
+            # 346967: M5
+            # 347304: M5
+            # 347664: zeropoint scatter?
+            # 347744: weird eye-shaped ghost.  Also N29.
+            # 347755: shallow, zpt scatter -- wispy pattern on focal plane
+            # 347768: shallow, zpt scatter -- "
+            # 347769: looks fine, zpt scatter? -- "
+            # 347782: fine, galactic cirrus?
+            # 347918: zpt scatter
+            # 347920: zpt scatter
+
+            # ...
+
+            # 496918: strangely small ccdnmatch
+            # 496919: fine; bright star in one ccd
+            # 496920: 3" seeing; cirrus?
+            
+            
             print('Exposure', expnum, 'has photometric and non-photometric CCDs')
             non = I[ccds.photometric[I] == False]
             phot = I[ccds.photometric[I]]
