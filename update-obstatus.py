@@ -162,9 +162,24 @@ def main():
         E.photometric[j] = np.all(ccds.photometric[I])
         if len(np.unique(ccds.photometric[I])) == 2:
             print('Exposure', expnum, 'has photometric and non-photometric CCDs')
-            print('  ccdnames:', ccds.ccdname[I])
-            print('  photometric:', ccds.photometric[I])
-            print('  depth:', ccds.galdepth[I])
+            non = I[ccds.photometric[I] == False]
+            phot = I[ccds.photometric[I]]
+            for ii in non:
+                print('    http://legacysurvey.org/viewer-dev/?ra=%.3f&dec=%.3f&zoom=11&ccds3&bad=%i-%s' % (ccds.ra_center[ii], ccds.dec_center[ii], expnum, ccds.ccdname[ii]))
+                print('    http://legacysurvey.org/viewer-dev/ccd/decals-dr3/decam-%s-%s-%s/' % (ccds.expnum[ii], ccds.ccdname[ii], ccds.filter[ii]))
+            print('  image:', ccds.image_filename[I][0])
+            print('  boresight:', ccds.ra_bore[I][0], ccds.dec_bore[I][0])
+            #print('  ccdnames:', ccds.ccdname[I])
+            print('  photometric:', len(phot), ', non-photometric:', len(non))
+            print('  median phot depth:', np.median(ccds.galdepth[phot]))
+            #print('  depth:', ccds.galdepth[I])
+            print('  non-photometric CCDs:', ccds.ccdname[non])
+            print('    depths:', ccds.galdepth[non])
+            print('    ccdnmatch', ccds.ccdnmatch[non], 'vs', ccds.ccdnmatch[phot])
+            print('    ccdtransp:', ccds.ccdtransp[non], 'vs', ccds.ccdtransp[phot])
+            print('    ccd zpt vs frame zpt:', ccds.ccdzpt[non] - ccds.zpt[non])
+            dp = ccds.ccdzpt[phot] - ccds.zpt[phot]
+            print('      phot ccds zpt vs frame: range', dp.min(), dp.max(), 'mean', dp.mean())
         # Don't include zeros in computing average depths!
         Igood = I[ccds.galdepth[I] > 0]
         if len(Igood) > 0:
@@ -196,6 +211,8 @@ def main():
     
     #print('Number of exposures of each tile:')
     #print(Counter(E.tileid).most_common())
+    print()
+    print()
     print('Number of exposures of tiles:')
     for band in bands:
         I = np.flatnonzero(E.filter == band)
@@ -221,6 +238,9 @@ def main():
         print('w/ galdepths:', E.galdepth[np.argsort(E.detiv + 1e12*(E.detiv == 0))[:10]])
         
     for band in bands:
+        print()
+        print('------------------')
+        print(band, 'band.')
         # "I" indexes into exposures E.
         I = np.flatnonzero((E.filter == band) * E.photometric *
                            np.isfinite(E.detiv))
@@ -233,16 +253,15 @@ def main():
         assert(np.all((J >= 0) * (J < len(O))))
         assert(np.all(O.tileid[J] == E.tileid[I]))
 
-        print('tileid range', E.tileid[I].min(), E.tileid[I].max())
-
-        d = np.array([degrees_between(*a) for a in
-                      zip(E.ra_bore[I], E.dec_bore[I], O.ra[J], O.dec[J])])
-        print('Degrees between tiles & exposures:', d)
+        #print('tileid range', E.tileid[I].min(), E.tileid[I].max())
+        # d = np.array([degrees_between(*a) for a in
+        #               zip(E.ra_bore[I], E.dec_bore[I], O.ra[J], O.dec[J])])
+        # print('Degrees between tiles & exposures:', d)
         
         np.add.at(iv, J, E.detiv[I])
         print('galdepth range:', E.galdepth[I].min(), E.galdepth[I].max())
         print('detiv range:', E.detiv[I].min(), E.detiv[I].max())
-        print('index range:', J.min(), J.max())
+        #print('index range:', J.min(), J.max())
         nexp = np.zeros(len(O), int)
         np.add.at(nexp, J, 1)
         print('tile exposure counts:', Counter(nexp))
@@ -280,6 +299,7 @@ def main():
         # Z_DONE, Z_EXPNUM but no Z_DEPTH
         missing_depth = np.flatnonzero((O.get('%s_expnum' % band) > 0) * (O.get('%s_done' % band) == 1) * (galdepth == 0))
         print('Found', len(missing_depth), 'tiles with', band, 'DONE and EXPNUM but no DEPTH; setting to DEPTH=30')
+        print('  eg, EXPNUMs', O.get('%s_expnum' % band)[missing_depth[:10]], 'DATE', O.get('%s_date' % band)[missing_depth[:10]])
         # Don't actually update 'galdepth[missing_depth]' until after this next check...
 
         # Flag tiles that have *only* non-photometric exposures with depth = 1.
@@ -339,7 +359,7 @@ def main():
                                   (O.get('%s_done' % band) == 1) *
                                   (galdepth == code))
             expnums = O.get('%s_expnum' % band)[Igal]
-            print(len(expnums), 'still marked DONE, with EXPNUM, but missing DEPTH =', code)
+            print(len(expnums), 'still marked DONE, with EXPNUM, but missing DEPTH, with code =', code)
             if len(expnums) == 0:
                 continue
             IC = np.array([expnum_to_copilot.get(e, -1) for e in expnums])
@@ -371,10 +391,31 @@ def main():
             for i in I[:10]:
                 print('  Expnum', co.expnum[i], 'depth', co.depth[i], 'exptime', co.exptime[i])
             co[I].writeto('depths.fits')
+
+            from astrometry.util.starutil_numpy import mjdtodate
+            print('Copilot-matched entries:')
+            I = np.argsort(co.expnum)
+            for i in I:
+                print('  EXPNUM', co.expnum[i], 'date', mjdtodate(co.mjd_obs[i]))
+                e = co.expnum[i]
+                I = np.flatnonzero(allccds.expnum == e-1)
+                print('    CCDs file contains', len(I), 'entries for expnum', e-1)
+                I = np.flatnonzero(allccds.expnum == e+1)
+                print('    CCDs file contains', len(I), 'entries for expnum', e+1)
                 
-            print('Before:', galdepth[Igal])
+            #print('Before:', galdepth[Igal])
             galdepth[Igal] = co.depth
-            print('After:', galdepth[Igal])
+            #print('After:', galdepth[Igal])
+
+            Igal = np.flatnonzero((O.get('%s_expnum' % band) > 0) *
+                                  (O.get('%s_done' % band) == 1) *
+                                  (galdepth == code))
+            expnums = O.get('%s_expnum' % band)[Igal]
+            print(len(expnums), 'still marked DONE, with EXPNUM, but missing DEPTH with code =', code, 'after copilot patching')
+            print('Exposure numbers:', expnums)
+            print('Exposure dates:', O.get('%s_date' % band)[Igal])
+
+
         
         O.set('%s_depth' % band, galdepth)
 

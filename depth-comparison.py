@@ -449,8 +449,10 @@ for band in botbands:
     print('Median Neff:', np.median(galneff))
 
 
-    diff = np.median(bot.galdepth - bot.gaussgaldepth)
-    print('Median different between galdepth and Gaussgaldepth:', diff)
+    Iok = np.flatnonzero((bot.galdepth > 0) * np.isfinite(bot.galdepth) *
+                         (bot.gaussgaldepth > 0) * np.isfinite(bot.gaussgaldepth))
+    diff = np.median(bot.galdepth[Iok] - bot.gaussgaldepth[Iok])
+    print('Median difference between galdepth and Gaussgaldepth:', diff)
     # plt.clf()
     # plt.plot(bot.gaussgaldepth, bot.galdepth, 'b.')
     # plt.xlabel('Gaussian galdepth')
@@ -506,7 +508,9 @@ for band in botbands:
 
     skyflux = 10.**((bot.sky - zp0) / -2.5) * bot.exptime * pixsc**2
 
-    okvals = notbad[np.flatnonzero((bot.avsky < skyflux)[notbad])]
+    # What is this?
+    ##okvals = notbad[np.flatnonzero((bot.avsky < skyflux)[notbad])]
+    okvals = notbad
     
     xx = np.array([0, 30000])
     A = np.zeros((len(okvals),2))
