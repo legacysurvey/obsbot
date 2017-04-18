@@ -440,29 +440,33 @@ def main():
 
                 if fn1 is not None and fn2 is not None:
                     full1 = os.path.join(survey.get_image_dir(), fn1)
-                    print('Full path 1:', full1)
+                    #print('Full path 1:', full1)
                     if os.path.exists(full1):
                         print('exists')
                     full2 = os.path.join(survey.get_image_dir(), fn2)
-                    print('Full path 2:', full2)
+                    #print('Full path 2:', full2)
                     if os.path.exists(full2):
                         print('exists')
                     if os.path.exists(full1) and os.path.exists(full2):
                         dir1 = os.path.dirname(full1)
                         dir2 = os.path.dirname(full2)
                         if dir1 == dir2:
-                            print('dir:', dir1)
+                            #print('dir:', dir1)
                             fns = os.listdir(dir1)
                             fns.sort()
-                            fns = [fn for fn in fns if 'oki' in fn or 'ooi' in fn]
+                            fns = [fn for fn in fns if ('oki' in fn or 'ooi' in fn)]
                             base1 = os.path.basename(full1)
                             base2 = os.path.basename(full2)
                             i1 = fns.index(base1)
                             i2 = fns.index(base2)
                             print('Files found at list elements', i1, i2)
-                            print(fns[i1:i2+2])
+                            #print(fns[i1:i2+1])
+                            for fn in fns[i1:i2+1]:
+                                print('EXPNUM', e, 'range', os.path.join(os.path.dirname(fn1), fn))
+                            if i1 + 4 == i2:
+                                print('EXPNUM', e, 'expected', os.path.join(os.path.dirname(fn1), fns[i1+2]))
                             if i1 + 2 == i2:
-                                print('Expected filename:', os.path.join(dir1, fns[i1+1]))
+                                print('EXPNUM', e, 'expected', os.path.join(os.path.dirname(fn1), fns[i1+1]))
                             
 
             #print('Before:', galdepth[Igal])
