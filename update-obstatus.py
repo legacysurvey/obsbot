@@ -621,6 +621,10 @@ def main():
             K = np.flatnonzero((O.get('%s_done' % band) == 0) * (O.get('pass') == passnum) *
                                (odepth > 1) * (odepth < 30))
             print(sum(odepth[K] < fid.single_exposure_depth - 0.25), 'of', len(odepth[K]), 'DONE=0 tiles are more than 0.25 mag shallow')
+
+            for k in K:
+                print('  EXPNUM', O.get('%s_expnum' % band)[k], 'DATE', O.get('%s_date' % band)[k], 'DEPTH', O.get('%s_depth' % band)[k])
+
             K = np.flatnonzero((O.get('%s_done' % band) == 1) * (O.get('pass') == passnum) *
                                (odepth > 1) * (odepth < 30))
             print(sum(odepth[K] < fid.single_exposure_depth - 0.25), 'of', len(odepth[K]), 'DONE=1 tiles are more than 0.25 mag shallow')
