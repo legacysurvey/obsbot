@@ -90,6 +90,14 @@ tileid_to_index = dict(zip(tiles.tileid, np.arange(len(tiles))))
 
 T.tileindex = np.array([tileid_to_index.get(t, -1) for t in T.tileid])
 
+from collections import Counter
+counts = Counter(T.tileindex[T.tileindex >= 0])
+
+T.tilenobs = np.zeros(len(T), np.int16)
+n = T.tilenobs
+for i,t in enumerate(T.tileindex):
+    n[i] = counts[t]
+
 T.tilera   = np.zeros(len(T), tiles.ra.dtype)
 T.tiledec  = np.zeros(len(T), tiles.dec.dtype)
 T.tilepass = np.zeros(len(T), tiles.passnum.dtype)
@@ -97,7 +105,6 @@ I = (T.tileindex >= 0)
 T.tilera[I]  = tiles.ra [T.tileindex[I]]
 T.tiledec[I] = tiles.dec[T.tileindex[I]]
 T.tilepass[I] = tiles.passnum[T.tileindex[I]]
-
 T.writeto('mzls-raw-2.fits')
 
 #nexp,xe,ye = np.histogram2d(T.tilera, T.tiledec)
