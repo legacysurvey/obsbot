@@ -105,6 +105,7 @@ def main(cmdlineargs=None, get_decbot=False):
         # Drop exposures that are before *now*, in all three plans.
         now = ephem.now()
         print('Now:', str(now))
+        print('First pass 1 exposure:', ephem.Date(str(J1[0]['approx_datetime'])))
         J1 = [j for j in J1 if ephem.Date(str(j['approx_datetime'])) > now]
         J2 = [j for j in J2 if ephem.Date(str(j['approx_datetime'])) > now]
         J3 = [j for j in J3 if ephem.Date(str(j['approx_datetime'])) > now]
@@ -775,15 +776,19 @@ class Decbot(Obsbot):
             if self.opt.cut_before_now:
                 tstart = ephem.Date(str(j['approx_datetime']))
                 if tstart < now:
+                    print('Dropping tile with approx_datetime', j['approx_datetime'], ' -- now is', now)
                     continue
             tilename = str(j['object'])
             # Was this tile seen in a file on disk? (not incl. backlog)
             if tilename in self.observed_tiles:
+                print('skipping tile with name', tilename, 'because it is in the observed tile on disk')
                 continue
             if object_name_in_list(j, self.queued_tiles):
+                print('skipping tile with name', tilename, 'because it is in the list of queued tiles')
                 continue
             # Our plan files should already have this property..!
             if object_name_in_list(j, keep):
+                print('skipping tile with name', tilename, 'already seen in this plan')
                 continue
             keep.append(j)
         return keep
