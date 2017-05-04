@@ -189,7 +189,7 @@ def main():
             phot = I[ccds.photometric[I]]
             for ii in non:
                 print('    http://legacysurvey.org/viewer-dev/?ra=%.3f&dec=%.3f&zoom=11&ccds3&bad=%i-%s' % (ccds.ra_center[ii], ccds.dec_center[ii], expnum, ccds.ccdname[ii]))
-                print('    http://legacysurvey.org/viewer-dev/ccd/decals-dr3/decam-%s-%s-%s/' % (ccds.expnum[ii], ccds.ccdname[ii], ccds.filter[ii]))
+                print('    http://legacysurvey.org/viewer-dev/ccd/decals-dr5/decam-%s-%s-%s/' % (ccds.expnum[ii], ccds.ccdname[ii], ccds.filter[ii]))
             print('  image:', ccds.image_filename[I][0])
             print('  boresight:', ccds.ra_bore[I][0], ccds.dec_bore[I][0])
             #print('  ccdnames:', ccds.ccdname[I])
@@ -203,8 +203,85 @@ def main():
             print('    ccd zpt vs frame zpt:', ccds.ccdzpt[non] - ccds.zpt[non])
             dp = ccds.ccdzpt[phot] - ccds.zpt[phot]
             print('      phot ccds zpt vs frame: range', dp.min(), dp.max(), 'mean', dp.mean())
+
+
+            whitelist = [ 346662, 346664, 346665, # S3/S29 striping
+                          346754, # one bad chip, wispy
+                          346967, 347304, # M5 globular
+                          347664, # zpt scatter
+                          347744, # weird eye-shaped ghost; but lots of cov.
+                          347755, 347768, 347769, 347782, # shallow, zpt scatter -- wispy pattern on focal plane
+                          347918, 347920, # straddling transparency cut
+                          347934, 347936, 347941, 347945, 347947, # zpt scatter
+                          392377, 392380, 393173, # bright star
+                          393671, # bright star
+                          393672, 393673, # scatter
+                          425339, 425340, # strangely low ccdnmatch
+                          426225, 430808, # globular cluster
+                          431640, # bright star
+                          431644, # globular
+                          432154, # one amp high bias
+                          432159, # transp. on boundary
+                          432179, # one amp high bias, +
+                          432747, 432748, 432751, # scatter
+                          433305, 433306, # bright star
+                          497062, 497064, 497065, # low ccdnmatch
+                          509516, 509517, # bright star
+                          511247, 511263, # low ccdnmatch
+                          511513, 511514, # bright star
+                          512303, # bright star
+                          520560, # bright star
+                          521782, # scatter
+                          522212, # bright star
+                          535138, # bright stars, satellite hits?
+                          535141, 535142, 535143, 535149, # low ccdnmatch
+                          535210, # bright star
+                          535695, # globular
+                          536065, # globular
+                          536385, # strangely zero ccdnmatch
+                          547761, # nice galaxy
+                          548257, # bright star
+                          553779, # scatter 
+                          553795, # shallow
+                          554284, # marginal zpt
+                          563659, # zpt scatter
+                          563850, # mild striping
+                          563852, # ??
+                          583118, # bright stars?
+                          592621, # marginal zpt, scatter
+                          592859, # some pattern noise
+                          605068, # ??
+                          625710, # strangely low ccdnmatch
+                          631005, # bright star
+                          634493, # globular
+                          634786, # strangely low ccdnmatch
+                          634877, # globular
+                          635535, # bright star, glob
+                          635962, # low ccdnmatch
+                          635973, # bias level?
+                          636018, # bias level?
+                          637688, # bright star
+                          ]
+            blacklist = [
+                425328, # 2.7" seeing
+                488244, 488256, 488260, 488261, 488263, 488268, # weird striping
+                488270, # weird striping
+                496913, 496917, 496918, 496919, 496920, 496921, 496922, # 3" seeing
+                496923, 496925, 496926, 496927, 496928, 496930, # 3" seeing
+                509162, 509163, 509166, 509172, 509176, 509182, 509202, # 3" seeing
+                535471, # 4" seeing!
+                535498, # 3" seeing
+                548218, # double PSF -- telescope moved?
+                563835, # striping
+                563842, # striping
+                ]
+
+            if expnum in whitelist:
+                print('** Exposure', expnum, 'in whitelist -- marking as photometric')
+                E.photometric[j] = True
+            
         # Don't include zeros in computing average depths!
-        Igood = I[ccds.galdepth[I] > 0]
+        Igood = I[(ccds.galdepth[I] > 0) * (ccds.ccdzpt[I] < 30)]
         if len(Igood) > 0:
             E.galdepth[j] = np.mean(ccds.galdepth[Igood])
         else:
