@@ -161,29 +161,6 @@ def main():
         j = j[0]
         E.photometric[j] = np.all(ccds.photometric[I])
         if len(np.unique(ccds.photometric[I])) == 2:
-
-            # 346662: S3 striping
-            # 346664: S3 striping
-            # 346665: S3 striping, S29: striping
-            # 346754: CCDNmatch = 0; wispy
-            # 346967: M5
-            # 347304: M5
-            # 347664: zeropoint scatter?
-            # 347744: weird eye-shaped ghost.  Also N29.
-            # 347755: shallow, zpt scatter -- wispy pattern on focal plane
-            # 347768: shallow, zpt scatter -- "
-            # 347769: looks fine, zpt scatter? -- "
-            # 347782: fine, galactic cirrus?
-            # 347918: zpt scatter
-            # 347920: zpt scatter
-
-            # ...
-
-            # 496918: strangely small ccdnmatch
-            # 496919: fine; bright star in one ccd
-            # 496920: 3" seeing; cirrus?
-            
-            
             print('Exposure', expnum, 'has photometric and non-photometric CCDs')
             non = I[ccds.photometric[I] == False]
             phot = I[ccds.photometric[I]]
@@ -341,6 +318,7 @@ def main():
         print()
         print('------------------')
         print(band, 'band.')
+
         # "I" indexes into exposures E.
         I = np.flatnonzero((E.filter == band) * E.photometric *
                            np.isfinite(E.detiv))
@@ -408,13 +386,24 @@ def main():
         J = tileid_to_index[E.tileid[I]]
         only_nonphot = J[galdepth[J] == 0.]
         print(len(only_nonphot), 'tiles have only non-photometric exposures')
-        print('Marking', len(only_nonphot),'non-photometric exposures in', band)
+        print('Marking', len(only_nonphot), 'non-photometric tiles in', band, 'with depth=1')
 
         orig_galdepth = galdepth.copy()
         
         galdepth[missing_depth] = 30.
         galdepth[only_nonphot] = 1.
 
+        J = tileid_to_index[E.tileid[I]]
+        nonphot = (galdepth[J] == 1.)
+        print('Non-photometric galdepths:', E.galdepth[I])
+        print('Non-photometric galdepths:', E.galdepth[I[nonphot]])
+        plt.clf()
+        phot = np.flatnonzero((E.filter == band) * E.photometric)
+        plt.hist(E.galdepth[phot], range=(18, 26), bins=50, histtype='step', color='b', label='Photometric')
+        plt.hist(E.galdepth[I[nonphot]], range=(18, 26), bins=50, histtype='step', color='r', label='Non-phot')
+        plt.legend()
+        plt.savefig('nonphot-%s.png' % band)
+        
         # expnum_to_copilot = np.empty(expnums.max()+1, int)
         # expnum_to_copilot[:] = -1
         # expnum_to_copilot[copilot.expnum] = np.arange(len(copilot))
@@ -705,6 +694,19 @@ def main():
             K = np.flatnonzero((O.get('%s_done' % band) == 1) * (O.get('pass') == passnum) *
                                (odepth > 1) * (odepth < 30))
             print(sum(odepth[K] < fid.single_exposure_depth - 0.25), 'of', len(odepth[K]), 'DONE=1 tiles are more than 0.25 mag shallow')
+
+            K = np.flatnonzero((O.get('%s_done' % band) == 1) * (O.get('pass') == passnum) *
+                               (odepth == 1))
+            print(len(K), 'DONE=1 tiles have DEPTH=1 (non-photometric)')
+
+            K = np.flatnonzero((O.get('%s_done' % band) == 1) * (O.get('pass') == passnum) *
+                               (odepth == 30))
+            print(len(K), 'DONE=1 tiles have DEPTH=30 (unknown depth)')
+
+            K = np.flatnonzero((O.get('%s_done' % band) == 0) * (O.get('pass') == passnum) *
+                               (odepth != 0))
+            print(len(K), 'tiles have DONE=0 but DEPTH != 0')
+
             
             mlo,mhi = 21,24
             plt.hist(np.clip(depth, mlo,mhi), bins=100, range=(mlo,mhi),
@@ -716,7 +718,77 @@ def main():
         plt.legend(loc='upper left')
         plt.title('Depth: %s' % band)
         plt.savefig('depth-%s.png' % band)
-        
+
+        for passnum in [1,2,3]:
+            depth = O.get('%s_depth' % band)
+
+            roi = ((O.in_desi == 1) * (O.in_des == 0) *
+                   (O.dec > dlo) * (O.dec < dhi) *
+                   (O.get('pass') == passnum))
+
+            J = np.flatnonzero(roi)
+            
+            done = np.flatnonzero(roi *
+                                  (O.get('%s_done' % band) == 1))
+            
+            redo = np.flatnonzero(roi *
+                                  np.logical_or(
+                                      (depth > 1) * (depth < 30) *
+                                      (depth < fid.single_exposure_depth - 0.25),
+                                      depth == 1))
+
+            print('Band %s, pass %i: total tiles %i, done %i, redo %i, keep %i' %
+                  (band, passnum, len(J), len(done), len(redo), len(done)-len(redo)))
+
+            A = np.flatnonzero(roi * 
+                               (depth > 1) * (depth < 30) *
+                               (depth > fid.single_exposure_depth - 0.25))
+            B = np.flatnonzero(roi * 
+                               (depth > 1) * (depth < 30) *
+                               (depth <= fid.single_exposure_depth - 0.25))
+
+            C = np.flatnonzero(roi * (depth == 1))
+
+            D = np.flatnonzero(roi * (depth == 30))
+            
+            print('Band %s, pass %i: total tiles: %i, A: %i, B: %i, C: %i, D: %i' %
+                  (band, passnum, len(J), len(A), len(B), len(C), len(D)))
+            
+            plt.clf()
+            plt.plot(O.ra[J], O.dec[J], 'ko', alpha=0.1)
+            plt.plot(O.ra[done], O.dec[done], 'k.')
+            plt.plot(O.ra[redo], O.dec[redo], 'r.')
+            plt.axis([360, 0, -20, 38])
+            plt.title('Tiles to redo: %s band, pass %i: %i of %i' % (band, passnum, len(redo), len(done)))
+            plt.savefig('redo-%s-%i.png' % (band, passnum))
+
+            if band == 'z':
+
+                redo = np.flatnonzero((O.get('pass') == passnum) *
+                                      np.logical_or(
+                                          (depth > 1) * (depth < 30) *
+                                          (depth < fid.single_exposure_depth - 0.5),
+                                          depth == 1))
+
+                A = np.flatnonzero(roi * 
+                                   (depth > 1) * (depth < 30) *
+                                   (depth > fid.single_exposure_depth - 0.5))
+                B = np.flatnonzero(roi * 
+                                   (depth > 1) * (depth < 30) *
+                                   (depth <= fid.single_exposure_depth - 0.5))
+
+                print('Band %s, pass %i: total tiles: %i, A: %i, B: %i, C: %i, D: %i (shallow = 0.5 mag less than target)' %
+                      (band, passnum, len(J), len(A), len(B), len(C), len(D)))
+                
+                plt.clf()
+                plt.plot(O.ra[J], O.dec[J], 'ko', alpha=0.1)
+                plt.plot(O.ra[done], O.dec[done], 'k.')
+                plt.plot(O.ra[redo], O.dec[redo], 'r.')
+                plt.axis([360, 0, -20, 38])
+                plt.title('Tiles to redo (> 0.5 mag shallow): %s band, pass %i: %i of %i' % (band, passnum, len(redo), len(done)))
+                plt.savefig('redo2-%s-%i.png' % (band, passnum))
+                
+            
     O.writeto(out_fn)
 
 # From http://scipy-cookbook.readthedocs.io/items/Matplotlib_ColormapTransformations.html
