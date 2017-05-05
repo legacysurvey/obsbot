@@ -449,6 +449,23 @@ def main():
                                   (galdepth == code))
             expnums = O.get('%s_expnum' % band)[Igal]
             print(len(expnums), 'still marked DONE, with EXPNUM, but missing DEPTH, with code =', code)
+
+            Ihuh = np.flatnonzero((O.get('%s_done' % band) == 1) *
+                                  (galdepth == code))
+            print(len(Ihuh), 'tiles marked DONE, without EXPNUM, and DEPTH =', code)
+
+            if len(Ihuh):
+                print('Tile ids:', O.tileid[Ihuh])
+                for t in O.tileid[Ihuh]:
+                    I = np.flatnonzero(E.tileid == t)
+                    print('  tile', t, ': exposure numbers:', E.expnum[I])
+                    print('  with depths', E.galdepth[I])
+                    i = tileid_to_index[t]
+                    if i >= 0:
+                        print('    depth', galdepth[i])
+                    else:
+                        print('    no depth')
+            
             if len(expnums) == 0:
                 continue
             IC = np.array([expnum_to_copilot.get(e, -1) for e in expnums])
@@ -703,6 +720,10 @@ def main():
                                (odepth == 30))
             print(len(K), 'DONE=1 tiles have DEPTH=30 (unknown depth)')
 
+            K = np.flatnonzero((O.get('%s_done' % band) == 1) * (O.get('pass') == passnum) *
+                               (odepth == 0))
+            print(len(K), 'DONE=1 tiles have DEPTH=0')
+            
             K = np.flatnonzero((O.get('%s_done' % band) == 0) * (O.get('pass') == passnum) *
                                (odepth != 0))
             print(len(K), 'tiles have DONE=0 but DEPTH != 0')
