@@ -26,10 +26,10 @@ from obsbot import NewFileWatcher
 if nice_camera_name == 'DECam':
     legacy_survey_layers = ['decals-dr3', 'sdssco']
 else:
-    legacy_survey_layers = ['mobo-dr4', 'sdssco']
+    legacy_survey_layers = ['mzls+bass-dr4', 'sdssco']
 
 nicelayernames = { 'decals-dr3': 'DECaLS DR3',
-                   'mobo-dr4': 'MzLS+BASS DR4',
+                   'mzls+bass-dr4': 'MzLS+BASS DR4',
                    'sdssco': 'SDSS'}
 
 ngc_typenames = {
@@ -513,7 +513,7 @@ class NgcBot(NewFileWatcher):
                 sys.exit(0)
             except:
                 import traceback
-                print('Failed to measure file', path, 'ext', ext, ':')
+                print('Failed to measure file', meas.fn, 'ext', ext, ':')
                 traceback.print_exc()
                 continue
             #print('Measured:', M.keys())
