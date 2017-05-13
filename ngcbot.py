@@ -540,6 +540,34 @@ class NgcBot(NewFileWatcher):
                 continue
             subwcs = wcs.get_subimage(xl, yl, sw, sh)
 
+            # Flat image for the same CCD region.
+            flatfn = '/tmp/mzls/mos3.127506.fits'
+            # meas_class = get_measurer_class_for_file(flatfn)
+            # if meas_class is None:
+            #     print('Failed to identify camera in', flatfn)
+            #     return
+            # flatmeas = meas_class(flatfn, 0, self.nom)
+            # print('Flat meas:', flatmeas)
+            # flatmeas.ext = ext
+            # flathdr = fitsio.read_header(flatfn)
+            # flatmeas.primhdr = flathdr
+            # flatmeas.edge_trim = 20
+            # FM = flatmeas.run(n_fwhm=1, verbose=False, get_image=True)
+            # flatraw = FM['image']
+            F = fitsio.FITS(flatfn)
+            flatraw,flathdr = meas.read_raw(F, ext)
+            flatsub = flatraw[yl:yh, xl:xh]
+
+            zerofn = '/tmp/mzls/mos3.127522.fits'
+            F = fitsio.FITS(zerofn)
+            zeroraw,zerohdr = meas.read_raw(F, ext)
+            zerosub = zeroraw[yl:yh, xl:xh]
+
+            rawfn = meas.fn
+            F = fitsio.FITS(rawfn)
+            rawimg,rawhdr = meas.read_raw(F, ext)
+            rawsub = rawimg[yl:yh, xl:xh]
+            
             # Astrometric shifts
             dx = M['dx']
             dy = M['dy']
@@ -619,6 +647,9 @@ class NgcBot(NewFileWatcher):
 
                 thiswcs = Tan(hdr)
                 newimg = np.zeros((rh,rw), dtype=subimg.dtype)
+
+                newflat = np.zeros((rh,rw), dtype=subimg.dtype)
+
                 try:
                     #Yo,Xo,Yi,Xi,rims = resample_with_wcs(thiswcs, subwcs)
                     # Laczos
@@ -628,6 +659,13 @@ class NgcBot(NewFileWatcher):
                 #newimg[Yo,Xo] = subimg[Yi,Xi]
                 newimg[Yo,Xo] = rims[0]
 
+                try:
+                    Yo,Xo,Yi,Xi,rims = resample_with_wcs(thiswcs, subwcs, [flatsub])
+                except:
+                    continue
+                newflat[Yo,Xo] = rims[0]
+
+                
             if len(fitsimgs) == 0:
                 # No overlap with existing surveys
                 continue
@@ -635,6 +673,43 @@ class NgcBot(NewFileWatcher):
             #print()
             newband = primhdr['FILTER'][0]
             #print('New image is', newband)
+
+            mn,mx = np.percentile(newflat, [25,99])
+            plt.clf()
+            #plt.imshow(newflat, interpolation='nearest', origin='lower',
+            plt.imshow(flatsub, interpolation='nearest', origin='lower',
+                       vmin=mn, vmax=mx)
+            #plt.colorbar()
+            plt.colorbar()
+            plt.savefig('ngcbot-flat.png')
+
+            med = np.median(newflat.ravel())
+            #mn,mx = np.percentile(newimg, [25,99])
+            #mn,mx = np.percentile(newimg, [25,90])
+            mn,mx = np.percentile(rawsub, [25,90])
+            plt.clf()
+            # plt.subplot(1,2,1)
+            #plt.imshow(newimg, interpolation='nearest', origin='lower',
+            # plt.imshow(subimg, interpolation='nearest', origin='lower',
+            plt.imshow(rawsub, interpolation='nearest', origin='lower',
+                       vmin=mn, vmax=mx)
+            plt.colorbar()
+            plt.savefig('ngcbot-unflattened.png')
+            plt.clf()
+            #plt.subplot(1,2,2)
+            #plt.imshow(newimg / (newflat / med), interpolation='nearest', origin='lower',
+            #plt.imshow(subimg / (flatsub / med), interpolation='nearest', origin='lower',
+            plt.imshow(rawsub / (flatsub / med), interpolation='nearest', origin='lower',
+                       vmin=mn, vmax=mx)
+            plt.colorbar()
+            plt.savefig('ngcbot-flattened.png')
+
+            mn,mx = np.percentile(zerosub, [5,95])
+            plt.clf()
+            plt.imshow(zerosub, interpolation='nearest', origin='lower',
+                       vmin=mn, vmax=mx)
+            plt.colorbar()
+            plt.savefig('ngcbot-zero.png')
 
             plt.clf()
             plt.subplots_adjust(left=0.03, right=0.97, bottom=0.03)
