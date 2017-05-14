@@ -62,6 +62,8 @@ def main():
                       help='Send a tweet for each galaxy?')
     parser.add_option('--only', default=False, action='store_true',
                       help='Only run the command-line files, then quit')
+    parser.add_option('--flats', default=False, action='store_true',
+                      help='Look for and use flats in the image directory?')
 
     opt,args = parser.parse_args()
 
@@ -173,6 +175,8 @@ class NgcBot(NewFileWatcher):
 
         self.spec = fits_table('specObj-dr12-trim-2.fits')
 
+        self.cached_flats = {}
+        self.read_flats = opt.flats
         
     def try_open_file(self, path):
         print('Trying to open file: %s' % path)
@@ -440,7 +444,42 @@ class NgcBot(NewFileWatcher):
             plt.imshow(newgray, **grayargs)
             plt.xticks([]); plt.yticks([])
         ps.savefig()
-            
+
+    def get_flat(self, band, ext, meas):
+        f = self.cached_flats.get((band,ext), None)
+        if f is not None:
+            return f
+        fns = self.get_file_list()
+        fns = self.filter_new_files(fns)
+        print(len(fns), 'files to search for flats')
+        flats = []
+        for fn in fns:
+            try:
+                F = fitsio.FITS(fn)
+                hdr = F[0].read_header()
+                obstype = hdr['OBSTYPE']
+                fband = meas.get_band(hdr)
+                print('File', fn, 'obstype', obstype, 'filter', fband)
+                if obstype != 'dome flat':
+                    continue
+                if fband != band:
+                    continue
+                flat = meas.read_raw(F, ext)
+                print('Got flat:', flat.shape)
+                flats.append(flat)
+            except:
+                import traceback
+                traceback.print_exc()
+                pass
+        if len(flats) == 0:
+            return None
+        flats = np.dstack(flats)
+        print('Flats:', flats.shape)
+        f = np.median(flats, axis=2)
+        print('f:', f.shape)
+        self.cached_flats[(band,ext)] = f
+        return f
+
     def match_ngc(self, rr, dd, radius, exts, F, primhdr, meas):
         '''
         rr, dd: np arrays: RA,Dec centers of chips/amps
@@ -505,10 +544,14 @@ class NgcBot(NewFileWatcher):
                 continue
 
             # Measure the image!
+            flat = None
+            if self.read_flats:
+                band = meas.get_band(hdr)
+                flat = self.get_flat(band, ext, meas)
             meas.ext = ext
             meas.edge_trim = 20
             try:
-                M = meas.run(n_fwhm=1, verbose=False, get_image=True)
+                M = meas.run(n_fwhm=1, verbose=False, get_image=True, flat=flat)
             except KeyboardInterrupt:
                 sys.exit(0)
             except:
@@ -686,7 +729,8 @@ class NgcBot(NewFileWatcher):
             med = np.median(newflat.ravel())
             #mn,mx = np.percentile(newimg, [25,99])
             #mn,mx = np.percentile(newimg, [25,90])
-            mn,mx = np.percentile(rawsub, [25,90])
+            #mn,mx = np.percentile(rawsub, [25,95])
+            mn,mx = np.percentile(rawsub, [50,95])
             plt.clf()
             # plt.subplot(1,2,1)
             #plt.imshow(newimg, interpolation='nearest', origin='lower',
