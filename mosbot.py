@@ -192,6 +192,7 @@ class Mosbot(Obsbot):
         self.last_forced = None
 
     def heartbeat(self):
+        from obsbot import get_forced_pass
         forced = get_forced_pass()
         if forced != self.last_forced:
             if self.latest_meas is not None:
