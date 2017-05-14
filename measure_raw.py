@@ -169,7 +169,10 @@ class RawMeasurer(object):
 
 
         if flat is not None:
-            img /= (flat / np.median(flat))
+            I = (flat != 0)
+            med = np.median(flat[I]).astype(float)
+            img[I] = img[I] / (flat[I] / med)
+            #img /= (flat / np.median(flat).astype(float))
 
         img,trim_x0,trim_y0 = self.trim_edges(img)
 
