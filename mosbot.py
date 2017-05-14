@@ -31,7 +31,7 @@ from obsbot import (exposure_factor, get_tile_from_name, get_airmass,
 
 def main(cmdlineargs=None, get_mosbot=False):
     import optparse
-    parser = optparse.OptionParser(usage='%prog <pass1.json> <pass2.json> <pass3.json>')
+    parser = optparse.OptionParser(usage='%prog [<pass1.json> <pass2.json> <pass3.json>]    (defaults to pass[123].json)')
 
     from camera_mosaic import (ephem_observer, default_extension, nominal_cal,
                                tile_path)
@@ -128,6 +128,26 @@ def main(cmdlineargs=None, get_mosbot=False):
 
 
 class Mosbot(Obsbot):
+    '''
+    When stuff happens:
+
+    Mosbot.__init__:
+    - Mosbot.write_initial_script
+
+    Mosbot.run() (ie, obsbot.py : NewFileWatcher.run()):
+    - while True:
+    -  (sleep)
+    -  NewFileWatcher.run_one()
+    -    NFW.get_new_files()
+    -    NFW.try_open_file()
+    -    Mosbot.process_file()
+    -      measure_raw()
+    -      Mosbot.update_for_image()
+    -  Mosbot.heartbeat()
+    -    (check for change of forced pass; re-run update_for_image() if we
+          have measured an image)
+    
+    '''
     def __init__(self, J1, J2, J3, opt, nom, obs, tiles):
         super(Mosbot, self).__init__(opt.rawdata, backlog=False,
                                      only_process_newest=True)
@@ -166,7 +186,19 @@ class Mosbot(Obsbot):
             self.n_exposures = 0
 
         self.bot_runtime = mjdnow()
-            
+
+        self.latest_meas = None
+
+        self.last_forced = None
+
+    def heartbeat(self):
+        forced = get_forced_pass()
+        if forced != self.last_forced:
+            if self.latest_meas is not None:
+                print('Noticed change of force:', self.last_forced, 'to', forced, '; updating plan')
+                self.update_for_image(self.latest_meas)
+                self.last_forced = forced
+        
     def filter_new_files(self, fns):
         return [fn for fn in fns if
                 fn.endswith('.fits.fz') or fn.endswith('.fits')]
@@ -304,7 +336,8 @@ class Mosbot(Obsbot):
             # FIXME -- we could fall back to pass 3 here.
             return False
 
-        return self.update_for_image(M)
+        self.latest_meas = M
+        return self.update_for_image(self.latest_meas)
 
     def check_header(self, fn):
         # Read primary FITS header
