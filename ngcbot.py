@@ -232,6 +232,9 @@ class NgcBot(NewFileWatcher):
         if self.match_ngc(rr, dd, radius, exts, F, primhdr, meas):
             return
 
+        print('Not doing SDSS spectro jazz.')
+        return
+
         # No match with NGC catalog -- look at SDSS spectro objects.
         I,J,d = match_radec(rr, dd, self.spec.ra, self.spec.dec, radius)
         print(len(I), 'matches to spectra')
