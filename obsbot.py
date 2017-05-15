@@ -58,6 +58,7 @@ def choose_pass(trans, seeing, skybright, nomsky,
     return 3
 
 def get_forced_pass(forcedir=''):
+    ''' Returns tuple (forced pass number, filename)'''
     for p in [1,2,3]:
         path = os.path.join(forcedir, 'forcepass%i' % p)
         #print('Checking for file "%s"' % path)

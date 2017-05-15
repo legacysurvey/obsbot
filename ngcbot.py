@@ -64,7 +64,9 @@ def main():
                       help='Only run the command-line files, then quit')
     parser.add_option('--flats', default=False, action='store_true',
                       help='Look for and use flats in the image directory?')
-
+    parser.add_option('--ps', default=False, action='store_true',
+                      help='Debugging plots?')
+    
     opt,args = parser.parse_args()
 
     global plt
@@ -528,6 +530,10 @@ class NgcBot(NewFileWatcher):
             pixrad = 1.4 * obj.radius * 3600. / wcs.pixel_scale()
             pixrad = max(pixrad, 100)
             # print('radius:', obj.radius, 'pixel radius:', pixrad)
+
+            # HACK
+            pixrad *= 3
+
             r = pixrad
             tt = '%s in exp %i ext %s (%i)' % (obj.name, expnum, extname, ext)
             print(tt)
@@ -553,8 +559,11 @@ class NgcBot(NewFileWatcher):
                     print('flat: range', flat.min(), flat.max(), 'median', np.median(flat))
             meas.ext = ext
             meas.edge_trim = 20
+            debugps = None
+            if self.opt.ps:
+                debugps = ps
             try:
-                M = meas.run(n_fwhm=1, verbose=False, get_image=True, flat=flat)
+                M = meas.run(n_fwhm=1, verbose=False, get_image=True, flat=flat, ps=debugps)
             except KeyboardInterrupt:
                 sys.exit(0)
             except:
@@ -695,8 +704,6 @@ class NgcBot(NewFileWatcher):
                 thiswcs = Tan(hdr)
                 newimg = np.zeros((rh,rw), dtype=subimg.dtype)
 
-                #newflat = np.zeros((rh,rw), dtype=subimg.dtype)
-
                 try:
                     #Yo,Xo,Yi,Xi,rims = resample_with_wcs(thiswcs, subwcs)
                     # Laczos
@@ -706,11 +713,6 @@ class NgcBot(NewFileWatcher):
                 #newimg[Yo,Xo] = subimg[Yi,Xi]
                 newimg[Yo,Xo] = rims[0]
 
-                # try:
-                #     Yo,Xo,Yi,Xi,rims = resample_with_wcs(thiswcs, subwcs, [flatsub])
-                # except:
-                #     continue
-                # newflat[Yo,Xo] = rims[0]
 
                 
             if len(fitsimgs) == 0:
@@ -723,7 +725,7 @@ class NgcBot(NewFileWatcher):
             #print('New image is', newband)
 
             if False:
-                mn,mx = np.percentile(newflat, [25,99])
+                mn,mx = np.percentile(flatsub, [25,99])
                 plt.clf()
                 #plt.imshow(newflat, interpolation='nearest', origin='lower',
                 plt.imshow(flatsub, interpolation='nearest', origin='lower',
@@ -761,11 +763,6 @@ class NgcBot(NewFileWatcher):
                 plt.colorbar()
                 plt.savefig('ngcbot-zero.png')
 
-            plt.clf()
-            plt.subplots_adjust(left=0.03, right=0.97, bottom=0.03)
-            NC = 1 + len(fitsimgs)
-            NR = 2
-
             zp = M['zp']
             zpscale = 10.**((zp - 22.5)/2.5)
             exptime = primhdr['EXPTIME']
@@ -789,6 +786,69 @@ class NgcBot(NewFileWatcher):
             # plot title args
             targs = dict(fontsize=8)
 
+
+            # DEBUG
+            if self.opt.ps:
+                ocx,ocy = subwcs.get_crpix()
+
+                subwcs.set_crpix((cx, cy))
+                newimgA = np.zeros((rh,rw), dtype=subimg.dtype)
+                Yo,Xo,Yi,Xi,rims = resample_with_wcs(thiswcs, subwcs, [subimg])
+                newimgA[Yo,Xo] = rims[0]
+
+                subwcs.set_crpix((cx-dx, cy-dy))
+                newimgB = np.zeros((rh,rw), dtype=subimg.dtype)
+                Yo,Xo,Yi,Xi,rims = resample_with_wcs(thiswcs, subwcs, [subimg])
+                newimgB[Yo,Xo] = rims[0]
+
+                subwcs.set_crpix((cx-dx-corrx, cy-dy-corry))
+                newimgC = np.zeros((rh,rw), dtype=subimg.dtype)
+                Yo,Xo,Yi,Xi,rims = resample_with_wcs(thiswcs, subwcs, [subimg])
+                newimgC[Yo,Xo] = rims[0]
+
+                #newgray = grayscale(newimg, newband)
+                #hi = np.percentile(newgray, 99.9)
+                grayargs = dict(interpolation='nearest', origin='lower',
+                                cmap='gray', vmin=0.)
+                #vmin=0., vmax=hi, cmap='gray')
+
+                (layer, bands, imgs) = fitsimgs[0]
+                nicelayer = nicelayernames.get(layer, layer)
+                for band,img in zip(bands, imgs):
+                    newbands = ['g','r','z']
+                    newindex = dict(g=0, r=1, i=2, z=2)
+                    if newindex[band] == newindex[newband]:
+                        oldgray = grayscale(img, band)
+                        plt.clf()
+                        plt.imshow(oldgray, **grayargs)
+                        plt.title(nicelayer)
+                        ps.savefig()
+                
+                plt.clf()
+                plt.imshow(grayscale(newimgA, newband), **grayargs)
+                #plt.imshow(newimgA, **grayargs)
+                plt.title('No astromety correction')
+                ps.savefig()
+
+                plt.clf()
+                plt.imshow(grayscale(newimgB, newband), **grayargs)
+                #plt.imshow(newimgB, **grayargs)
+                plt.title('Astromety shift only correction')
+                ps.savefig()
+
+                plt.clf()
+                plt.imshow(grayscale(newimgC, newband), **grayargs)
+                #plt.imshow(newimgC, **grayargs)
+                plt.title('Astromety shift+affine correction')
+                ps.savefig()
+
+                subwcs.set_crpix((ocx,ocy))
+            
+            plt.clf()
+            plt.subplots_adjust(left=0.03, right=0.97, bottom=0.03)
+            NC = 1 + len(fitsimgs)
+            NR = 2
+            
             # New Image plot
             newgray = grayscale(newimg, newband)
             hi = np.percentile(newgray, 99.9)
