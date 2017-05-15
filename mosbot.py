@@ -193,8 +193,8 @@ class Mosbot(Obsbot):
 
     def heartbeat(self):
         from obsbot import get_forced_pass
-        (forced,ffn) = get_forced_pass()
-        print('heartbeat.  forced pass:', forced, 'vs previous', self.last_forced, '; latest meas:', self.latest_meas)
+        (forced,ffn) = get_forced_pass(forcedir=self.scriptdir)
+        print('heartbeat.  forced pass:', forced, 'vs previous', self.last_forced, '(dir:', self.scriptdir, ')')
         if forced != self.last_forced:
             if self.latest_meas is not None:
                 print('Noticed change of force:', self.last_forced, 'to', forced, '; updating plan')
