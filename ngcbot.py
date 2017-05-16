@@ -535,7 +535,7 @@ class NgcBot(NewFileWatcher):
             # print('radius:', obj.radius, 'pixel radius:', pixrad)
 
             # HACK
-            pixrad *= 3
+            #pixrad *= 3
 
             r = pixrad
             tt = '%s in exp %i ext %s (%i)' % (obj.name, expnum, extname, ext)
