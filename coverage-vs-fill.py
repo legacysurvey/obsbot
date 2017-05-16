@@ -56,7 +56,24 @@ if __name__ == '__main__':
     ccds.tileid = tileids
 
     T = fits_table('obstatus/mosaic-tiles_obstatus.fits')
-    
+
+    f = open('obstatus/bad_expid.txt')
+    bad_expids = []
+    for line in f:
+        line = line.strip()
+        if len(line) == 0:
+            continue
+        if line[0] == '#':
+            continue
+        words = line.split()
+        try:
+            expnum = int(words[0])
+        except:
+            print('Skipping line:', line)
+            continue
+        bad_expids.append(expnum)
+    print('Read', len(bad_expids), 'bad exposure numbers')
+
     # Update ccds.tilepass from ccds.tileid
     tileidtopass = dict(zip(T.tileid, T.get('pass')))
     tileidtoebv = dict(zip(T.tileid, T.ebv_med))
@@ -81,7 +98,7 @@ if __name__ == '__main__':
             exps.galdepth[j] = np.mean(ccds.galdepth[Igood])
         else:
             exps.galdepth[j] = 0.
-    
+
     # CCDs-table-based mapping from tileid to depth.
     I = np.flatnonzero((exps.tilepass > 0) * (exps.galdepth > 0) *
                        (exps.tileid > 0))
@@ -116,6 +133,7 @@ if __name__ == '__main__':
     #wcsoffsets = []
 
     retirable = []
+    alldepths = []
 
     for i in range(1, len(F)):
         hdr = F[i].read_header()
@@ -184,16 +202,17 @@ if __name__ == '__main__':
         #print('  expnums', T.z_expnum[I])
 
         for ii in I:
+            if T.z_expnum[ii] in bad_expids:
+                print('  skipping bad exp num', T.z_expnum[ii])
+                continue
+            # Get depth from CCDs file, if available.
+            zdepth = tileid_to_depth.get(T.tileid[ii], 0.)
+            if zdepth == 0.:
+                zdepth = T.z_depth[ii]
+            matched_exposures.add(T.z_expnum[ii])
+
             for twcs in tilewcs:
                 twcs.set_crval((T.ra[ii], T.dec[ii]))
-
-                # Get depth from CCDs file, if available.
-                zdepth = tileid_to_depth.get(T.tileid[ii], 0.)
-                if zdepth == 0.:
-                    zdepth = T.z_depth[ii]
-
-                matched_exposures.add(T.z_expnum[ii])
-                    
                 try:
                     Yo,Xo,Yi,Xi,rims = resample_with_wcs(thiswcs, twcs)
                 except OverlapError:
@@ -217,28 +236,27 @@ if __name__ == '__main__':
             I = I[np.logical_or(exps.tilepass[I] != 3,
                                 exps.tileid[I] == tile.tileid)]
             print(' ', len(I), 'exposures not in pass 3')
-        if len(I):
-            # print('  objects:', [o.strip() for o in exps.object[I]])
-            # print('  tileids:', exps.tileid[I])
-            # print('  expnums:', exps.expnum[I])
-            # print('  passes:', exps.tilepass[I])
+        # if len(I):
+        # print('  objects:', [o.strip() for o in exps.object[I]])
+        # print('  tileids:', exps.tileid[I])
+        # print('  expnums:', exps.expnum[I])
+        # print('  passes:', exps.tilepass[I])
+        for ii in I:
+            if exps.expnum[ii] in bad_expids:
+                print('  skipping bad exp num', exps.expnum[ii])
+                continue
+            zdepth = exps.galdepth[ii]
+            for twcs in tilewcs:
+                twcs.set_crval((exps.ra_bore[ii], exps.dec_bore[ii]))
+                try:
+                    Yo,Xo,Yi,Xi,rims = resample_with_wcs(thiswcs, twcs)
+                except OverlapError:
+                    continue
 
-            for ii in I:
-                for twcs in tilewcs:
-                    twcs.set_crval((exps.ra_bore[ii], exps.dec_bore[ii]))
-
-                    # Get depth from CCDs file, if available.
-                    zdepth = exps.galdepth[ii]
-
-                    try:
-                        Yo,Xo,Yi,Xi,rims = resample_with_wcs(thiswcs, twcs)
-                    except OverlapError:
-                        continue
-
-                    dflux = 10.**((zdepth - 22.5)/-2.5)
-                    div = 1./dflux**2
-                    depth[Yo,Xo] += div
-                    nexp[Yo,Xo] += 1
+                dflux = 10.**((zdepth - 22.5)/-2.5)
+                div = 1./dflux**2
+                depth[Yo,Xo] += div
+                nexp[Yo,Xo] += 1
             
         # Convert depth map from depth-iv back to mag.
         # flux
@@ -271,6 +289,8 @@ if __name__ == '__main__':
               '%.2f' % (depths[5]  - (target - 0.3)),
               '%.2f' % (depths[10] -  target))
 
+        alldepths.append((tile.tileid, depths))
+        
         if not ((depths[2]  > target - 0.6) and
                 (depths[5]  > target - 0.3) and
                 (depths[10] > target)):
@@ -278,8 +298,8 @@ if __name__ == '__main__':
 
         retirable.append((tile.tileid, depths))
 
-        #if len(retirable) == 10:
-        #    break
+        if len(retirable) == 10:
+            break
         if ps.ploti >= 100:
             continue
         
@@ -318,3 +338,13 @@ if __name__ == '__main__':
     print('# Tileid 0th-percentile-extcorr-depth 1st-pctile 2nd-pctile ...')
     for tileid, depths in retirable:
         print(tileid, ' '.join(['%.3f' % d for d in depths]))
+
+    R = fits_table()
+    R.tileid = np.array([t for t,d in retirable])
+    R.depths = np.vstack([d for t,d in retirable])
+    R.writeto('retirable.fits')
+
+    R = fits_table()
+    R.tileid = np.array ([t for t,d in alldepths])
+    R.depths = np.vstack([d for t,d in alldepths])
+    R.writeto('all-depths.fits')
