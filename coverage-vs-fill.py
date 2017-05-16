@@ -26,6 +26,8 @@ if __name__ == '__main__':
     survey = LegacySurveyData()
     ccds = survey.get_annotated_ccds()
     print('Annotated CCDs:', len(ccds))
+    ccds.cut(ccds.camera == 'mosaic')
+    print(len(ccds), 'Mosaic')
     print('Unique exposures:', len(np.unique(ccds.expnum)))
 
     ccds.cut(ccds.exptime > 60)
@@ -298,8 +300,8 @@ if __name__ == '__main__':
 
         retirable.append((tile.tileid, depths))
 
-        if len(retirable) == 10:
-            break
+        #if len(retirable) == 10:
+        #    break
         if ps.ploti >= 100:
             continue
         
@@ -334,10 +336,10 @@ if __name__ == '__main__':
         #if ps.ploti == 100:
         #    break
         
-    print('Tiles that could be retired:')
-    print('# Tileid 0th-percentile-extcorr-depth 1st-pctile 2nd-pctile ...')
-    for tileid, depths in retirable:
-        print(tileid, ' '.join(['%.3f' % d for d in depths]))
+    # print('Tiles that could be retired:')
+    # print('# Tileid 0th-percentile-extcorr-depth 1st-pctile 2nd-pctile ...')
+    # for tileid, depths in retirable:
+    #     print(tileid, ' '.join(['%.3f' % d for d in depths]))
 
     R = fits_table()
     R.tileid = np.array([t for t,d in retirable])
