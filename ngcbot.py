@@ -26,10 +26,10 @@ from obsbot import NewFileWatcher
 if nice_camera_name == 'DECam':
     legacy_survey_layers = ['decals-dr3', 'sdssco']
 else:
-    legacy_survey_layers = ['mobo-dr4', 'sdssco']
+    legacy_survey_layers = ['mzls+bass-dr4', 'sdssco']
 
 nicelayernames = { 'decals-dr3': 'DECaLS DR3',
-                   'mobo-dr4': 'MzLS+BASS DR4',
+                   'mzls+bass-dr4': 'MzLS+BASS DR4',
                    'sdssco': 'SDSS'}
 
 ngc_typenames = {
@@ -62,7 +62,11 @@ def main():
                       help='Send a tweet for each galaxy?')
     parser.add_option('--only', default=False, action='store_true',
                       help='Only run the command-line files, then quit')
-
+    parser.add_option('--flats', default=False, action='store_true',
+                      help='Look for and use flats in the image directory?')
+    parser.add_option('--ps', default=False, action='store_true',
+                      help='Debugging plots?')
+    
     opt,args = parser.parse_args()
 
     global plt
@@ -173,6 +177,8 @@ class NgcBot(NewFileWatcher):
 
         self.spec = fits_table('specObj-dr12-trim-2.fits')
 
+        self.cached_flats = {}
+        self.read_flats = opt.flats
         
     def try_open_file(self, path):
         print('Trying to open file: %s' % path)
@@ -227,6 +233,9 @@ class NgcBot(NewFileWatcher):
 
         if self.match_ngc(rr, dd, radius, exts, F, primhdr, meas):
             return
+
+        print('Not doing SDSS spectro jazz.')
+        return
 
         # No match with NGC catalog -- look at SDSS spectro objects.
         I,J,d = match_radec(rr, dd, self.spec.ra, self.spec.dec, radius)
@@ -440,7 +449,43 @@ class NgcBot(NewFileWatcher):
             plt.imshow(newgray, **grayargs)
             plt.xticks([]); plt.yticks([])
         ps.savefig()
-            
+
+    def get_flat(self, band, ext, meas):
+        f = self.cached_flats.get((band,ext), None)
+        if f is not None:
+            return f
+        fns = self.get_file_list()
+        fns = self.filter_new_files(fns)
+        fns.sort()
+        print(len(fns), 'files to search for flats')
+        flats = []
+        for fn in fns:
+            try:
+                F = fitsio.FITS(fn)
+                hdr = F[0].read_header()
+                obstype = hdr['OBSTYPE']
+                fband = meas.get_band(hdr)
+                print('File', fn, 'obstype', obstype, 'filter', fband)
+                if obstype != 'dome flat':
+                    continue
+                if fband != band:
+                    continue
+                flat,fhdr = meas.read_raw(F, ext)
+                print('Got flat:', flat.shape)
+                flats.append(flat)
+            except:
+                import traceback
+                traceback.print_exc()
+                pass
+        if len(flats) == 0:
+            return None
+        flats = np.dstack(flats)
+        print('Flats:', flats.shape)
+        f = np.median(flats, axis=2)
+        print('f:', f.shape)
+        self.cached_flats[(band,ext)] = f
+        return f
+
     def match_ngc(self, rr, dd, radius, exts, F, primhdr, meas):
         '''
         rr, dd: np arrays: RA,Dec centers of chips/amps
@@ -488,6 +533,10 @@ class NgcBot(NewFileWatcher):
             pixrad = 1.4 * obj.radius * 3600. / wcs.pixel_scale()
             pixrad = max(pixrad, 100)
             # print('radius:', obj.radius, 'pixel radius:', pixrad)
+
+            # HACK
+            #pixrad *= 3
+
             r = pixrad
             tt = '%s in exp %i ext %s (%i)' % (obj.name, expnum, extname, ext)
             print(tt)
@@ -505,15 +554,24 @@ class NgcBot(NewFileWatcher):
                 continue
 
             # Measure the image!
+            flat = None
+            if self.read_flats:
+                band = meas.get_band(hdr)
+                flat = self.get_flat(band, ext, meas)
+                if flat is not None:
+                    print('flat: range', flat.min(), flat.max(), 'median', np.median(flat))
             meas.ext = ext
             meas.edge_trim = 20
+            debugps = None
+            if self.opt.ps:
+                debugps = ps
             try:
-                M = meas.run(n_fwhm=1, verbose=False, get_image=True)
+                M = meas.run(n_fwhm=1, verbose=False, get_image=True, flat=flat, ps=debugps)
             except KeyboardInterrupt:
                 sys.exit(0)
             except:
                 import traceback
-                print('Failed to measure file', path, 'ext', ext, ':')
+                print('Failed to measure file', meas.fn, 'ext', ext, ':')
                 traceback.print_exc()
                 continue
             #print('Measured:', M.keys())
@@ -540,6 +598,35 @@ class NgcBot(NewFileWatcher):
                 continue
             subwcs = wcs.get_subimage(xl, yl, sw, sh)
 
+            if False:
+                # Flat image for the same CCD region.
+                flatfn = '/tmp/mzls/mos3.127506.fits'
+                # meas_class = get_measurer_class_for_file(flatfn)
+                # if meas_class is None:
+                #     print('Failed to identify camera in', flatfn)
+                #     return
+                # flatmeas = meas_class(flatfn, 0, self.nom)
+                # print('Flat meas:', flatmeas)
+                # flatmeas.ext = ext
+                # flathdr = fitsio.read_header(flatfn)
+                # flatmeas.primhdr = flathdr
+                # flatmeas.edge_trim = 20
+                # FM = flatmeas.run(n_fwhm=1, verbose=False, get_image=True)
+                # flatraw = FM['image']
+                F = fitsio.FITS(flatfn)
+                flatraw,flathdr = meas.read_raw(F, ext)
+                flatsub = flatraw[yl:yh, xl:xh]
+    
+                zerofn = '/tmp/mzls/mos3.127522.fits'
+                F = fitsio.FITS(zerofn)
+                zeroraw,zerohdr = meas.read_raw(F, ext)
+                zerosub = zeroraw[yl:yh, xl:xh]
+    
+                rawfn = meas.fn
+                F = fitsio.FITS(rawfn)
+                rawimg,rawhdr = meas.read_raw(F, ext)
+                rawsub = rawimg[yl:yh, xl:xh]
+            
             # Astrometric shifts
             dx = M['dx']
             dy = M['dy']
@@ -619,6 +706,7 @@ class NgcBot(NewFileWatcher):
 
                 thiswcs = Tan(hdr)
                 newimg = np.zeros((rh,rw), dtype=subimg.dtype)
+
                 try:
                     #Yo,Xo,Yi,Xi,rims = resample_with_wcs(thiswcs, subwcs)
                     # Laczos
@@ -628,18 +716,55 @@ class NgcBot(NewFileWatcher):
                 #newimg[Yo,Xo] = subimg[Yi,Xi]
                 newimg[Yo,Xo] = rims[0]
 
+
+                
             if len(fitsimgs) == 0:
                 # No overlap with existing surveys
                 continue
+
 
             #print()
             newband = primhdr['FILTER'][0]
             #print('New image is', newband)
 
-            plt.clf()
-            plt.subplots_adjust(left=0.03, right=0.97, bottom=0.03)
-            NC = 1 + len(fitsimgs)
-            NR = 2
+            if False:
+                mn,mx = np.percentile(flatsub, [25,99])
+                plt.clf()
+                #plt.imshow(newflat, interpolation='nearest', origin='lower',
+                plt.imshow(flatsub, interpolation='nearest', origin='lower',
+                           vmin=mn, vmax=mx)
+                #plt.colorbar()
+                plt.colorbar()
+                plt.savefig('ngcbot-flat.png')
+    
+                med = np.median(newflat.ravel())
+                #mn,mx = np.percentile(newimg, [25,99])
+                #mn,mx = np.percentile(newimg, [25,90])
+                #mn,mx = np.percentile(rawsub, [25,95])
+                mn,mx = np.percentile(rawsub, [50,95])
+                plt.clf()
+                # plt.subplot(1,2,1)
+                #plt.imshow(newimg, interpolation='nearest', origin='lower',
+                # plt.imshow(subimg, interpolation='nearest', origin='lower',
+                plt.imshow(rawsub, interpolation='nearest', origin='lower',
+                           vmin=mn, vmax=mx)
+                plt.colorbar()
+                plt.savefig('ngcbot-unflattened.png')
+                plt.clf()
+                #plt.subplot(1,2,2)
+                #plt.imshow(newimg / (newflat / med), interpolation='nearest', origin='lower',
+                #plt.imshow(subimg / (flatsub / med), interpolation='nearest', origin='lower',
+                plt.imshow(rawsub / (flatsub / med), interpolation='nearest', origin='lower',
+                           vmin=mn, vmax=mx)
+                plt.colorbar()
+                plt.savefig('ngcbot-flattened.png')
+    
+                mn,mx = np.percentile(zerosub, [5,95])
+                plt.clf()
+                plt.imshow(zerosub, interpolation='nearest', origin='lower',
+                           vmin=mn, vmax=mx)
+                plt.colorbar()
+                plt.savefig('ngcbot-zero.png')
 
             zp = M['zp']
             zpscale = 10.**((zp - 22.5)/2.5)
@@ -664,6 +789,69 @@ class NgcBot(NewFileWatcher):
             # plot title args
             targs = dict(fontsize=8)
 
+
+            # DEBUG
+            if self.opt.ps:
+                ocx,ocy = subwcs.get_crpix()
+
+                subwcs.set_crpix((cx, cy))
+                newimgA = np.zeros((rh,rw), dtype=subimg.dtype)
+                Yo,Xo,Yi,Xi,rims = resample_with_wcs(thiswcs, subwcs, [subimg])
+                newimgA[Yo,Xo] = rims[0]
+
+                subwcs.set_crpix((cx-dx, cy-dy))
+                newimgB = np.zeros((rh,rw), dtype=subimg.dtype)
+                Yo,Xo,Yi,Xi,rims = resample_with_wcs(thiswcs, subwcs, [subimg])
+                newimgB[Yo,Xo] = rims[0]
+
+                subwcs.set_crpix((cx-dx-corrx, cy-dy-corry))
+                newimgC = np.zeros((rh,rw), dtype=subimg.dtype)
+                Yo,Xo,Yi,Xi,rims = resample_with_wcs(thiswcs, subwcs, [subimg])
+                newimgC[Yo,Xo] = rims[0]
+
+                #newgray = grayscale(newimg, newband)
+                #hi = np.percentile(newgray, 99.9)
+                grayargs = dict(interpolation='nearest', origin='lower',
+                                cmap='gray', vmin=0.)
+                #vmin=0., vmax=hi, cmap='gray')
+
+                (layer, bands, imgs) = fitsimgs[0]
+                nicelayer = nicelayernames.get(layer, layer)
+                for band,img in zip(bands, imgs):
+                    newbands = ['g','r','z']
+                    newindex = dict(g=0, r=1, i=2, z=2)
+                    if newindex[band] == newindex[newband]:
+                        oldgray = grayscale(img, band)
+                        plt.clf()
+                        plt.imshow(oldgray, **grayargs)
+                        plt.title(nicelayer)
+                        ps.savefig()
+                
+                plt.clf()
+                plt.imshow(grayscale(newimgA, newband), **grayargs)
+                #plt.imshow(newimgA, **grayargs)
+                plt.title('No astromety correction')
+                ps.savefig()
+
+                plt.clf()
+                plt.imshow(grayscale(newimgB, newband), **grayargs)
+                #plt.imshow(newimgB, **grayargs)
+                plt.title('Astromety shift only correction')
+                ps.savefig()
+
+                plt.clf()
+                plt.imshow(grayscale(newimgC, newband), **grayargs)
+                #plt.imshow(newimgC, **grayargs)
+                plt.title('Astromety shift+affine correction')
+                ps.savefig()
+
+                subwcs.set_crpix((ocx,ocy))
+            
+            plt.clf()
+            plt.subplots_adjust(left=0.03, right=0.97, bottom=0.03)
+            NC = 1 + len(fitsimgs)
+            NR = 2
+            
             # New Image plot
             newgray = grayscale(newimg, newband)
             hi = np.percentile(newgray, 99.9)

@@ -68,16 +68,14 @@ def main():
         d = nightstart.date()
         opt.start_date = '%04i-%02i-%02i' % (d.year, d.month, d.day)
         print('Set start date to', opt.start_date)
-        
-    obs = ephem.Observer()
+
     if opt.mosaic:
-        obs.lon = '111.6'
-        obs.lat = '31.9633'
-        obs.elev = 2064.
+        #import camera_mosaic as camera
+        from camera_mosaic import ephem_observer
+        obs = ephem_observer()
     else:
-        obs.lon = '-70.806525'
-        obs.lat = '-30.169661'
-        obs.elev = 2207.0 # meters
+        #import camera_decam as camera
+        from camera_decam import ephem_observer
 
     obs.temp = 10.0 # deg celsius; average temp for August
     obs.pressure = 780.0 # mbar
@@ -197,6 +195,8 @@ def main():
             obs.date = ephem.Date(str(j['approx_datetime']))
             times.append(ephem.Date(obs.date))
             LSTs.append(np.rad2deg(float(obs.sidereal_time())))
+            print('Date', obs.date)
+            print('LST', obs.sidereal_time())
     else:
         # Predict overheads
         lastra,lastdec = None,None

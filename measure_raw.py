@@ -121,7 +121,7 @@ class RawMeasurer(object):
         return slices
         
     def run(self, ps=None, focus=False, momentsize=5,
-            n_fwhm=100, verbose=True, get_image=False):
+            n_fwhm=100, verbose=True, get_image=False, flat=None):
         import pylab as plt
         from astrometry.util.plotutils import dimshow, plothist
         from legacyanalysis.ps1cat import ps1cat
@@ -166,6 +166,13 @@ class RawMeasurer(object):
             dimshow(img[:M, -M:], ticks=False, **self.imgkwa)
             plt.suptitle('Raw image corners')
             ps.savefig()
+
+
+        if flat is not None:
+            I = (flat != 0)
+            med = np.median(flat[I]).astype(float)
+            img[I] = img[I] / (flat[I] / med)
+            #img /= (flat / np.median(flat).astype(float))
 
         img,trim_x0,trim_y0 = self.trim_edges(img)
 
