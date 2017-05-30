@@ -1,14 +1,14 @@
 from __future__ import print_function
-from astrometry.util.fits import fits_table
+import sys
+import os
 import pylab as plt
 import numpy as np
 import fitsio
-#import time
+from astrometry.util.fits import fits_table
 from astrometry.util.util import Tan, wcs_pv2sip_hdr
 from astrometry.libkd.spherematch import match_radec
 from astrometry.util.resample import resample_with_wcs, OverlapError
 from astrometry.util.plotutils import PlotSequence
-#from astrometry.util.starutil_numpy import *
 
 from legacypipe.survey import LegacySurveyData
 from collections import Counter
@@ -22,6 +22,73 @@ we retire any planned tiles", by, eg, making depth vs fill factor plots.
 if __name__ == '__main__':
     ps = PlotSequence('covfill')
 
+    if os.path.exists('retirable.fits'):
+        R = fits_table('retirable.fits')
+        pcts = np.arange(0, 101)
+        target = 22.5
+        req_pcts = [0, 2, 2, 5, 5, 10, 10, 100]
+        req_depths = [0, 0, target-0.6, target-0.6,
+                      target-0.3, target-0.3, target, target]
+
+        maglo, maghi = 21,23
+
+        plt.clf()
+        for depths in R.depths:
+            plt.plot(pcts, np.clip(depths, maglo, maghi), 'b-',
+                     alpha=0.1)
+        plt.plot(req_pcts, np.clip(req_depths, maglo, maghi), 'k-',
+                 lw=2, alpha=0.5)
+        plt.ylim(maglo, maghi)
+        plt.xlim(0, 100)
+        plt.xlabel('Coverage fraction')
+        plt.ylabel('Existing depth')
+        plt.suptitle('MzLS: retirable pass-3 tiles: %i' % len(R))
+        ps.savefig()
+
+        # Where are they on the sky?
+        T = fits_table('obstatus/mosaic-tiles_obstatus.fits')
+
+        T.cut(T.in_desi == 1)
+        T.cut(T.get('pass') <= 3)
+
+        tileid_to_index = np.zeros(T.tileid.max()+1, int)
+        tileid_to_index[T.tileid] = np.arange(len(T))
+        R.ra  = T.ra [tileid_to_index[R.tileid]]
+        R.dec = T.dec[tileid_to_index[R.tileid]]
+        
+        plt.clf()
+        plt.plot(T.ra, T.dec, 'k.', alpha=0.02)
+        I = (T.z_done == 1)
+        plt.plot(T.ra[I], T.dec[I], 'k.', alpha=0.1)
+        plt.plot(R.ra, R.dec, 'b.')
+        ax = [310,80,30,85]
+        #xl,xh = plt.xlim()
+        #plt.xlim(xh,xl)
+        plt.xlabel('RA (deg)')
+        plt.ylabel('Dec (deg)')
+        plt.title('MzLS: retirable pass-3 tiles')
+        plt.axis(ax)
+        ps.savefig()
+
+        for p in [1,2,3]:
+            plt.clf()
+            plt.plot(T.ra, T.dec, 'k.', alpha=0.02)
+            #plt.plot(T.ra[I], T.dec[I], 'k.', alpha=0.1)
+            I = np.flatnonzero((T.get('pass') == p) * (T.z_done == 1)
+                               * (T.z_depth > 1) * (T.z_depth < 30))
+            plt.scatter(T.ra[I], T.dec[I], c=T.z_depth[I],
+                        vmin=20, vmax=23, s=4)
+            I = np.flatnonzero((T.get('pass') == p) * (T.z_done == 1)
+                               * (T.z_depth == 30))
+            plt.plot(T.ra[I], T.dec[I], 'k.', alpha=0.5)
+            plt.colorbar()
+            plt.title('MzLS: Finished tiles in pass %i' % p)
+            plt.axis(ax)
+            ps.savefig()
+            
+        sys.exit(0)
+        
+    
     #    export LEGACY_SURVEY_DIR=~/legacypipe-dir-mzls/
     survey = LegacySurveyData()
     ccds = survey.get_annotated_ccds()
