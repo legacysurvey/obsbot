@@ -22,7 +22,8 @@ we retire any planned tiles", by, eg, making depth vs fill factor plots.
 if __name__ == '__main__':
     ps = PlotSequence('covfill')
 
-    #    export LEGACY_SURVEY_DIR=~/legacypipe-dir-mzls/
+    # NERSC: export LEGACY_SURVEY_DIR=/global/cscratch1/sd/dstn/dr4plus
+    # (dstn laptop: export LEGACY_SURVEY_DIR=~/legacypipe-dir-mzls/)
     survey = LegacySurveyData()
     ccds = survey.get_annotated_ccds()
     print('Annotated CCDs:', len(ccds))
@@ -92,7 +93,7 @@ if __name__ == '__main__':
     for j,expnum in enumerate(exps.expnum):
         I = np.flatnonzero(ccds.expnum == expnum)
         if len(I) != 4:
-            print('Exposure', expnum, 'has only', len(I), 'CCD entries')
+            print('Exposure', expnum, 'has', len(I), 'CCD entries')
             continue
         # Don't include zeros in computing average depths!
         Igood = I[(ccds.galdepth[I] > 0) * (ccds.ccdzpt[I] < 30)]
@@ -121,8 +122,8 @@ if __name__ == '__main__':
     print(len(T), 'tiles with measured depths')
     # Passes other than 3... they ~ only barely overlap, so don't
     # contribute significant depth.
-    T.cut(T.get('pass') < 3)
-    
+    #T.cut(T.get('pass') < 3)
+
     udecs = np.unique(P3.dec)
     print(len(udecs), 'unique Dec values in pass 3')
 
@@ -130,24 +131,17 @@ if __name__ == '__main__':
     wtfn = 'k4m_170501_112501_oow_zd_v1.fits.fz'
     F = fitsio.FITS(wtfn)
     tilewcs = []
-    #hdr = F[0].read_header()
-    #tilera,tiledec = hdr['CENTRA'], hdr['CENTDEC']
-    #wcsoffsets = []
 
-    retirable = []
-    alldepths = []
-
+    # Read the WCS headers for each chip.
+    ### They make the CRVAL be the boresight for all chips... perfect!
     for i in range(1, len(F)):
         hdr = F[i].read_header()
         wcs = wcs_pv2sip_hdr(hdr)
         tilewcs.append(wcs)
-        #cra,cdec = wcs.get_crval()
-        #wcsoffsets.append(((cra - tilera) * np.cos(tiledec),
-        #                   cdec - tiledec))
-        #print('WCS header', i, 'has offset', wcsoffsets[-1], 'deg')
-        #print('WCS bounds', wcs.radec_bounds())
-        ### They make the CRVAL be the boresight for all chips... perfect!
-    
+
+    retirable = []
+    alldepths = []
+
     for itile,tile in enumerate(todo):
         print()
         print('Tile', itile+1, 'of', len(todo), ':', tile.tileid, 'at', tile.ra, tile.dec)
@@ -234,10 +228,11 @@ if __name__ == '__main__':
                           if (not expnum in matched_exposures) and gd > 0])
             print(' ', len(I), 'exposures that were not in tile file')
         # Drop exposures from this pass, except for previous exposures of this tile!
-        if len(I):
-            I = I[np.logical_or(exps.tilepass[I] != 3,
-                                exps.tileid[I] == tile.tileid)]
-            print(' ', len(I), 'exposures not in pass 3')
+        # if len(I):
+        #     I = I[np.logical_or(exps.tilepass[I] != 3,
+        #                         exps.tileid[I] == tile.tileid)]
+        #     print(' ', len(I), 'exposures not in pass 3')
+
         # if len(I):
         # print('  objects:', [o.strip() for o in exps.object[I]])
         # print('  tileids:', exps.tileid[I])
