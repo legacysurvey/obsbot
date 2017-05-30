@@ -6,6 +6,7 @@ import numpy as np
 import fitsio
 from astrometry.util.fits import fits_table
 from astrometry.util.util import Tan, wcs_pv2sip_hdr
+from astrometry.util.multiproc import multiproc
 from astrometry.libkd.spherematch import match_radec
 from astrometry.util.resample import resample_with_wcs, OverlapError
 from astrometry.util.plotutils import PlotSequence
@@ -19,11 +20,32 @@ we retire any planned tiles", by, eg, making depth vs fill factor plots.
 
 '''
 
-if __name__ == '__main__':
-    ps = PlotSequence('covfill')
+udecs = None
+P3 = None
+T = None
+tilewcs = None
+exps = None
+bad_expids = None
+tileid_to_depth = None
 
-    if os.path.exists('retirable.fits'):
-        R = fits_table('retirable.fits')
+
+def main(passnum, threads):
+
+    global udecs
+    global P3
+    global T
+    global tilewcs
+    global exps
+    global bad_expids
+    global tileid_to_depth
+
+    ps = PlotSequence('covfill-p%i' % passnum)
+
+    retirablefn = 'retirable-p%i.fits' % passnum
+    depthsfn = 'all-depths-p%i.fits' % passnum
+
+    if os.path.exists(retirablefn):
+        R = fits_table(retirablefn)
         pcts = np.arange(0, 101)
         target = 22.5
         req_pcts = [0, 2, 2, 5, 5, 10, 10, 100]
@@ -42,7 +64,7 @@ if __name__ == '__main__':
         plt.xlim(0, 100)
         plt.xlabel('Coverage fraction')
         plt.ylabel('Existing depth')
-        plt.suptitle('MzLS: retirable pass-3 tiles: %i' % len(R))
+        plt.suptitle('MzLS: retirable pass-%i tiles: %i' % (passnum,len(R)))
         ps.savefig()
 
         # Where are they on the sky?
@@ -66,7 +88,7 @@ if __name__ == '__main__':
         #plt.xlim(xh,xl)
         plt.xlabel('RA (deg)')
         plt.ylabel('Dec (deg)')
-        plt.title('MzLS: retirable pass-3 tiles')
+        plt.title('MzLS: retirable pass-%i tiles' % passnum)
         plt.axis(ax)
         ps.savefig()
 
@@ -87,7 +109,6 @@ if __name__ == '__main__':
             ps.savefig()
             
         sys.exit(0)
-        
     
     # NERSC: export LEGACY_SURVEY_DIR=/global/cscratch1/sd/dstn/dr4plus
     # (dstn laptop: export LEGACY_SURVEY_DIR=~/legacypipe-dir-mzls/)
@@ -180,10 +201,10 @@ if __name__ == '__main__':
     T.cut(T.get('pass') <= 3)
     
     # The tiles we'll examine
-    P3 = T[T.get('pass') == 3]
-    print(len(P3), 'pass 3, in DESI')
+    P3 = T[T.get('pass') == passnum]
+    print(len(P3), 'pass', passnum, 'and in DESI')
     todo = P3[P3.z_done == 0]
-    print(len(todo), 'pass 3 tiles to do')
+    print(len(todo), 'pass', passnum, 'tiles to do (Z_DONE=0)')
 
     # Tiles with measured depths
     T.cut((T.z_depth > 15) * (T.z_depth < 30))
@@ -193,7 +214,7 @@ if __name__ == '__main__':
     #T.cut(T.get('pass') < 3)
 
     udecs = np.unique(P3.dec)
-    print(len(udecs), 'unique Dec values in pass 3')
+    print(len(udecs), 'unique Dec values in pass', passnum)
 
     # Grab an arbitrary weight-map image and use that as a proxy!
     wtfn = 'k4m_170501_112501_oow_zd_v1.fits.fz'
@@ -201,149 +222,26 @@ if __name__ == '__main__':
     tilewcs = []
 
     # Read the WCS headers for each chip.
-    ### They make the CRVAL be the boresight for all chips... perfect!
+    # They make the CRVAL be the boresight for all 4 chips... perfect!
+    # (because this means we can just set CRVAL = RA,Dec to shift the WCSes)
     for i in range(1, len(F)):
         hdr = F[i].read_header()
         wcs = wcs_pv2sip_hdr(hdr)
         tilewcs.append(wcs)
 
-    retirable = []
+    mp = multiproc(threads)
+
+    #args = [(i,t,udecs,P3,T,tilewcs,exps,bad_expids,tileid_to_depth)
+    args = [(i,t)
+            for i,t in enumerate(todo)]
+    thedepths = mp.map(one_tile, args)
+
     alldepths = []
-
-    for itile,tile in enumerate(todo):
-        print()
-        print('Tile', itile+1, 'of', len(todo), ':', tile.tileid, 'at', tile.ra, tile.dec)
-
-        i = np.nonzero(tile.dec == udecs)[0][0]
-        if i == 0 or i == len(udecs)-1:
-            print('Endpoint Dec; skipping for now')
+    retirable = []
+    for arg,depths in zip(args, thedepths):
+        if depths is None:
             continue
-        print('  Decs:', udecs[i-1], tile.dec, udecs[i+1])
-
-        declo = (udecs[i-1] + tile.dec) / 2.
-        dechi = (udecs[i+1] + tile.dec) / 2.
-        
-        row = P3[P3.dec == tile.dec]
-        print(' ', len(row), 'tiles in this Dec row')
-        ras = np.sort(row.ra)
-        i = np.nonzero(tile.ra == ras)[0][0]
-        if i == 0 or i == len(ras)-1:
-            print('  Endpoint RA; skipping for now')
-            continue
-        print('  RAs:', ras[i-1], tile.ra, ras[i+1])
-
-        ralo = (ras[i-1] + tile.ra) / 2.
-        rahi = (ras[i+1] + tile.ra) / 2.
-
-        pixscale = 2.
-        #pixscale = 0.262
-
-        H = int(np.ceil((dechi - declo) / (pixscale/3600.)))
-        W = int(np.ceil((rahi - ralo) * np.cos(np.deg2rad(tile.dec)) / (pixscale/3600.)))
-        print('  Dec height', dechi-declo, 'RA width', rahi-ralo, '-> pix', W, 'x', H)
-
-        cd = pixscale/3600.
-        thiswcs = Tan(tile.ra, tile.dec, (W+1)/2., (H+1)/2.,
-                      -cd, 0., 0., cd, float(W), float(H))
-
-        # Find surrounding tiles
-        radius = np.hypot(W, H) * pixscale / 3600.
-        
-        I,J,d = match_radec(T.ra, T.dec, tile.ra, tile.dec, radius)
-        print(' ', len(I), 'tiles with measured depths nearby')
-        
-        if len(I) == 0:
-            continue
-        
-        # Now we need to take a tile boresight position and map it to
-        # boxes in RA,Dec of the good portions of the CCDs.
-        
-        depth = np.zeros((H,W), np.float32)
-        nexp = np.zeros((H,W), np.uint8)
-
-        matched_exposures = set()
-        #print('  tileids', T.tileid[I])
-        #print('  expnums', T.z_expnum[I])
-
-        for ii in I:
-            if T.z_expnum[ii] in bad_expids:
-                print('  skipping bad exp num', T.z_expnum[ii])
-                continue
-            # Get depth from CCDs file, if available.
-            zdepth = tileid_to_depth.get(T.tileid[ii], 0.)
-            if zdepth == 0.:
-                zdepth = T.z_depth[ii]
-            matched_exposures.add(T.z_expnum[ii])
-
-            for twcs in tilewcs:
-                twcs.set_crval((T.ra[ii], T.dec[ii]))
-                try:
-                    Yo,Xo,Yi,Xi,rims = resample_with_wcs(thiswcs, twcs)
-                except OverlapError:
-                    continue
-
-                dflux = 10.**((zdepth - 22.5)/-2.5)
-                div = 1./dflux**2
-                depth[Yo,Xo] += div
-                nexp[Yo,Xo] += 1
-
-
-        # Now also look for entries in the CCDs (exposures) table not previously found.
-        I,J,d = match_radec(exps.ra_bore, exps.dec_bore, tile.ra, tile.dec, radius)
-        print(' ', len(I), 'exposures from CCDs file nearby')
-        if len(I):
-            I = np.array([i for i,expnum,gd in zip(I, exps.expnum[I], exps.galdepth[I])
-                          if (not expnum in matched_exposures) and gd > 0])
-            print(' ', len(I), 'exposures that were not in tile file')
-        # Drop exposures from this pass, except for previous exposures of this tile!
-        # if len(I):
-        #     I = I[np.logical_or(exps.tilepass[I] != 3,
-        #                         exps.tileid[I] == tile.tileid)]
-        #     print(' ', len(I), 'exposures not in pass 3')
-
-        # if len(I):
-        # print('  objects:', [o.strip() for o in exps.object[I]])
-        # print('  tileids:', exps.tileid[I])
-        # print('  expnums:', exps.expnum[I])
-        # print('  passes:', exps.tilepass[I])
-        for ii in I:
-            if exps.expnum[ii] in bad_expids:
-                print('  skipping bad exp num', exps.expnum[ii])
-                continue
-            zdepth = exps.galdepth[ii]
-            for twcs in tilewcs:
-                twcs.set_crval((exps.ra_bore[ii], exps.dec_bore[ii]))
-                try:
-                    Yo,Xo,Yi,Xi,rims = resample_with_wcs(thiswcs, twcs)
-                except OverlapError:
-                    continue
-
-                dflux = 10.**((zdepth - 22.5)/-2.5)
-                div = 1./dflux**2
-                depth[Yo,Xo] += div
-                nexp[Yo,Xo] += 1
-            
-        # Convert depth map from depth-iv back to mag.
-        # flux
-        with np.errstate(divide='ignore'):
-            dflux = np.sqrt(1./depth)
-            dflux[depth == 0] = 0.
-            depth = -2.5 * (np.log10(dflux) - 9.)
-        depth[dflux == 0] = 0.
-
-        if depth.max() == 0:
-            print('  Actually no overlap')
-            continue
-
-        # Extinction correction for this tile...
-        ext_z = 1.211 * tile.ebv_med
-        print('  Applying extinction correction', ext_z, 'mag')
-        depth[depth != 0] -= ext_z
-        
-        #pcts = [0,10,20,30,40,50,60,70,80,90,100]
-        pcts = np.arange(0, 101)
-        depths = np.percentile(depth, pcts)
-
+        itile,tile = arg[:2]
         target = 22.5
         req_pcts = [0, 2, 2, 5, 5, 10, 10, 100]
         req_depths = [0, 0, target-0.6, target-0.6,
@@ -365,36 +263,36 @@ if __name__ == '__main__':
 
         #if len(retirable) == 10:
         #    break
-        if ps.ploti >= 100:
-            continue
-        
-        maglo, maghi = 21,23
-        
-        plt.clf()
-        #plt.subplot(1,2,1)
-        plt.subplot2grid((2,2), (0,0))
-        plt.imshow(depth, interpolation='nearest', origin='lower',
-                   vmin=maglo, vmax=maghi)
-        plt.colorbar(ticks=[np.arange(maglo, maghi+0.01, 0.5)])
-        plt.xticks([]); plt.yticks([])
-        #plt.subplot(1,2,2)
-        plt.subplot2grid((2,2), (1,0))
-        plt.imshow(nexp, interpolation='nearest', origin='lower',
-                   vmin=0, vmax=4)
-        plt.colorbar(ticks=[0,1,2,3,4])
-        plt.xticks([]); plt.yticks([])
-
-        ax = plt.subplot2grid((2,2), (0,1), rowspan=2)
-        plt.plot(req_pcts, np.clip(req_depths, maglo, maghi), 'k-',
-                 lw=2, alpha=0.5)
-        plt.plot(pcts, np.clip(depths, maglo, maghi), 'b-')
-        ax.yaxis.tick_right()
-        plt.ylim(maglo, maghi)
-        plt.xlim(0, 100)
-        plt.xlabel('Coverage fraction')
-        plt.ylabel('Existing depth')
-        plt.suptitle('Tile %i' % tile.tileid)
-        ps.savefig()
+        # if ps.ploti >= 100:
+        #     continue
+        # 
+        # maglo, maghi = 21,23
+        # 
+        # plt.clf()
+        # #plt.subplot(1,2,1)
+        # plt.subplot2grid((2,2), (0,0))
+        # plt.imshow(depth, interpolation='nearest', origin='lower',
+        #            vmin=maglo, vmax=maghi)
+        # plt.colorbar(ticks=[np.arange(maglo, maghi+0.01, 0.5)])
+        # plt.xticks([]); plt.yticks([])
+        # #plt.subplot(1,2,2)
+        # plt.subplot2grid((2,2), (1,0))
+        # plt.imshow(nexp, interpolation='nearest', origin='lower',
+        #            vmin=0, vmax=4)
+        # plt.colorbar(ticks=[0,1,2,3,4])
+        # plt.xticks([]); plt.yticks([])
+        # 
+        # ax = plt.subplot2grid((2,2), (0,1), rowspan=2)
+        # plt.plot(req_pcts, np.clip(req_depths, maglo, maghi), 'k-',
+        #          lw=2, alpha=0.5)
+        # plt.plot(pcts, np.clip(depths, maglo, maghi), 'b-')
+        # ax.yaxis.tick_right()
+        # plt.ylim(maglo, maghi)
+        # plt.xlim(0, 100)
+        # plt.xlabel('Coverage fraction')
+        # plt.ylabel('Existing depth')
+        # plt.suptitle('Tile %i' % tile.tileid)
+        # ps.savefig()
 
         #if ps.ploti == 100:
         #    break
@@ -405,11 +303,181 @@ if __name__ == '__main__':
     #     print(tileid, ' '.join(['%.3f' % d for d in depths]))
 
     R = fits_table()
-    R.tileid = np.array([t for t,d in retirable])
-    R.depths = np.vstack([d for t,d in retirable])
-    R.writeto('retirable.fits')
-
-    R = fits_table()
     R.tileid = np.array ([t for t,d in alldepths])
     R.depths = np.vstack([d for t,d in alldepths])
-    R.writeto('all-depths.fits')
+    R.writeto(depthsfn)
+
+    if len(retirable):
+        R = fits_table()
+        R.tileid = np.array([t for t,d in retirable])
+        R.depths = np.vstack([d for t,d in retirable])
+        R.writeto(retirablefn)
+    else:
+        print('No tiles in pass', passnum, 'are retirable')
+
+def one_tile(*args):
+    try:
+        return real_one_tile(*args)
+    except:
+        import traceback
+        traceback.print_exc()
+        return None
+
+def real_one_tile((args)):
+    #(itile,tile,udecs,P3,T,tilewcs,exps,bad_expids,tileid_to_depth) = args
+    (itile,tile) = args
+
+    print()
+    print('Tile', itile+1, ':', tile.tileid, 'at', tile.ra, tile.dec)
+
+    i = np.nonzero(tile.dec == udecs)[0][0]
+    if i == 0 or i == len(udecs)-1:
+        print('Endpoint Dec; skipping for now')
+        return None
+    print('  Decs:', udecs[i-1], tile.dec, udecs[i+1])
+
+    declo = (udecs[i-1] + tile.dec) / 2.
+    dechi = (udecs[i+1] + tile.dec) / 2.
+    
+    row = P3[P3.dec == tile.dec]
+    print(' ', len(row), 'tiles in this Dec row')
+    ras = np.sort(row.ra)
+    i = np.nonzero(tile.ra == ras)[0][0]
+    if i == 0 or i == len(ras)-1:
+        print('  Endpoint RA; skipping for now')
+        return None
+    print('  RAs:', ras[i-1], tile.ra, ras[i+1])
+
+    ralo = (ras[i-1] + tile.ra) / 2.
+    rahi = (ras[i+1] + tile.ra) / 2.
+
+    pixscale = 2.
+    #pixscale = 0.262
+
+    H = int(np.ceil((dechi - declo) / (pixscale/3600.)))
+    W = int(np.ceil((rahi - ralo) * np.cos(np.deg2rad(tile.dec)) / (pixscale/3600.)))
+    print('  Dec height', dechi-declo, 'RA width', rahi-ralo, '-> pix', W, 'x', H)
+
+    cd = pixscale/3600.
+    thiswcs = Tan(tile.ra, tile.dec, (W+1)/2., (H+1)/2.,
+                  -cd, 0., 0., cd, float(W), float(H))
+
+    # Find surrounding tiles
+    radius = np.hypot(W, H) * pixscale / 3600.
+    
+    I,J,d = match_radec(T.ra, T.dec, tile.ra, tile.dec, radius)
+    print(' ', len(I), 'tiles with measured depths nearby')
+    
+    if len(I) == 0:
+        return None
+    
+    # Now we need to take a tile boresight position and map it to
+    # boxes in RA,Dec of the good portions of the CCDs.
+    
+    depth = np.zeros((H,W), np.float32)
+    nexp = np.zeros((H,W), np.uint8)
+
+    matched_exposures = set()
+    #print('  tileids', T.tileid[I])
+    #print('  expnums', T.z_expnum[I])
+
+    for ii in I:
+        if T.z_expnum[ii] in bad_expids:
+            print('  skipping bad exp num', T.z_expnum[ii])
+            continue
+        # Get depth from CCDs file, if available.
+        zdepth = tileid_to_depth.get(T.tileid[ii], 0.)
+        if zdepth == 0.:
+            zdepth = T.z_depth[ii]
+        matched_exposures.add(T.z_expnum[ii])
+
+        for twcs in tilewcs:
+            twcs.set_crval((T.ra[ii], T.dec[ii]))
+            try:
+                Yo,Xo,Yi,Xi,rims = resample_with_wcs(thiswcs, twcs)
+            except OverlapError:
+                continue
+
+            dflux = 10.**((zdepth - 22.5)/-2.5)
+            div = 1./dflux**2
+            depth[Yo,Xo] += div
+            nexp[Yo,Xo] += 1
+
+    # Now also look for entries in the CCDs (exposures) table not previously found.
+    I,J,d = match_radec(exps.ra_bore, exps.dec_bore, tile.ra, tile.dec, radius)
+    print(' ', len(I), 'exposures from CCDs file nearby')
+    if len(I):
+        I = np.array([i for i,expnum,gd in zip(I, exps.expnum[I], exps.galdepth[I])
+                      if (not expnum in matched_exposures) and gd > 0])
+        print(' ', len(I), 'exposures that were not in tile file')
+    # Drop exposures from this pass, except for previous exposures of this tile!
+    # if len(I):
+    #     I = I[np.logical_or(exps.tilepass[I] != 3,
+    #                         exps.tileid[I] == tile.tileid)]
+    #     print(' ', len(I), 'exposures not in pass 3')
+
+    # if len(I):
+    # print('  objects:', [o.strip() for o in exps.object[I]])
+    # print('  tileids:', exps.tileid[I])
+    # print('  expnums:', exps.expnum[I])
+    # print('  passes:', exps.tilepass[I])
+    for ii in I:
+        if exps.expnum[ii] in bad_expids:
+            print('  skipping bad exp num', exps.expnum[ii])
+            continue
+        zdepth = exps.galdepth[ii]
+        for twcs in tilewcs:
+            twcs.set_crval((exps.ra_bore[ii], exps.dec_bore[ii]))
+            try:
+                Yo,Xo,Yi,Xi,rims = resample_with_wcs(thiswcs, twcs)
+            except OverlapError:
+                continue
+
+            dflux = 10.**((zdepth - 22.5)/-2.5)
+            div = 1./dflux**2
+            depth[Yo,Xo] += div
+            nexp[Yo,Xo] += 1
+        
+    # Convert depth map from depth-iv back to mag.
+    # flux
+    with np.errstate(divide='ignore'):
+        dflux = np.sqrt(1./depth)
+        dflux[depth == 0] = 0.
+        depth = -2.5 * (np.log10(dflux) - 9.)
+    depth[dflux == 0] = 0.
+
+    if depth.max() == 0:
+        print('  Actually no overlap')
+        return None
+
+    # Extinction correction for this tile...
+    ext_z = 1.211 * tile.ebv_med
+    print('  Applying extinction correction', ext_z, 'mag')
+    depth[depth != 0] -= ext_z
+    
+    #pcts = [0,10,20,30,40,50,60,70,80,90,100]
+    pcts = np.arange(0, 101)
+    depths = np.percentile(depth, pcts)
+
+    target = 22.5
+    req_pcts = [0, 2, 2, 5, 5, 10, 10, 100]
+    req_depths = [0, 0, target-0.6, target-0.6,
+                  target-0.3, target-0.3, target, target]
+
+    print('  Depths at 2, 5, and 10th percentile vs target:',
+          '%.2f' % (depths[2]  - (target - 0.6)),
+          '%.2f' % (depths[5]  - (target - 0.3)),
+          '%.2f' % (depths[10] -  target))
+
+    return depths
+
+
+if __name__ == '__main__':
+    import optparse
+    parser = optparse.OptionParser()
+    parser.add_option('--pass', dest='passnum', type=int, default=3,
+                      help='Pass number of tiles to examine')
+    parser.add_option('--threads', type=int, default=1)
+    opt,args = parser.parse_args()
+
+    main(opt.passnum, opt.threads)

@@ -22,19 +22,36 @@ def main():
 
     if opt.mzls:
         from mosaic import MosaicNominalCalibration
-        from camera_mosaic import database_filename
+        from camera_mosaic import database_filename, camera_name
         nom = MosaicNominalCalibration()
 
         obstatus_fn = 'obstatus/mosaic-tiles_obstatus.fits'
         out_fn = 'mosaic-obstatus-depth.fits'
-        
+
         bands = 'z'
 
         declo,dechi = 30,80
 
+        f = open('obstatus/bad_expid.txt')
+        bad_expids = set()
+        for line in f:
+            line = line.strip()
+            if len(line) == 0:
+                continue
+            if line[0] == '#':
+                continue
+            words = line.split()
+            try:
+                expnum = int(words[0])
+            except:
+                print('Skipping line:', line)
+                continue
+            bad_expids.add(expnum)
+        print('Read', len(bad_expids), 'bad exposure numbers')
+
     else:
         from decam import DecamNominalCalibration
-        from camera_decam import database_filename
+        from camera_decam import database_filename, camera_name
         nom = DecamNominalCalibration()
 
         obstatus_fn = 'obstatus/decam-tiles_obstatus.fits'
@@ -54,11 +71,13 @@ def main():
     copilot.writeto('copilot.fits')
     
     print(len(copilot), 'measured CCDs in copilot database')
+    copilot.cut(np.array([c.strip() == camera_name for c in copilot.camera]))
+    print(len(copilot), 'copilot CCDs with camera = "%s"' % camera_name)
     copilot.cut(copilot.expnum > 0)
     print(len(copilot), 'measured CCDs in copilot database with EXPNUM')
 
     print('Copilot expfactor extremes:', np.percentile(copilot.expfactor[copilot.expfactor != 0], [1,99]))
-    
+
     survey = LegacySurveyData()
     print('Reading annotated CCDs files...')
     ccds = survey.get_annotated_ccds()
@@ -94,7 +113,8 @@ def main():
         fix_expnums(copilot.expnum)
 
         print('Z_EXPNUM range:', O.z_expnum.min(), 'min >0:', O.z_expnum[O.z_expnum > 0].min(), O.z_expnum.max())
-        
+
+
     # *after* fixing tileids
     allccds = ccds.copy()
 
@@ -164,6 +184,17 @@ def main():
             print('Exposure', expnum, 'has photometric and non-photometric CCDs')
             non = I[ccds.photometric[I] == False]
             phot = I[ccds.photometric[I]]
+
+            if opt.mzls and len(phot) == 3:
+                print('Accepting an exposure with 3 good CCDs')
+                E.photometric[j] = True
+                # And remove this exposure from the bad_expid list.
+                if expnum in bad_expids:
+                    bad_expids.remove(expnum)
+                    print('Removing exposure', expnum, 'from bad_expid file')
+
+                continue
+
             for ii in non:
                 print('    http://legacysurvey.org/viewer-dev/?ra=%.3f&dec=%.3f&zoom=11&ccds3&bad=%i-%s' % (ccds.ra_center[ii], ccds.dec_center[ii], expnum, ccds.ccdname[ii]))
                 print('    http://legacysurvey.org/viewer-dev/ccd/decals-dr5/decam-%s-%s-%s/' % (ccds.expnum[ii], ccds.ccdname[ii], ccds.filter[ii]))
@@ -263,7 +294,24 @@ def main():
             E.galdepth[j] = np.mean(ccds.galdepth[Igood])
         else:
             E.galdepth[j] = 0.
-            
+    del expnums
+
+
+    keep = np.array([not(expnum in bad_expids)
+                     for expnum in ccds.expnum])
+    ccds.cut(keep)
+    print(len(ccds), 'CCDs NOT in the bad_expids file')
+
+    keep = np.array([not(expnum in bad_expids)
+                     for expnum in copilot.expnum])
+    copilot.cut(keep)
+    print(len(copilot), 'copilot exposures NOT in the bad_expids file')
+    
+    keep = np.array([not(expnum in bad_expids)
+                     for expnum in E.expnum])
+    E.cut(keep)
+    print(len(E), 'CCD Exposures NOT in the bad_expids file')
+
     # plt.clf()
     # plt.plot(O.ra, O.dec, 'k.')
     # plt.axis([360,0,-25,35])
