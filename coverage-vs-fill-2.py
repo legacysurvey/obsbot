@@ -26,38 +26,44 @@ if __name__ == '__main__':
     print('Depths for', len(T), 'tiles')
     depths = T.depths
 
+    print('Depths:', depths.shape)
+    
     target = 22.5
 
-    I = np.flatnonzero((depths[2] >= target - 0.6) *
-                       (depths[5] >= target - 0.3) *
-                       (depths[10] >= target))
+    I = np.flatnonzero((depths[:,2] >= target - 0.6) *
+                       (depths[:,5] >= target - 0.3) *
+                       (depths[:,10] >= target))
     print(len(I), 'tiles are retirable')
 
-    I = np.flatnonzero((depths[5] >= target - 0.3) *
-                       (depths[10] >= target))
+    I = np.flatnonzero((depths[:,5] >= target - 0.3) *
+                       (depths[:,10] >= target))
     print(len(I), 'tiles meet 5% and 10% targets')
 
-    I = np.flatnonzero((depths[10] >= target))
+    I = np.flatnonzero((depths[:,10] >= target))
     print(len(I), 'tiles meet 10% target')
 
-    I = np.flatnonzero((depths[3] >= target - 0.6) *
-                       (depths[5] >= target - 0.3) *
-                       (depths[10] >= target))
+    I = np.flatnonzero((depths[:,3] >= target - 0.6) *
+                       (depths[:,5] >= target - 0.3) *
+                       (depths[:,10] >= target))
     print(len(I), 'tiles meet 2->3%, 5%, and 10% targets')
 
-    I = np.flatnonzero((depths[2] >= target - 0.6) *
-                       (depths[6] >= target - 0.3) *
-                       (depths[10] >= target))
+    I = np.flatnonzero((depths[:,2] >= target - 0.6) *
+                       (depths[:,6] >= target - 0.3) *
+                       (depths[:,10] >= target))
     print(len(I), 'tiles meet 2%, 5->6%, and 10% targets')
 
-    I = np.flatnonzero((depths[2] >= target - 0.6) *
-                       (depths[5] >= target - 0.3) *
-                       (depths[11] >= target))
+    I = np.flatnonzero((depths[:,2] >= target - 0.6) *
+                       (depths[:,5] >= target - 0.3) *
+                       (depths[:,11] >= target))
     print(len(I), 'tiles meet 2%, 5%, and 10->11% targets')
 
-    I = np.flatnonzero((depths[2] >= target - 0.6 - 0.01) *
-                       (depths[5] >= target - 0.3 - 0.01) *
-                       (depths[10] >= target - 0.01))
+    I = np.flatnonzero((depths[:,2] >= target - 0.6 - 0.01) *
+                       (depths[:,5] >= target - 0.3 - 0.01) *
+                       (depths[:,10] >= target - 0.01))
     print(len(I), 'tiles meet 2%, 5%, and 10-% targets - 0.01 mag')
 
+    I = np.flatnonzero((depths[:,2] >= target - 0.6 - 0.02) *
+                       (depths[:,5] >= target - 0.3 - 0.02) *
+                       (depths[:,10] >= target - 0.02))
+    print(len(I), 'tiles meet 2%, 5%, and 10-% targets - 0.02 mag')
 
