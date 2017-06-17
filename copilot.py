@@ -801,6 +801,23 @@ def set_tile_fields(ccd, hdr, tiles):
 # SFD map isn't picklable, use global instead
 gSFD = None
 
+def get_expnum(phdr):
+    expnum = phdr.get('EXPNUM', 0)
+    # Bok
+    instrument = phdr.get('INSTRUME')
+    if instrument.strip() == '90prime':
+        date = phdr.get('DATE-OBS').strip()
+        #2017-06-15T10:42:01.301'
+        yr = date[2:4]
+        month = date[5:7]
+        day = date[8:10]
+        hr = date[11:13]
+        minute = date[14:16]
+        sec = date[17:19]
+        expnum = int(yr + month + day + hr + minute + sec, 10)
+        print('Date', date, '-> faked expnum', expnum)
+    return expnum
+
 def process_image(fn, ext, nom, sfd, opt, obs, tiles):
     db = opt.db
     print('Reading', fn)
@@ -814,7 +831,8 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
     obstype = phdr.get('OBSTYPE','').strip()
     print('obstype:', obstype)
     exptime = phdr.get('EXPTIME', 0)
-    expnum = phdr.get('EXPNUM', 0)
+
+    expnum = get_expnum(phdr)
 
     filt = phdr.get('FILTER', None)
     if filt is not None:
@@ -1253,7 +1271,7 @@ def skip_existing_files(imgfns, rawext, by_expnum=False):
                 print('file', fn, 'found in database -- expnum', expnum)
             if expnum == 0:
                 hdr = fitsio.read_header(fn)
-                expnum = hdr['EXPNUM']
+                expnum = get_expnum(hdr)
                 print('file', fn, '-> expnum', expnum)
             mm = obsdb.MeasuredCCD.objects.filter(expnum=expnum, extension=skipext)
         else:
