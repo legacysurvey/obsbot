@@ -119,6 +119,14 @@ class RawMeasurer(object):
         blobs,nblobs = label(peaks)
         slices = find_objects(blobs)
         return slices
+
+    def zeropoint_for_exposure(self, band, ext=None, exptime=None, primhdr=None):
+        try:
+            zp0 = self.nom.zeropoint(band, ext=self.ext)
+        except KeyError:
+            print('Unknown band "%s"; no zeropoint available.' % band)
+            zp0 = None
+        return zp0
         
     def run(self, ps=None, focus=False, momentsize=5,
             n_fwhm=100, verbose=True, get_image=False, flat=None):
@@ -207,11 +215,7 @@ class RawMeasurer(object):
             printmsg('Bad airmass:', airmass, '-- setting to 1.0')
             airmass = 1.0
 
-        try:
-            zp0 = self.nom.zeropoint(band, ext=self.ext)
-        except KeyError:
-            print('Unknown band "%s"; no zeropoint available.' % band)
-            zp0 = None
+        zp0 = self.zeropoint_for_exposure(band, ext=self.ext, exptime=exptime, primhdr=primhdr)
 
         try:
             sky0 = self.nom.sky(band)
@@ -1034,7 +1038,24 @@ class BokMeasurer(RawMeasurer):
 
 
 
+class BokCPMeasurer(BokMeasurer):
+    def read_raw(self, F, ext):
+        img = F[ext].read()
+        hdr = F[ext].read_header()
+        img = img.astype(np.float32)
+        return img,hdr
 
+    def get_wcs(self, hdr):
+        from astrometry.util.util import wcs_pv2sip_hdr
+        wcs = wcs_pv2sip_hdr(hdr)
+        return wcs
+
+    def zeropoint_for_exposure(self, band, ext=None, exptime=None, **kwargs):
+        zp0 = super(BokCPMeasurer, self).zeropoint_for_exposure(band, ext=ext, exptime=exptime, **kwargs)
+        if zp0 is None:
+            return zp0
+        zp0 -= 2.5 * np.log10(exptime)
+        return zp0
 
 def measure_raw_decam(fn, ext='N4', nom=None, ps=None, measargs={}, **kwargs):
     '''
@@ -1135,6 +1156,9 @@ def get_measurer_class_for_file(fn):
     if cam == 'mosaic3':
         return Mosaic3Measurer
     elif cam == '90prime':
+        if 'PLVER' in primhdr:
+            # CP-processed Bok image
+            return BokCPMeasurer
         return BokMeasurer
     elif cam == 'decam':
         if 'PLVER' in primhdr:
@@ -1153,8 +1177,16 @@ def measure_raw(fn, **kwargs):
         if nom is None:
             import bok
             nom = bok.BokNominalCalibration()
-        ext = kwargs.pop('ext', 'IM4')
-        meas = BokMeasurer(fn, ext, nom)
+
+        if 'PLVER' in primhdr:
+            # CP-processed Bok image
+            measclass = BokCPMeasurer
+            ext = kwargs.pop('ext', 'ccd1')
+        else:
+            measclass = BokMeasurer
+            ext = kwargs.pop('ext', 'IM4')
+
+        meas = measclass(fn, ext, nom)
         ps = kwargs.pop('ps', None)
         results = meas.run(ps, **kwargs)
         return results

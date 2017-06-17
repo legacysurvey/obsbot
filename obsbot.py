@@ -238,7 +238,7 @@ def get_airmass(alt):
 
 def get_tile_id_from_name(name):
     # Parse objname like 'MzLS_5623_z'
-    parts = name.split('_')
+    parts = str(name).split('_')
     ok = (len(parts) == 3)
     if ok:
         band = parts[2]
