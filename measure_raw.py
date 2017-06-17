@@ -783,7 +783,7 @@ class RawMeasurer(object):
                 # print('psf', psf)
                 if dlnp == 0:
                     break
-    
+
             fwhms.append(psf.sigmas[0] * 2.35 * pixsc)
                 
             if doplot:
@@ -808,7 +808,7 @@ class RawMeasurer(object):
     
         fwhms = np.array(fwhms)
         fwhm = np.median(fwhms)
-        printmsg('Median FWHM : %.3f' % np.median(fwhms))
+        printmsg('Median FWHM : %.3f arcsec' % np.median(fwhms))
         meas.update(seeing=fwhm)
     
         if False and ps is not None:
@@ -968,6 +968,74 @@ class Mosaic3Measurer(RawMeasurer):
         return ps1_to_mosaic(ps1stars, band)
 
 
+
+class BokMeasurer(RawMeasurer):
+    def __init__(self, *args, **kwargs):
+        if not 'pixscale' in kwargs:
+            import mosaic
+            kwargs.update(pixscale = mosaic.mosaic_nominal_pixscale)
+        super(BokMeasurer, self).__init__(*args, **kwargs)
+        self.camera = '90prime'
+
+    def get_band(self, primhdr):
+        band = super(BokMeasurer,self).get_band(primhdr)
+        # bokr -> r
+        band = band.strip()
+        band = band.replace('bok', '')
+        print('Band', band)
+        return band[0]
+
+    def read_raw(self, F, ext):
+        '''
+        F: fitsio FITS object
+        '''
+        img = F[ext].read()
+        hdr = F[ext].read_header()
+        img = img.astype(np.float32)
+        #print('img qts', np.percentile(img.ravel(), [0,25,50,75,100]))
+
+        primhdr = F[0].read_header()
+
+        # Subtract median overscan and multiply by gains 
+        data = parse_section(hdr['DATASEC'], slices=True)
+        bias = parse_section(hdr['BIASSEC'], slices=True)
+        gain = primhdr['GAIN%i' % int(ext.replace('IM','').replace('im',''),10)]
+        b = np.median(img[bias])
+        #print('subtracting bias', b)
+        img[data] = (img[data] - b) * gain
+    
+        # Trim the image
+        trim = parse_section(hdr['TRIMSEC'], slices=True)
+        # zero out all but the trim section
+        trimg = img[trim].copy()
+        img[:,:] = 0
+        img[trim] = trimg
+        return img,hdr
+
+    def get_wcs(self, hdr):
+        from astrometry.util.util import Tan
+        wcs = Tan(hdr)
+        return wcs
+
+    def get_sky_and_sigma(self, img):
+        # Spline sky model to handle (?) ghost / pupil?
+        from tractor.splinesky import SplineSky
+        splinesky = SplineSky.BlantonMethod(img, None, 256)
+        skyimg = np.zeros_like(img)
+        splinesky.addTo(skyimg)
+        mnsky,sig1 = sensible_sigmaclip(img - skyimg)
+        return skyimg,sig1
+
+    def remove_sky_gradients(self, img):
+        pass
+
+    def colorterm_ps1_to_observed(self, ps1stars, band):
+        return ps1_to_decam(ps1stars, band)
+
+
+
+
+
 def measure_raw_decam(fn, ext='N4', nom=None, ps=None, measargs={}, **kwargs):
     '''
     Reads the given file *fn*, extension *ext*', and measures a number of
@@ -1056,7 +1124,7 @@ def measure_raw_mosaic3(fn, ext='im4', nom=None, ps=None,
 
 def camera_name(primhdr):
     '''
-    Returns 'mosaic3' or 'decam'
+    Returns 'mosaic3' or 'decam' or '90prime'
     '''
     return primhdr.get('INSTRUME','').strip().lower()
 
@@ -1066,6 +1134,8 @@ def get_measurer_class_for_file(fn):
     #print('Camera:', cam)
     if cam == 'mosaic3':
         return Mosaic3Measurer
+    elif cam == '90prime':
+        return BokMeasurer
     elif cam == 'decam':
         if 'PLVER' in primhdr:
             # CP-processed DECam image
@@ -1078,6 +1148,16 @@ def measure_raw(fn, **kwargs):
 
     if cam == 'mosaic3':
         return measure_raw_mosaic3(fn, **kwargs)
+    elif cam == '90prime':
+        nom = kwargs.pop('nom', None)
+        if nom is None:
+            import bok
+            nom = bok.BokNominalCalibration()
+        ext = kwargs.pop('ext', 'IM4')
+        meas = BokMeasurer(fn, ext, nom)
+        ps = kwargs.pop('ps', None)
+        results = meas.run(ps, **kwargs)
+        return results
     elif cam == 'decam':
         if 'PLVER' in primhdr:
             # CP-processed DECam image

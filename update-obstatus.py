@@ -68,6 +68,8 @@ def main():
     ccds = obsdb.MeasuredCCD.objects.all()
     copilot = db_to_fits(ccds)
 
+    all_copilot = copilot.copy()
+
     copilot.writeto('copilot.fits')
     
     print(len(copilot), 'measured CCDs in copilot database')
@@ -114,6 +116,17 @@ def main():
 
         print('Z_EXPNUM range:', O.z_expnum.min(), 'min >0:', O.z_expnum[O.z_expnum > 0].min(), O.z_expnum.max())
 
+    print('Pass numbers:', np.unique(O.get('pass')))
+    
+    if opt.mzls:
+        goodtiles = (O.in_desi * (O.dec > 30) * (O.get('pass') <= 3))
+        print(sum(goodtiles), 'tiles of interest')
+    else:
+        goodtiles = (O.in_desi * (O.get('pass') <= 3))
+        print(sum(goodtiles), 'tiles in the footprint')
+
+    #O.cut(goodtiles)
+    #print('Cut to', len(O), 'tiles of interest')
 
     # *after* fixing tileids
     allccds = ccds.copy()
@@ -127,15 +140,6 @@ def main():
     
     I = tileid_to_index[O.tileid]
     assert(np.all(I == np.arange(len(O))))
-
-    print('Pass numbers:', np.unique(O.get('pass')))
-    
-    if opt.mzls:
-        goodtiles = np.flatnonzero(O.in_desi * (O.dec > 30) * (O.get('pass') <= 3))
-        print(len(goodtiles), 'tiles of interest')
-    else:
-        goodtiles = np.flatnonzero(O.in_desi * (O.get('pass') <= 3))
-        print(len(goodtiles), 'tiles in the footprint')
 
     # Look at whether exposures from other programs are near our tile centers.
     # Basically nope.
@@ -513,6 +517,19 @@ def main():
                         print('    depth', galdepth[i])
                     else:
                         print('    no depth')
+
+                # Within an arcmin?
+                I,J,d = match_radec(O.ra[Ihuh], O.dec[Ihuh], all_copilot.rabore, all_copilot.decbore, 1./60., nearest=True)
+                print('For', len(Ihuh), 'weird tiles,')
+                print(len(I), 'matches within an arcmin in the copilot db')
+                print('Smallest distances:', d[np.argsort(d)[:10]])
+
+                I,J,d = match_radec(O.ra[Ihuh], O.dec[Ihuh], allccds.ra_bore, allccds.dec_bore, 1./60., nearest=True)
+                print(len(I), 'matches within an arcmin in the CCDs table')
+                print('Smallest distances:', d[np.argsort(d)[:10]])
+
+                O[Ihuh].writeto('weird-%s-%i.fits' % (band,code))
+
             
             if len(expnums) == 0:
                 continue
@@ -738,6 +755,9 @@ def main():
             plt.savefig('depth-%s-%i.png' % (band, passnum))
 
         plt.clf()
+
+        print('Fiducial single-exposure-depth:', fid.single_exposure_depth)
+
         for passnum in [1,2,3]:
             depth = O.get('%s_depth' % band)
             J = np.flatnonzero((O.get('pass') == passnum) *
@@ -745,7 +765,6 @@ def main():
             depth = depth[J]
 
             print('Pass', passnum)
-            print('Fiducial single-exposure-depth:', fid.single_exposure_depth)
             print(sum(depth < fid.single_exposure_depth - 0.25), 'of', len(depth), 'tiles are more than 0.25 mag shallow')
 
             odepth = O.get('%s_depth' % band)
@@ -856,6 +875,49 @@ def main():
                 plt.axis([360, 0, -20, 38])
                 plt.title('Tiles to redo (> 0.5 mag shallow): %s band, pass %i: %i of %i' % (band, passnum, len(redo), len(done)))
                 plt.savefig('redo2-%s-%i.png' % (band, passnum))
+
+
+        print('Passes 1-3 combined:')
+        depth = O.get('%s_depth' % band)
+        J = np.flatnonzero((depth > 1) * (depth < 30))
+        depth = depth[J]
+        print(sum(depth < fid.single_exposure_depth - 0.25), 'of', len(depth), 'tiles are more than 0.25 mag shallow')
+
+        odepth = O.get('%s_depth' % band)
+        K = np.flatnonzero((O.get('%s_done' % band) == 0) * (odepth > 1) * (odepth < 30))
+        print(sum(odepth[K] < fid.single_exposure_depth - 0.25), 'of', len(odepth[K]), 'DONE=0 tiles are more than 0.25 mag shallow')
+
+        for k in K:
+            print('  EXPNUM', O.get('%s_expnum' % band)[k], 'DATE', O.get('%s_date' % band)[k], 'DEPTH', O.get('%s_depth' % band)[k])
+
+        K = np.flatnonzero((O.get('%s_done' % band) == 1) * (odepth > 1) * (odepth < 30))
+        print(sum(odepth[K] < fid.single_exposure_depth - 0.25), 'of', len(odepth[K]), 'DONE=1 tiles are more than 0.25 mag shallow')
+
+        K = np.flatnonzero((O.get('%s_done' % band) == 1) * (odepth > 1) * (odepth < 30) * goodtiles)
+        print(sum(odepth[K] < fid.single_exposure_depth - 0.25), 'of', len(odepth[K]), 'interesting DONE=1 tiles are more than 0.25 mag shallow')
+
+        K = np.flatnonzero((O.get('%s_done' % band) == 1) * (odepth == 1))
+        print(len(K), 'DONE=1 tiles have DEPTH=1 (non-photometric)')
+
+        K = np.flatnonzero((O.get('%s_done' % band) == 1) * (odepth == 1) * goodtiles)
+        print(len(K), 'interesting DONE=1 tiles have DEPTH=1 (non-photometric)')
+
+        K = np.flatnonzero((O.get('%s_done' % band) == 1) * (odepth == 30))
+        print(len(K), 'DONE=1 tiles have DEPTH=30 (unknown depth)')
+
+        K = np.flatnonzero((O.get('%s_done' % band) == 1) * (odepth == 30) * goodtiles)
+        print(len(K), 'interesting DONE=1 tiles have DEPTH=30 (unknown depth)')
+
+        K = np.flatnonzero((O.get('%s_done' % band) == 1) * (odepth == 0))
+        print(len(K), 'DONE=1 tiles have DEPTH=0')
+
+        K = np.flatnonzero((O.get('%s_done' % band) == 1) * (odepth == 0) * goodtiles)
+        print(len(K), 'interesting DONE=1 tiles have DEPTH=0')
+        
+        K = np.flatnonzero((O.get('%s_done' % band) == 0) *
+                           (odepth != 0))
+        print(len(K), 'tiles have DONE=0 but DEPTH != 0')
+
                 
             
     O.writeto(out_fn)
