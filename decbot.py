@@ -53,6 +53,9 @@ def main(cmdlineargs=None, get_decbot=False):
     parser.add_option('--exptime', type=int, default=None,
                       help='Set default exposure time, default whatever is in the JSON files, usually 80 sec')
 
+    parser.add_option('--start-double', default=False, action='store_true',
+                      help='Add two copies of the first tile?')
+
     parser.add_option('--no-adjust', dest='adjust', default=True,
                       action='store_false',
                       help='Do not adjust exposure time to compensate for previous tiles')
@@ -169,7 +172,7 @@ def main(cmdlineargs=None, get_decbot=False):
 
 def is_twilight(obs, twi=-15.):
     '''
-    twi: degrees twilight defining 'twilight'.
+    twi: Sun altitude, in degrees, defining 'twilight'.
     '''
     sun = ephem.Sun()
     sun.compute(obs)
@@ -250,6 +253,9 @@ class Decbot(Obsbot):
         self.adjust_previous = opt.adjust
         self.nextpass = opt.passnum
         self.latest_measurement = None
+
+        # first exposure only
+        self.queue_double = opt.start_double
 
         # Annotate plans with 'tilepass' field
         # - build map from tileid to tile pass number
@@ -418,9 +424,14 @@ class Decbot(Obsbot):
             print('Not actually queuing exposure (--no-queue):', j)
         else:
             print('Queuing exposure:', j)
-            self.rc.addexposure(filter=j['filter'], ra=j['RA'], dec=j['dec'],
-                                object=j['object'], exptime=j['expTime'],
-                                verbose=self.verbose)
+            expo = dict(filter=j['filter'], ra=j['RA'], dec=j['dec'],
+                        object=j['object'], exptime=j['expTime'],
+                        verbose=self.verbose)
+            self.rc.addexposure(**expo)
+            if self.queue_double:
+                self.rc.addexposure(**expo)
+                self.queue_double = False
+
         self.queued_tiles.append(j)
         return j
     
