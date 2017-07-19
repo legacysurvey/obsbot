@@ -111,7 +111,7 @@ class TestDecbot2(TestCase):
         import obsbot
         from obsbot import mjdnow
         import ephem
-        
+
         # Fake the current time...
         set_fake_mjd(57603.1)
 
@@ -131,11 +131,13 @@ class TestDecbot2(TestCase):
 
         opt = Duck()
         opt.cut_before_now = True
-        opt.rawdata = 'rawdata'
+        opt.rawdata = 'no-such-directory'
+        opt.ignore_mising_dir = True
         opt.verbose = False
         opt.adjust = False
         opt.passnum = 2
         opt.exptime = 100
+        opt.start_double = False
         
         nom = camera.nominal_cal
         obs = camera.ephem_observer()
@@ -145,6 +147,8 @@ class TestDecbot2(TestCase):
         copilot_db = obsdb.MeasuredCCD.objects
         decbot = Decbot(J1, J2, J3, opt, nom, obs, tiles, rc,
                         copilot_db=copilot_db)
+
+        decbot.observed_tiles.clear()
 
         T = fits_table(os.path.join(self.data_dir, 'obs-test.fits'))
         t = T[np.argmax(T.mjd_obs)]
@@ -180,6 +184,6 @@ class TestDecbot2(TestCase):
 
         jnext = decbot.get_upcoming()[1]
         print('Next+1 exposure:', jnext)
-        self.assertEqual(jnext['expTime'], 175.)
+        self.assertEqual(jnext['expTime'], 192.)
         self.assertEqual(jnext['object'], 'DECaLS_18778_g')
         
