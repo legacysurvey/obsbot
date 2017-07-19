@@ -48,10 +48,13 @@ def main(cmdlineargs=None, get_decbot=False):
     parser.add_option('--tiles', default=tile_path,
                       help='Observation status file, default %default')
 
-    parser.add_option('--pass', dest='passnum', type=int, default=2,
-                      help='Set default pass number (1/2/3), default 2')
+    parser.add_option('--pass', dest='passnum', type=int, default=None,
+                      help="Set default pass number (1/2/3), default 2, unless it's before 15-degree twilight, in which case default is pass 3.")
     parser.add_option('--exptime', type=int, default=None,
                       help='Set default exposure time, default whatever is in the JSON files, usually 80 sec')
+
+    parser.add_option('--start-double', default=False, action='store_true',
+                      help='Add two copies of the first tile?')
 
     parser.add_option('--no-adjust', dest='adjust', default=True,
                       action='store_false',
@@ -91,6 +94,16 @@ def main(cmdlineargs=None, get_decbot=False):
         parser.print_help()
         sys.exit(-1)
 
+    obs = ephem_observer()
+
+    if opt.passnum is None:
+        # set default pass based on Sun altitude
+        obs.date = ephem.now()
+        if is_twilight(obs):
+            opt.passnum = 3
+        else:
+            opt.passnum = 2
+
     if not (opt.passnum in [1,2,3]):
         parser.print_help()
         sys.exit(-1)
@@ -123,8 +136,6 @@ def main(cmdlineargs=None, get_decbot=False):
         for j in J:
             j['planpass'] = i+1
 
-    obs = ephem_observer()
-    
     print('Reading tiles table', opt.tiles)
     tiles = fits_table(opt.tiles)
 
@@ -159,6 +170,15 @@ def main(cmdlineargs=None, get_decbot=False):
     decbot.queue_initial_exposures()
     decbot.run()
 
+def is_twilight(obs, twi=-15.):
+    '''
+    twi: Sun altitude, in degrees, defining 'twilight'.
+    '''
+    sun = ephem.Sun()
+    sun.compute(obs)
+    alt = np.rad2deg(float(sun.alt))
+    print('Current sun altitude:', alt, 'deg')
+    return alt > twi
 
 class Decbot(Obsbot):
     '''
@@ -234,6 +254,9 @@ class Decbot(Obsbot):
         self.nextpass = opt.passnum
         self.latest_measurement = None
 
+        # first exposure only
+        self.queue_double = opt.start_double
+
         # Annotate plans with 'tilepass' field
         # - build map from tileid to tile pass number
         tileid_to_pass = np.zeros(self.tiles.tileid.max() + 1, dtype=np.uint8)
@@ -302,6 +325,11 @@ class Decbot(Obsbot):
         self.update_plans(exptime=opt.exptime)
 
     def choose_next_pass(self):
+        self.obs.date = ephem.now()
+        if is_twilight(self.obs):
+            # We're before or after 15-degree twilight -- only select pass 3.
+            return 3
+
         M = self.latest_measurement
         if M is not None:
             trans  = M['transparency']
@@ -396,9 +424,14 @@ class Decbot(Obsbot):
             print('Not actually queuing exposure (--no-queue):', j)
         else:
             print('Queuing exposure:', j)
-            self.rc.addexposure(filter=j['filter'], ra=j['RA'], dec=j['dec'],
-                                object=j['object'], exptime=j['expTime'],
-                                verbose=self.verbose)
+            expo = dict(filter=j['filter'], ra=j['RA'], dec=j['dec'],
+                        object=j['object'], exptime=j['expTime'],
+                        verbose=self.verbose)
+            self.rc.addexposure(**expo)
+            if self.queue_double:
+                self.rc.addexposure(**expo)
+                self.queue_double = False
+
         self.queued_tiles.append(j)
         return j
     
