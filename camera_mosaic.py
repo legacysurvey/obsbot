@@ -71,6 +71,7 @@ def dradec_to_ref_chip(T, refext = 'im16'):
 
 def ephem_observer():
     import ephem
+    import numpy as np
     # Pyephem set-up for mosaic:
     mosaic = ephem.Observer()
     mosaic.lon = '-111.6003'
@@ -78,7 +79,8 @@ def ephem_observer():
     mosaic.elev = 2120.0 # meters
     #mosaic.temp = 10.0 # deg celsius; average temp for August
     #mosaic.pressure = 780.0 # mbar
-    #mosaic.horizon = -np.sqrt(2.0*mosaic.elev/R_earth)
+    R_earth = 6378.1e3 # in meters
+    mosaic.horizon = -np.sqrt(2.0*mosaic.elev/R_earth)
     return mosaic
 
 tile_path = 'obstatus/mosaic-tiles_obstatus.fits'

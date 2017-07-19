@@ -181,8 +181,11 @@ def get_recent_exposures(recent, bands=None):
 class Duck(object):
     pass
 
-def get_twilight(camera, date):
+def get_twilight(obs, date):
     '''
+    *obs*: an ephem.Observer object
+    *date*: an ephem.Date object (in UTC)
+
     Returns an object with attributes:
     
     * sunset
@@ -193,36 +196,11 @@ def get_twilight(camera, date):
     * "morn12": -12 degree morning
     * "morn10": -10 degree morning
     * sunrise
-
-    for the given camera ("mosaic3" or "decam"), following the night
-    whose sunset starts BEFORE the given date.
-
-    date: an ephem.Date object (in UTC)
     '''
     t = Duck()
-    ## From nightlystrategy / mosaicstrategy
-    R_earth = 6378.1e3 # in meters
-    if camera == 'mosaic3':
-        obs = ephem.Observer()
-        obs.lon = '-111.6003'
-        obs.lat = '31.9634'
-        obs.elev = 2120.0 # meters
-        #print('Assuming KPNO')
 
-    elif camera == 'decam':
-        obs = ephem.Observer()
-        obs.lon = '-70.806525'
-        obs.lat = '-30.169661'
-        obs.elev = 2207.0 # meters
-        #print('Assuming CTIO')
-
-    else:
-        raise RuntimeError('Unknown camera "%s"' % camera)
-
-    obs.temp = 10.0 # deg celsius; average temp for August
-    obs.pressure = 780.0 # mbar
-    obs.horizon = -np.sqrt(2.0*obs.elev/R_earth)
-
+    saved_vals = (obs.date, obs.horizon)
+    
     obs.date = date
     sun = ephem.Sun()
     t.sunset = obs.previous_setting(sun)
@@ -234,6 +212,10 @@ def get_twilight(camera, date):
     t.eve18 = obs.next_setting(sun)
     t.morn18 = obs.next_rising(sun)
 
+    obs.horizon = -ephem.degrees('15:00:00.0')
+    t.eve15 = obs.next_setting(sun)
+    t.morn15 = obs.next_rising(sun)
+
     obs.horizon = -ephem.degrees('12:00:00.0')
     t.eve12 = obs.next_setting(sun)
     t.morn12 = obs.next_rising(sun)
@@ -241,7 +223,9 @@ def get_twilight(camera, date):
     obs.horizon = -ephem.degrees('10:00:00.0')
     t.eve10 = obs.next_setting(sun)
     t.morn10 = obs.next_rising(sun)
-    
+
+    obs.date, obs.horizon = saved_vals
+
     return t
 
 def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
@@ -1067,8 +1051,8 @@ def bounce_process_image(X):
         import traceback
         traceback.print_exc()
     
-def mark_twilight(camera, date):
-    twi = get_twilight(camera, date)
+def mark_twilight(obs, date):
+    twi = get_twilight(obs, date)
     mark = []
     mark.append((ephemdate_to_mjd(twi.eve18), 'b'))
     #print('Evening twi18:', eve18, markmjds[-1])
@@ -1079,12 +1063,15 @@ def mark_twilight(camera, date):
     #print('Evening twi12:', eve12, markmjds[-1])
     mark.append((ephemdate_to_mjd(twi.morn12), gb))
     #print('Morning twi12:', morn12, markmjds[-1])
-    orange = (1., 0.6, 0)
+    mark.append((ephemdate_to_mjd(twi.eve15), gb))
+    #print('Evening twi12:', eve12, markmjds[-1])
+    mark.append((ephemdate_to_mjd(twi.morn15), gb))
+    #orange = (1., 0.6, 0)
     mark.append((ephemdate_to_mjd(twi.eve10), 'g'))
     mark.append((ephemdate_to_mjd(twi.morn10),'g'))
     return mark
     
-def plot_recent(opt, nom, tiles=None, markmjds=[],
+def plot_recent(opt, obs, nom, tiles=None, markmjds=[],
                 botplanfn=None, nightly=False, **kwargs):
     ''' Creates the recent.png plot of recent measurements of the conditions.
     '''
@@ -1124,7 +1111,7 @@ def plot_recent(opt, nom, tiles=None, markmjds=[],
 
     plotfn = opt.plot_filename
 
-    markmjds.extend(mark_twilight(camera, ephem.Date(mjdtodate(mjd_end))))
+    markmjds.extend(mark_twilight(obs, ephem.Date(mjdtodate(mjd_end))))
 
     import pylab as plt
     plt.figure(1)
@@ -1496,7 +1483,7 @@ def main(cmdlineargs=None, get_copilot=False):
         if opt.ago:
             sdate -= opt.ago
             
-        twi = get_twilight(camera_name, sdate)
+        twi = get_twilight(obs, sdate)
         if opt.mjdstart is None:
             opt.mjdstart = ephemdate_to_mjd(
                 twi.eve10 - np.abs(twi.eve12-twi.eve10))
@@ -1505,7 +1492,7 @@ def main(cmdlineargs=None, get_copilot=False):
             opt.mjdend = ephemdate_to_mjd(
                 twi.morn10 + np.abs(twi.morn10-twi.morn12))
             print('Set MJD end to', opt.mjdend)
-        markmjds.extend(mark_twilight(camera_name, sdate))
+        markmjds.extend(mark_twilight(obs, sdate))
 
     if opt.covplots:
         coverage_plots(opt, camera_name, nice_camera_name)
@@ -1554,7 +1541,8 @@ def main(cmdlineargs=None, get_copilot=False):
     botplanfn = '%s-plan.fits' % bot_name
     
     if opt.plot:
-        plot_recent(opt, nom, tiles=tiles, markmjds=markmjds, show_plot=False,
+        plot_recent(opt, obs, nom,
+                    tiles=tiles, markmjds=markmjds, show_plot=False,
                     nightly=opt.nightplot, botplanfn=botplanfn)
         return 0
         
@@ -1582,10 +1570,9 @@ def main(cmdlineargs=None, get_copilot=False):
             sfd = None
             mp.map(bounce_process_image,
                    [(fn, rawext, nom, sfd, opt, obs, tiles) for fn in fns])
-        plot_recent(opt, nom, tiles=tiles, markmjds=markmjds, show_plot=False,
-                    botplanfn=botplanfn)
+        plot_recent(opt, obs, nom, tiles=tiles, markmjds=markmjds,
+                    show_plot=False, botplanfn=botplanfn)
         return 0
-    
 
     copilot = Copilot(imagedir, rawext, opt, nom, sfd, obs, tiles, botplanfn)
 
@@ -1658,8 +1645,9 @@ class Copilot(NewFileWatcher):
             edate = self.lastNewFile + datetime.timedelta(0, self.longtime)
             markmjds.append((datetomjd(edate), 'r', 'MISSING IMAGE!'))
         
-        plot_recent(self.opt, self.nom, tiles=self.tiles, markmjds=markmjds,
-                    show_plot=self.opt.show, botplanfn=self.botplanfn)
+        plot_recent(self.opt, self.obs, self.nom, tiles=self.tiles,
+                    markmjds=markmjds, show_plot=self.opt.show,
+                    botplanfn=self.botplanfn)
 
 if __name__ == '__main__':
     import obsdb
