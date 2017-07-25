@@ -37,9 +37,12 @@ def main():
                       help='Also plot the plan from the given filename.')
     
     parser.add_option('--mosaic', action='store_true', help='Set defaults for Mosaic survey')
-    
+
     parser.add_option('--start-time', help='Start time for this plan, HH:MM:SS UTC.  Default: 12-degree twilight tonight.')
     parser.add_option('--start-date', help='Start date for this plan, YYYY-MM-DD UTC.')
+
+    parser.add_option('--stop-time', help='Stop time for this plan, HH:MM:SS UTC.  Default: no limit.')
+
     parser.add_option('--second-half', action='store_true', help='This plan starts at the start of the second half-night.')
     
     parser.add_option('--skip', type=int, default=1, help='Write every Nth plot only')
@@ -70,12 +73,10 @@ def main():
         print('Set start date to', opt.start_date)
 
     if opt.mosaic:
-        #import camera_mosaic as camera
         from camera_mosaic import ephem_observer
-        obs = ephem_observer()
     else:
-        #import camera_decam as camera
         from camera_decam import ephem_observer
+    obs = ephem_observer()
 
     obs.temp = 10.0 # deg celsius; average temp for August
     obs.pressure = 780.0 # mbar
@@ -108,15 +109,63 @@ def main():
         obs.date = ephem.Date(opt.start_date + ' ' + opt.start_time)
         if not start_date_specified and obs.date < daystart:
             # If --start-date is, eg, 2am, assume it's during the night starting on daystart.
-            obs.date += 1.
+            obs.date = ephem.Date(float(obs.date) + 1.)
         print('Start date:', obs.date)
 
+    if opt.stop_time is not None:
+        # The date should be unambiguous -- try the same as obs.date =
+        # start time, add one day if necessary.
+        date = obs.date.datetime()
+        stopdate = ephem.Date('%04i-%02i-%02i' % (date.year, date.month, date.day) + ' ' + opt.stop_time)
+        if stopdate < obs.date:
+            stopdate = ephem.Date(float(stopdate) + 1.)
+        print('Stop date:', stopdate)
+        
     jfn = args[0]
     print('Reading JSON file', jfn)
     J = json.loads(open(jfn,'rb').read())
     print(len(J), 'entries')
 
     Jalso = [json.loads(open(fn,'rb').read()) for fn in opt.also]
+
+    # Get times when exposures should occur.
+    times = []
+    LSTs = []
+
+    # If the JSON files include estimated times, use those
+    if 'approx_datetime' in J[0]:
+        for i,j in enumerate(J):
+            obs.date = ephem.Date(str(j['approx_datetime']))
+            if opt.stop_time is not None and obs.date > stopdate:
+                print('Tile', i, 'is after --stopdate')
+                J = J[:i]
+                assert(len(J) == len(times))
+                break
+            times.append(ephem.Date(obs.date))
+            LSTs.append(np.rad2deg(float(obs.sidereal_time())))
+            print('Date', obs.date)
+            print('LST', obs.sidereal_time())
+    else:
+        # Predict overheads
+        lastra,lastdec = None,None
+        for i in range(len(J)):
+            print('Exposure', i, 'should start at', str(obs.date))
+            if opt.stop_time is not None and obs.date > stopdate:
+                print('Tile', J[i], 'is after --stopdate')
+                break
+            times.append(ephem.Date(obs.date))
+            LSTs.append(np.rad2deg(float(obs.sidereal_time())))
+            overhead = 30.
+            if lastra is not None:
+                slew = degrees_between(lastra, lastdec, ras[i], decs[i])
+                lastra  = ras [i]
+                lastdec = decs[i]
+                # Add 3 seconds per degree for slews longer than 2 degrees
+                overhead += np.maximum(0, slew - 2.) * 3.
+            # Add overhead
+            print('Adding', exptime[i], 'seconds exptime plus',
+                  overhead, 'seconds overhead')
+            obs.date += (exptime[i] + overhead) / (24 * 3600.)
 
     tiles = None
     if opt.obstatus is not None:
@@ -180,46 +229,16 @@ def main():
     plt.clf()
     plt.plot(transform_ra(ras), decs, 'r.')
     plt.axis('scaled')
-    ax = [opt.rahi, opt.ralo, opt.declo, opt.dechi]
+    ax = [transform_ra(opt.rahi), transform_ra(opt.ralo), opt.declo, opt.dechi]
     plt.axis(ax)
 
     moon = ephem.Moon()
-
-    # Get times when exposures should occur.
-    times = []
-    LSTs = []
-
-    # If the JSON files include estimated times, use those
-    if 'approx_datetime' in J[0]:
-        for j in J:
-            obs.date = ephem.Date(str(j['approx_datetime']))
-            times.append(ephem.Date(obs.date))
-            LSTs.append(np.rad2deg(float(obs.sidereal_time())))
-            print('Date', obs.date)
-            print('LST', obs.sidereal_time())
-    else:
-        # Predict overheads
-        lastra,lastdec = None,None
-        for i in range(len(J)):
-            print('Exposure', i, 'should start at', str(obs.date))
-            times.append(ephem.Date(obs.date))
-            LSTs.append(np.rad2deg(float(obs.sidereal_time())))
-            overhead = 30.
-            if lastra is not None:
-                slew = degrees_between(lastra, lastdec, ras[i], decs[i])
-                lastra  = ras [i]
-                lastdec = decs[i]
-                # Add 3 seconds per degree for slews longer than 2 degrees
-                overhead += np.maximum(0, slew - 2.) * 3.
-            # Add overhead
-            print('Adding', exptime[i], 'seconds exptime plus',
-                  overhead, 'seconds overhead')
-            obs.date += (exptime[i] + overhead) / (24 * 3600.)
 
     alsocolors = 'kbr'
 
     also = []
     for Ja in Jalso:
+        # We assume the --also plan files contain approx_datetime...
         atimes = np.array([ephem.Date(str(j['approx_datetime'])) for j in Ja])
         aras = np.array([j['RA'] for j in Ja])
         adecs = np.array([j['dec'] for j in Ja])
