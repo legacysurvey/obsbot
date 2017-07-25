@@ -229,7 +229,7 @@ def main():
     plt.clf()
     plt.plot(transform_ra(ras), decs, 'r.')
     plt.axis('scaled')
-    ax = [opt.rahi, opt.ralo, opt.declo, opt.dechi]
+    ax = [transform_ra(opt.rahi), transform_ra(opt.ralo), opt.declo, opt.dechi]
     plt.axis(ax)
 
     moon = ephem.Moon()
