@@ -39,7 +39,8 @@ def db_to_fits(adj):
                   'adjfactor', 'exptime_unclipped', 'exptime_clipped',
                   'exptime_satclipped', 'exptime']:
         g = getattr(adj[0], field)
-        if isinstance(g, basestring):
+        #if isinstance(g, basestring):
+        if str(g) == g:
             T.set(field, np.array([str(getattr(m, field)) for m in adj]))
         else:
             T.set(field, np.array([getattr(m, field) for m in adj]))

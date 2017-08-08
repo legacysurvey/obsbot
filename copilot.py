@@ -50,7 +50,7 @@ def db_to_fits(mm):
                   'affine_dx', 'affine_dxx', 'affine_dxy',
                   'affine_dy', 'affine_dyx', 'affine_dyy',]:
         g = getattr(mm[0], field)
-        if isinstance(g, basestring):
+        if str(g) == g:
             T.set(field, np.array([str(getattr(m, field)) for m in mm]))
         else:
             T.set(field, np.array([getattr(m, field) for m in mm]))
@@ -1551,7 +1551,7 @@ def main(cmdlineargs=None, get_copilot=False):
     
     if len(args) > 0:
         mp = None
-        if opt.threads > 1:
+        if (opt.threads or 0) > 1:
             gSFD = sfd
             from astrometry.util.multiproc import multiproc
             mp = multiproc(opt.threads)

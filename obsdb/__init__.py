@@ -25,7 +25,7 @@ def django_setup(database_filename=None):
     django.setup()
 
     global MeasuredCCD
-    import models
+    from obsdb import models
     MeasuredCCD = models.MeasuredCCD
 
     return settings
