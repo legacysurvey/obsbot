@@ -32,7 +32,7 @@ ps1_to_mosaic = ps1_to_decam
 class RawMeasurer(object):
     def __init__(self, fn, ext, nom, aprad=3.5, skyrad_inner=7.,
                  skyrad_outer=10.,
-                 minstar=5, pixscale=0.262, maxshift=120.):#maxshift=60.):
+                 minstar=5, pixscale=0.262, maxshift=240.):
         '''
         aprad: float
         Aperture photometry radius in arcsec
