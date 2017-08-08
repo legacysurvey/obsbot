@@ -135,7 +135,7 @@ class NominalCalibration(object):
         elif band == 'r':
             fid.update(
                 exptime     =  50.,
-                exptime_max = 125.,
+                exptime_max = 175.,
                 exptime_min =  40.,
                 )
 
