@@ -826,7 +826,7 @@ class RawMeasurer(object):
     
         if ps is not None:
             plt.clf()
-            for i,(xi,yi) in enumerate(zip(fx[J],fy[J])[:50]):
+            for i,(xi,yi) in enumerate(list(zip(fx[J],fy[J]))[:50]):
                 ix = int(np.round(xi))
                 iy = int(np.round(yi))
                 xlo = max(0, ix-psf_r)
