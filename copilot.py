@@ -715,11 +715,18 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
             for mark in markmjds:
                 if len(mark) == 2:
                     mjd,c = mark
-                if len(mark) == 3:
-                    # So far, this is only used for MISSING IMAGE text.
-                    mjd,c,txt = mark
-                    plt.text(mjd, (ax[2]+ax[3])/2, txt, rotation=90,
-                             va='center', ha='right')
+                if len(mark) in [3,4]:
+                    # For twilight markers: only label the first subplot.
+                    if len(mark) == 4:
+                        mjd,c,txt,subplots = mark
+                        if not sp in subplots:
+                            txt = None
+                    else:
+                        # So far, this is only used for MISSING IMAGE text.
+                        mjd,c,txt = mark
+                    if txt is not None:
+                        plt.text(mjd, (ax[2]+ax[3])/2, txt, rotation=90,
+                                 va='center', ha='right')
                 plt.axvline(mjd, color=c, alpha=0.5, lw=2)
 
             plt.axis(ax)
@@ -1054,21 +1061,19 @@ def bounce_process_image(X):
 def mark_twilight(obs, date):
     twi = get_twilight(obs, date)
     mark = []
-    mark.append((ephemdate_to_mjd(twi.eve18), 'b'))
+    mark.append((ephemdate_to_mjd(twi.eve18), 'b', '18', [1]))
     #print('Evening twi18:', eve18, markmjds[-1])
-    mark.append((ephemdate_to_mjd(twi.morn18), 'b'))
+    mark.append((ephemdate_to_mjd(twi.morn18), 'b', '18', [1]))
     #print('Morning twi18:', morn18, markmjds[-1])
     gb = (0., 0.6, 0.6)
-    mark.append((ephemdate_to_mjd(twi.eve12), gb))
-    #print('Evening twi12:', eve12, markmjds[-1])
-    mark.append((ephemdate_to_mjd(twi.morn12), gb))
-    #print('Morning twi12:', morn12, markmjds[-1])
-    mark.append((ephemdate_to_mjd(twi.eve15), gb))
-    #print('Evening twi12:', eve12, markmjds[-1])
-    mark.append((ephemdate_to_mjd(twi.morn15), gb))
+    mark.append((ephemdate_to_mjd(twi.eve15), gb, '15', [1]))
+    mark.append((ephemdate_to_mjd(twi.morn15), gb, '15', [1]))
+
+    mark.append((ephemdate_to_mjd(twi.eve12), gb, '12', [1]))
+    mark.append((ephemdate_to_mjd(twi.morn12), gb, '12', [1]))
     #orange = (1., 0.6, 0)
-    mark.append((ephemdate_to_mjd(twi.eve10), 'g'))
-    mark.append((ephemdate_to_mjd(twi.morn10),'g'))
+    mark.append((ephemdate_to_mjd(twi.eve10), 'g', '10', [1]))
+    mark.append((ephemdate_to_mjd(twi.morn10),'g', '10', [1]))
     return mark
     
 def plot_recent(opt, obs, nom, tiles=None, markmjds=[],
