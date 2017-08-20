@@ -796,7 +796,7 @@ def get_expnum(phdr):
     expnum = phdr.get('EXPNUM', 0)
     # Bok
     instrument = phdr.get('INSTRUME')
-    if instrument.strip() == '90prime':
+    if instrument is not None and instrument.strip() == '90prime':
         date = phdr.get('DATE-OBS').strip()
         #2017-06-15T10:42:01.301'
         yr = date[2:4]
