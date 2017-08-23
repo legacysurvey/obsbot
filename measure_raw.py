@@ -1115,7 +1115,7 @@ def measure_raw_decam(fn, ext='N4', nom=None, ps=None, measargs={}, **kwargs):
 
       - Match PS1 stars to our peaks
 
-      - Dumbly find dx,dy offset (via histogram peak)
+      - Naively find dx,dy offset (via histogram peak)
 
       - Sigma-clip to find mag offset PS1 to our apmags.
 
