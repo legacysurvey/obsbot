@@ -103,3 +103,18 @@ for expnum in (list(range(136934, 136942+1)) +
     plot.write(outfn)
     print('Wrote', outfn)
 
+    if True:
+        for i,ext in enumerate(range(1, 17)):
+            img = fitsio.read(fn, ext=ext)
+            lo,hi = np.percentile(img.ravel(), [25, 98])
+            rgb = (np.clip((img - lo) / (hi - lo), 0., 1.) * 255.).astype(np.uint8)
+            #rgb = rgb[np.newaxis,:,:].repeat(3, axis=0)
+            rgb = rgb[:,:,np.newaxis].repeat(3, axis=2)
+            plot.image.set_image_from_numpy(rgb)
+            wcs = truewcs[i]
+            plot.image.wcs = anwcs_new_tan(wcs)
+            plot.plot('image')
+
+        outfn = 'img-%i.png' % expnum
+        plot.write(outfn)
+        print('Wrote', outfn)
