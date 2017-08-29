@@ -738,6 +738,9 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     
     #for band in np.unique(Tcount.band):
     
+    depth_thresh = 0.3
+    seeing_thresh = 2.0
+    Tbad = []
     for band,Tb in zip(bands, TT):
         for passnum in [1,2,3]:
 
@@ -746,8 +749,6 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
             N = len(Tcount)
             print('\nBand %s, pass %i: total of %i tiles' % (band, passnum, N))
             if N > 0:
-                depth_thresh = 0.3
-                seeing_thresh = 2.0
                 shallow = (Tcount.depth_factor < depth_thresh)
                 blurry = (Tcount.seeing > seeing_thresh)
                 if np.sum(shallow):
@@ -756,7 +757,21 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
                     print('  %i have large seeing > %g' % (np.sum(blurry), seeing_thresh))
                 Ngood = np.sum(np.logical_not(shallow) * np.logical_not(blurry))
                 print('Band %s, pass %i: total of %i good tiles' % (band, passnum, Ngood))
-    
+                Tbad.append(Tcount[np.logical_or(shallow, blurry)])
+
+    if len(Tbad):
+        from astrometry.util.fits import merge_tables
+        Tbad = merge_tables(Tbad)
+        print('Possible bad_expid.txt entries:')
+        for t in Tbad:
+            bad = []
+            if t.depth_factor < depth_thresh:
+                bad.append('expfactor=%.2f' % t.depth_factor)
+            if t.seeing > seeing_thresh:
+                bad.append('seeing=%.2f' % t.seeing)
+            print('%i %s MzLS_%i_' % (t.expnum, ','.join(bad), t.tileid))
+        print()
+
     if show_plot:
         plt.draw()
         plt.show(block=False)
