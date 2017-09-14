@@ -15,12 +15,19 @@ tycho = fits_table('/data1/tycho2.fits.gz')
 tycho.cut(tycho.mag < 8)
 print(len(tycho), 'Tycho-2 stars < mag 8')
 
-for expnum in (list(range(136934, 136942+1)) +
-               list(range(136949, 136951+1))):
+#for expnum in (list(range(136934, 136942+1)) +
+#               list(range(136949, 136951+1))):
+for expnum in [137031, 137027, 137036, 137039, 137040]:
+
+    #outfn = 'img-%i.png' % expnum
+    #if os.path.exists(outfn):
+    #    continue
+
     origwcs = []
     truewcs = []
 
-    fn = '/mosaic3/data3/observer/20170820/mos3_%i.fits' % expnum
+    #fn = '/mosaic3/data3/observer/20170820/mos3_%i.fits' % expnum
+    fn = '/mosaic3/data3/observer/20170828/mos3_%i.fits' % expnum
 
     hdr = fitsio.read_header(fn)
     # date = hdr['DATE-OBS'] # UTC
@@ -53,13 +60,13 @@ for expnum in (list(range(136934, 136942+1)) +
 
         wcsfn = '/tmp/mos3-%i-%i.wcs' % (expnum, ext)
         if not os.path.exists(wcsfn):
-            cmd = 'solve-field %s --config /data1/astrometry-index/cfg --dir /tmp --out mos3-%i-%i --crpix-center --ext %i --continue --no-plots -N none --no-remove-lines --no-tweak --objs 40 --scale-low 0.25 --scale-high 0.27 --scale-units app' % (fn, expnum, ext, ext)
+            cmd = 'solve-field %s --config /data1/astrometry-index/cfg --dir /tmp --out mos3-%i-%i --crpix-center --ext %i --continue --no-plots -N none --no-tweak --objs 40 --scale-low 0.25 --scale-high 0.27 --scale-units app --ra %.3f --dec %.3f --radius 5.' % (fn, expnum, ext, ext, rc, dc)
             print(cmd)
             os.system(cmd)
         if os.path.exists(wcsfn):
             print('Reading WCS from', wcsfn)
             wcs = Tan(wcsfn, 0)
-            truewcs.append(wcs)
+            truewcs.append((ext,wcs))
 
             rc1,dc1 = owcs.radec_center()
             rc2,dc2 = wcs.radec_center()
@@ -86,7 +93,7 @@ for expnum in (list(range(136934, 136942+1)) +
         plot.outline.wcs = anwcs_new_sip(wcs)
         plot.plot('outline')
     plot.color = 'yellow'
-    for wcs in truewcs:
+    for e,wcs in truewcs:
         plot.outline.wcs = anwcs_new_tan(wcs)
         plot.plot('outline')
     plot.color = 'gray'
@@ -103,3 +110,17 @@ for expnum in (list(range(136934, 136942+1)) +
     plot.write(outfn)
     print('Wrote', outfn)
 
+    if True:
+        for ext,wcs in truewcs:
+            img = fitsio.read(fn, ext=ext)
+            lo,hi = np.percentile(img.ravel(), [25, 98])
+            rgb = (np.clip((img - lo) / (hi - lo), 0., 1.) * 255.).astype(np.uint8)
+            #rgb = rgb[np.newaxis,:,:].repeat(3, axis=0)
+            rgb = rgb[:,:,np.newaxis].repeat(3, axis=2)
+            plot.image.set_image_from_numpy(rgb)
+            plot.image.wcs = anwcs_new_tan(wcs)
+            plot.plot('image')
+
+        outfn = 'img-%i.png' % expnum
+        plot.write(outfn)
+        print('Wrote', outfn)
