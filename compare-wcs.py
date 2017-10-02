@@ -15,9 +15,14 @@ tycho = fits_table('/data1/tycho2.fits.gz')
 tycho.cut(tycho.mag < 8)
 print(len(tycho), 'Tycho-2 stars < mag 8')
 
+flipcd = True
+
 #for expnum in (list(range(136934, 136942+1)) +
 #               list(range(136949, 136951+1))):
-for expnum in [137031, 137027, 137036, 137039, 137040]:
+#for expnum in [137031, 137027, 137036, 137039, 137040]:
+
+#for expnum in list(range(140881, 140923+1)):
+for expnum in list(range(140919, 140923+1)):
 
     #outfn = 'img-%i.png' % expnum
     #if os.path.exists(outfn):
@@ -27,7 +32,8 @@ for expnum in [137031, 137027, 137036, 137039, 137040]:
     truewcs = []
 
     #fn = '/mosaic3/data3/observer/20170820/mos3_%i.fits' % expnum
-    fn = '/mosaic3/data3/observer/20170828/mos3_%i.fits' % expnum
+    #fn = '/mosaic3/data3/observer/20170828/mos3_%i.fits' % expnum
+    fn = '/mosaic3/data3/observer/20170925/mos3_%i.fits' % expnum
 
     hdr = fitsio.read_header(fn)
     # date = hdr['DATE-OBS'] # UTC
@@ -49,8 +55,19 @@ for expnum in [137031, 137027, 137036, 137039, 137040]:
 
         print('Reading header from', fn, 'ext', ext)
         hdr = fitsio.read_header(fn, ext=ext)
+
+        if flipcd:
+            for key in ['CD1_1', 'CD1_2', 'CD2_1', 'CD2_2']:
+                val = hdr[key]
+                hdr[key] = -val
+
         #print('Header:', hdr)
         owcs = wcs_pv2sip_hdr(hdr)
+
+        hdr2 = fitsio.FITSHDR()
+        owcs.add_to_header(hdr2)
+        fitsio.write('/tmp/orig-%i-%i.wcs.fits' % (expnum, ext), np.zeros((1,1)), header=hdr2, clobber=True)
+
         origwcs.append(owcs)
         rc,dc = owcs.get_crval()
 
@@ -88,14 +105,21 @@ for expnum in [137031, 137027, 137036, 137039, 137040]:
 
     plot.color = 'verydarkblue'
     plot.plot('fill')
-    plot.color = 'white'
+    plot.color = 'green'
+    plot.lw = 5
     for wcs in origwcs:
         plot.outline.wcs = anwcs_new_sip(wcs)
         plot.plot('outline')
-    plot.color = 'yellow'
+        plot.color = 'white'
+        plot.lw = 1
+
+    plot.color = 'orange'
+    plot.lw = 5
     for e,wcs in truewcs:
         plot.outline.wcs = anwcs_new_tan(wcs)
         plot.plot('outline')
+        plot.color = 'yellow'
+        plot.lw = 1
     plot.color = 'gray'
     plot.plot_grid(1., 1., 1., 1.)
 
