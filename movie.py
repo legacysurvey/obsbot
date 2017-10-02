@@ -53,7 +53,7 @@ def main():
         sys.exit(-1)
 
     if opt.mosaic:
-        dd = dict(ralo=0, rahi=360, declo=20, dechi=70)
+        dd = dict(ralo=0, rahi=360, declo=30, dechi=88)
     else:
         dd = dict(ralo=0, rahi=360, declo=-10, dechi=35)
     for k in dd.keys():
