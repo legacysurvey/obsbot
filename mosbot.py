@@ -474,13 +474,15 @@ class Mosbot(Obsbot):
             self.planned_tiles[nextseq] = tilename
             iahead += 1
 
-            largeslew = False
+            readout_during_move = True
+            
             if iahead == 1:
                 from astrometry.util.starutil_numpy import degrees_between
                 # Check for large slew
                 prevname = self.planned_tiles[nextseq - 1]
                 Jall = self.J1 + self.J2 + self.J3
                 I, = np.nonzero([str(j['object']) == prevname for j in Jall])
+                slew = 0.
                 if len(I) == 0:
                     print('Could not find previous tile "%s"' % prevname)
                 else:
@@ -488,8 +490,8 @@ class Mosbot(Obsbot):
                     slew = degrees_between(jprev['RA'], jprev['dec'],
                                            jplan['RA'], jplan['dec'])
                     print('Slew: %.1f degrees' % slew)
-                    largeslew = (slew > 10)
-                if largeslew:
+                if slew > 10:
+                    # Beep the terminal -- OA has to okay it (?)
                     print()
                     print()
                     print('Large slew from current exposure to next: ' +
@@ -499,6 +501,12 @@ class Mosbot(Obsbot):
                     print()
                     print()
                     os.system('tput bel; sleep 0.2; ' * 5)
+                if slew > 35:
+                    # We risk a timeout -- modify the "slewread"
+                    # script we write out so that we read out before
+                    # commanding the telescope to move.
+                    print('Large slew from current exposure to next: reading out before moving the telescope')
+                    readout_during_move = False
                 
             # Find this tile in the tiles table.
             tile = get_tile_from_name(tilename, self.tiles)
@@ -606,7 +614,7 @@ class Mosbot(Obsbot):
             slewscriptfn = slewscriptpat % (nextseq)
             slewtmpfn = slewscriptfn + '.tmp'
             f = open(slewtmpfn, 'w')
-            f.write(slewscript_for_json(jplan))
+            f.write(slewscript_for_json(jplan, readout_during_move=readout_during_move))
             f.close()
 
             os.rename(exptmpfn, expscriptfn)
@@ -765,17 +773,15 @@ def expscript_for_json(j, status=None):
     ss.append(jnox_exposure(et, filter_name, tilename, status))
     return '\n'.join(ss) + '\n'
 
-def slewscript_for_json(j):
+def slewscript_for_json(j, readout_during_move=True):
     ra  = j['RA']
     dec = j['dec']
-    ss = [jnox_moveto(ra, dec)]
-    # second call concludes readout
-    ss.append(jnox_readout())
-    # endobs
-    ss.append(jnox_end_exposure())
-    return '\n'.join(ss) + '\n'
-
-
+    mv = jnox_moveto(ra, dec) + '\n'
+    read = jnox_readout() + '\n' + jnox_end_exposure() + '\n'
+    if readout_during_move:
+        return mv + read + '\n'
+    else:
+        return read + mv + '\n'
 
 if __name__ == '__main__':
     import obsdb
