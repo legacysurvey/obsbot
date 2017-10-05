@@ -5,6 +5,31 @@ import os
 
 class TestMosbot(unittest.TestCase):
 
+    def test_maybe_ha_flip(self):
+        from mosbot import maybe_ha_flip
+        self.assertEqual(maybe_ha_flip(86, 86, 3), False)
+        self.assertEqual(maybe_ha_flip(86, 88, 3), True)
+        self.assertEqual(maybe_ha_flip(88, 88, 3), True)
+        self.assertEqual(maybe_ha_flip(88, 86, 3), True)
+        self.assertEqual(maybe_ha_flip(90, 90, 3), True)
+        self.assertEqual(maybe_ha_flip(90, 94, 3), True)
+        self.assertEqual(maybe_ha_flip(94, 94, 3), False)
+        self.assertEqual(maybe_ha_flip(94, 90, 3), True)
+        self.assertEqual(maybe_ha_flip(90, 86, 3), True)
+
+        self.assertEqual(maybe_ha_flip(-94, 94, 3), True)
+        
+        self.assertEqual(maybe_ha_flip(-86, -86, 3), False)
+        self.assertEqual(maybe_ha_flip(-86, -88, 3), True)
+        self.assertEqual(maybe_ha_flip(-88, -88, 3), True)
+        self.assertEqual(maybe_ha_flip(-88, -86, 3), True)
+        self.assertEqual(maybe_ha_flip(-90, -90, 3), True)
+        self.assertEqual(maybe_ha_flip(-90, -94, 3), True)
+        self.assertEqual(maybe_ha_flip(-94, -94, 3), False)
+        self.assertEqual(maybe_ha_flip(-94, -90, 3), True)
+        self.assertEqual(maybe_ha_flip(-90, -86, 3), True)
+            
+    
     def set_json_files(self, start_time):
         fn1 = os.path.join(self.testdatadir, 'pass1.json')
         fn2 = os.path.join(self.testdatadir, 'pass2.json')
@@ -122,7 +147,6 @@ class TestMosbot(unittest.TestCase):
             'seeing': 0.9776841626480679,
             'band': 'z'})
 
-        
     def XXXtest_run(self):
         from mosbot import main
 

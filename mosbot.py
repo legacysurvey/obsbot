@@ -444,9 +444,13 @@ class Mosbot(Obsbot):
         P.ra = []
         P.dec = []
         P.passnumber = []
+
+        lasttile = None
+        lastdate = None
         
         iahead = 0
         for ii,jplan in enumerate(J[iplan:]):
+            from astrometry.util.starutil_numpy import degrees_between
             if iahead >= self.Nahead:
                 break
             tilename = str(jplan['object'])
@@ -474,40 +478,6 @@ class Mosbot(Obsbot):
             self.planned_tiles[nextseq] = tilename
             iahead += 1
 
-            readout_during_move = True
-            
-            if iahead == 1:
-                from astrometry.util.starutil_numpy import degrees_between
-                # Check for large slew
-                prevname = self.planned_tiles[nextseq - 1]
-                Jall = self.J1 + self.J2 + self.J3
-                I, = np.nonzero([str(j['object']) == prevname for j in Jall])
-                slew = 0.
-                if len(I) == 0:
-                    print('Could not find previous tile "%s"' % prevname)
-                else:
-                    jprev = Jall[I[0]]
-                    slew = degrees_between(jprev['RA'], jprev['dec'],
-                                           jplan['RA'], jplan['dec'])
-                    print('Slew: %.1f degrees' % slew)
-                if slew > 10:
-                    # Beep the terminal -- OA has to okay it (?)
-                    print()
-                    print()
-                    print('Large slew from current exposure to next: ' +
-                          'RA,Dec %.1f, %.1f to %.1f, %.1f ==> %.1f degrees' %
-                          (jprev['RA'], jprev['dec'], jplan['RA'],
-                           jplan['dec'], slew))
-                    print()
-                    print()
-                    os.system('tput bel; sleep 0.2; ' * 5)
-                if slew > 35:
-                    # We risk a timeout -- modify the "slewread"
-                    # script we write out so that we read out before
-                    # commanding the telescope to move.
-                    print('Large slew from current exposure to next: reading out before moving the telescope')
-                    readout_during_move = False
-                
             # Find this tile in the tiles table.
             tile = get_tile_from_name(tilename, self.tiles)
             ebv = tile.ebv_med
@@ -522,6 +492,77 @@ class Mosbot(Obsbot):
             airmass = get_airmass(float(etile.alt))
             print('Airmass of planned tile:', airmass)
 
+            print('Time of observation:', self.obs.date)
+            # HACK -- try setting the date to the planned datetime from the plan file.
+            #self.obs.date = ephem.Date(str(jplan['approx_datetime']))
+
+            lst = np.rad2deg(float(self.obs.sidereal_time()))
+            ha = lst - jplan['RA']
+            if ha < -180:
+                ha += 360.
+            print('LST:', lst, 'Tile RA:', jplan['RA'], 'Dec', jplan['dec'])
+            print('HA of planned tile:', ha)
+
+            readout_during_move = True
+            
+            # Check for large slew
+            slew = 0.
+            if lasttile is None:
+                # Look up the tile we previously planned
+                prevname = self.planned_tiles[nextseq - 1]
+                Jall = self.J1 + self.J2 + self.J3
+                I, = np.nonzero([str(j['object']) == prevname for j in Jall])
+                if len(I) == 0:
+                    print('Could not find previous tile "%s"' % prevname)
+                else:
+                    jprev = Jall[I[0]]
+                    lasttile = jprev
+                    lastdate = ephem.Date(str(jprev['approx_datetime']))
+
+            if lasttile is not None:
+                slew = degrees_between(lasttile['RA'], lasttile['dec'],
+                                       jplan['RA'], jplan['dec'])
+                print('Slew: %.1f degrees' % slew)
+
+                # Compute HA for previous tile
+                thedate = self.obs.date
+                self.obs.date = lastdate
+                last_lst = np.rad2deg(float(self.obs.sidereal_time()))
+                self.obs.date = thedate
+                last_ha = last_lst - lasttile['RA']
+                if last_ha < -180:
+                    last_ha += 360.
+                print('Last tile LST:', last_lst, 'Tile RA:', lasttile['RA'], 'Dec', lasttile['dec'])
+                print('Last HA:', last_ha)
+
+                fuzz = 3.
+                maybe_flip = maybe_ha_flip(ha, last_ha, fuzz)
+                print('Over-the-pole flip possible:', maybe_flip)
+                if maybe_flip:
+                    readout_during_move = False
+
+            if iahead == 1 and slew > 10.:
+                # Beep the terminal -- OA has to okay it (?)
+                print()
+                print()
+                print('Large slew from current exposure to next: ' +
+                      'RA,Dec %.1f, %.1f to %.1f, %.1f ==> %.1f degrees' %
+                      (jprev['RA'], jprev['dec'], jplan['RA'],
+                       jplan['dec'], slew))
+                print()
+                print()
+                os.system('tput bel; sleep 0.2; ' * 5)
+
+            if slew > 35:
+                # We risk a timeout -- modify the "slewread"
+                # script we write out so that we read out before
+                # commanding the telescope to move.
+                print('Large slew from current exposure to next: reading out before moving the telescope')
+                readout_during_move = False
+
+            lasttile = jplan
+            lastdate = self.obs.date
+                
             if M['band'] == nextband:
                 nextsky = skybright
             else:
@@ -783,10 +824,17 @@ def slewscript_for_json(j, readout_during_move=True):
     else:
         return read + mv + '\n'
 
+def maybe_ha_flip(ha1, ha2, fuzz):
+    not_ha_flip = (
+        ((ha1 < 90.-fuzz) and (ha2 < 90.-fuzz) and
+         (ha1 > -90.+fuzz) and (ha2 > -90.+fuzz)) or
+         ((ha1 > 90.+fuzz) and (ha2 > 90.+fuzz)) or
+         ((ha1 < -90.-fuzz) and (ha2 < -90.-fuzz)))
+    return not not_ha_flip
+    
 if __name__ == '__main__':
     import obsdb
     from camera_mosaic import database_filename
     obsdb.django_setup(database_filename=database_filename)
-
     main()
     
