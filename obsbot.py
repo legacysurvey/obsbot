@@ -97,7 +97,9 @@ class NominalCalibration(object):
         # From email from Arjun, 2016-08-03 "Scaling for g-band exposure times"
         return dict(g = 0.422,
                     r = 0.345,
-                    z = 0.194)[band]
+                    z = 0.194,
+                    zd = 0.194,
+                    D51 = 0.422)[band]
     
     def fiducial_exptime(self, band):
         '''
@@ -111,13 +113,14 @@ class NominalCalibration(object):
 
         
         '''
-        if not band in 'grz':
+        if not band in ['g','r','z','zd','D51']:
             return None
         fid = NominalExptime()
 
         # 2-coverage targets (90% fill), 5-sigma extinction-corrected
         # canonical galaxy detection.
-        target_depths = dict(g=24.0, r=23.4, z=22.5)
+        target_depths = dict(g=24.0, r=23.4, z=22.5,
+                             zd=22.5, D51=24.0)
 
         target_depth = target_depths[band]
         # -> 1-coverage depth (- ~0.37 mag)
@@ -139,12 +142,21 @@ class NominalCalibration(object):
                 exptime_min =  40.,
                 )
 
-        elif band == 'z':
+        elif band in ['z', 'zd']:
             fid.update(
                 exptime     = 100.,
                 exptime_max = 250.,
                 exptime_min =  80.,
                 )
+
+        elif band == 'D51':
+            # we're not updating exposure times, but hey
+            fid.update(
+                exptime     = 600.,
+                exptime_max = 600.,
+                exptime_min = 200.,
+                )
+
         else:
             raise ValueError('Unknown band "%s"' % band)
 

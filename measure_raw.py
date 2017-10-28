@@ -10,24 +10,14 @@ import numpy as np
 
 import fitsio
 
-# All these imports are pushed down to where they are used
-#from scipy.stats import sigmaclip
-#from scipy.ndimage.filters import gaussian_filter
-#from scipy.ndimage.measurements import label, find_objects, center_of_mass
-#from scipy.ndimage.filters import median_filter
-
-#from astrometry.util.util import wcs_pv2sip_hdr, Tan
-#from astrometry.libkd.spherematch import match_xy
-
-#from legacyanalysis.ps1cat import ps1cat, ps1_to_decam
-
-#import photutils
-#import tractor
-
 from legacyanalysis.ps1cat import ps1_to_decam
-# Color terms -- no MOSAIC specific ones yet:
-ps1_to_mosaic = ps1_to_decam
 
+#ps1_to_mosaic = ps1_to_decam
+def ps1_to_mosaic(psmags, band):
+    bandmap = dict(zd='z', D51='g')
+    band = bandmap.get(band, band)
+    # Color terms -- no MOSAIC specific ones yet:
+    return ps1_to_decam(psmags, band)
 
 class RawMeasurer(object):
     def __init__(self, fn, ext, nom, aprad=3.5, skyrad_inner=7.,
@@ -216,9 +206,11 @@ class RawMeasurer(object):
             airmass = 1.0
 
         zp0 = self.zeropoint_for_exposure(band, ext=self.ext, exptime=exptime, primhdr=primhdr)
+        printmsg('Nominal zeropoint:', zp0)
 
         try:
             sky0 = self.nom.sky(band)
+            printmsg('Nominal zky:', sky0)
         except KeyError:
             print('Unknown band "%s"; no nominal sky available.' % band)
             sky0 = None
@@ -231,7 +223,6 @@ class RawMeasurer(object):
 
         # Find the sky value and noise level
         sky,sig1 = self.get_sky_and_sigma(img)
-
         sky1 = np.median(sky)
 
         if zp0 is not None:
@@ -916,7 +907,8 @@ class Mosaic3Measurer(RawMeasurer):
     def get_band(self, primhdr):
         band = super(Mosaic3Measurer,self).get_band(primhdr)
         # "zd" -> "z"
-        return band[0]
+        #return band[0]
+        return band
 
     def read_raw(self, F, ext):
         '''
@@ -970,7 +962,6 @@ class Mosaic3Measurer(RawMeasurer):
 
     def colorterm_ps1_to_observed(self, ps1stars, band):
         return ps1_to_mosaic(ps1stars, band)
-
 
 
 class BokMeasurer(RawMeasurer):

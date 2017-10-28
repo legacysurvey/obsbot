@@ -16,18 +16,25 @@ class MosaicNominalCalibration(NominalCalibration):
             g = 26.930,
             r = 27.014,
             z = 26.518,
+            zd = 26.518,
+            D51 = 24.351,
             )
         self.zp0.update({
             ('z', 'im4' ): 26.406,
             ('z', 'im7' ): 26.609,
             ('z', 'im11'): 26.556,
             ('z', 'im16'): 26.499,
+            ('zd', 'im4' ): 26.406,
+            ('zd', 'im7' ): 26.609,
+            ('zd', 'im11'): 26.556,
+            ('zd', 'im16'): 26.499,
             })
 
         self.sky0 = dict(
             g = 22.04,
             r = 20.91,
             z = 18.46,
+            D51 = 22.,
             )
 
     def crpix(self, ext):
@@ -94,10 +101,17 @@ class MosaicNominalCalibration(NominalCalibration):
                 A_co = 2.165,
                 )
 
-        elif band == 'z':
+        elif band in ['z', 'zd']:
             fid.update(
                 k_co = 0.10,
                 A_co = 1.592,
+                )
+
+        elif band == 'D51':
+            # guess same as g...
+            fid.update(
+                k_co = 0.211,
+                A_co = 3.214,
                 )
         else:
             raise ValueError('Unknown band "%s"' % band)

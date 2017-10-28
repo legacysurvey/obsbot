@@ -846,6 +846,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         filt = filt.split()[0]
     if filt is None:
         filt = ''
+    print('filter:', filt)
 
     airmass = phdr.get('AIRMASS', 0.)
     ra  = hmsstring2ra (phdr.get('RA', '0'))
