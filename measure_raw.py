@@ -10,14 +10,10 @@ import numpy as np
 
 import fitsio
 
-from legacyanalysis.ps1cat import ps1_to_decam
+from legacyanalysis.ps1cat import ps1cat, ps1_to_decam
 
-#ps1_to_mosaic = ps1_to_decam
-def ps1_to_mosaic(psmags, band):
-    bandmap = dict(zd='z', D51='g')
-    band = bandmap.get(band, band)
-    # Color terms -- no MOSAIC specific ones yet:
-    return ps1_to_decam(psmags, band)
+# Color terms -- no MOSAIC specific ones yet:
+ps1_to_mosaic = ps1_to_decam
 
 class RawMeasurer(object):
     def __init__(self, fn, ext, nom, aprad=3.5, skyrad_inner=7.,
@@ -122,7 +118,6 @@ class RawMeasurer(object):
             n_fwhm=100, verbose=True, get_image=False, flat=None):
         import pylab as plt
         from astrometry.util.plotutils import dimshow, plothist
-        from legacyanalysis.ps1cat import ps1cat
         import photutils
         import tractor
 
@@ -405,15 +400,19 @@ class RawMeasurer(object):
         
         # Read in the PS1 catalog, and keep those within 0.25 deg of CCD center
         # and those with main sequence colors
-        pscat = ps1cat(ccdwcs=wcs)
+        pattern = None
+        if 'PS1CAT_DIR' in os.environ:
+            pattern = os.environ['PS1CAT_DIR'] + '/ps1-%(hp)05d.fits'
+        pscat = ps1cat(ccdwcs=wcs, pattern=pattern)
         stars = pscat.get_stars()
         #print('Got PS1 stars:', len(stars))
-    
+
         # we add the color term later
         try:
-            ps1band = ps1cat.ps1band[band]
+            ps1band = self.get_ps1_band(band)
             stars.mag = stars.median[:, ps1band]
         except KeyError:
+            print('Unknown band for PS1 mags:', band)
             ps1band = None
             stars.mag = np.zeros(len(stars), np.float32)
         
@@ -604,15 +603,18 @@ class RawMeasurer(object):
             
         # Compute photometric offset compared to PS1
         # as the PS1 minus observed mags
-        
+
+        #print('PS1 stars mags:', stars.median)
         try:
             colorterm = self.colorterm_ps1_to_observed(stars.median, band)
         except KeyError:
             print('Color term not found for band "%s"; assuming zero.' % band)
             colorterm = 0.
+        #print('Color term:', colorterm)
         stars.mag += colorterm
         ps1mag = stars.mag[I]
-        
+        #print('PS1 mag:', ps1mag)
+
         if False and ps is not None:
             plt.clf()
             plt.semilogy(ps1mag, apflux2[J], 'b.')
@@ -889,6 +891,9 @@ class DECamMeasurer(RawMeasurer):
     def colorterm_ps1_to_observed(self, ps1stars, band):
         return ps1_to_decam(ps1stars, band)
 
+    def get_ps1_band(self, band):
+        return ps1cat.ps1band[band]
+
 class DECamCPMeasurer(DECamMeasurer):
     def read_raw(self, F, ext):
         img = F[ext].read()
@@ -961,8 +966,14 @@ class Mosaic3Measurer(RawMeasurer):
         return wcs
 
     def colorterm_ps1_to_observed(self, ps1stars, band):
+        bandmap = dict(zd='z', D51='g')
+        band = bandmap.get(band, band)
         return ps1_to_mosaic(ps1stars, band)
 
+    def get_ps1_band(self, band):
+        bandmap = dict(zd='z', D51='g')
+        band = bandmap.get(band, band)
+        return ps1cat.ps1band[band]
 
 class BokMeasurer(RawMeasurer):
     def __init__(self, *args, **kwargs):
