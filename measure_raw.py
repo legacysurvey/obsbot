@@ -404,7 +404,16 @@ class RawMeasurer(object):
         if 'PS1CAT_DIR' in os.environ:
             pattern = os.environ['PS1CAT_DIR'] + '/ps1-%(hp)05d.fits'
         pscat = ps1cat(ccdwcs=wcs, pattern=pattern)
-        stars = pscat.get_stars()
+        try:
+            stars = pscat.get_stars()
+        except:
+            from astrometry.util.starutil_numpy import radectolb
+            print('Failed to find PS1 stars -- maybe this image is outside the PS1 footprint.')
+            rc,dc = wcs.radec_center()
+            print('RA,Dec center:', rc, dc)
+            lc,bc = radectolb(rc, dc)
+            print('Galactic l,b:', lc[0], bc[0])
+            return meas
         #print('Got PS1 stars:', len(stars))
 
         # we add the color term later
@@ -578,7 +587,7 @@ class RawMeasurer(object):
         stars.cut(keep)
         if len(stars) == 0:
             print('No overlap or too few stars in PS1')
-            return None
+            return meas
         px = px[keep]
         py = py[keep]
         # Re-match

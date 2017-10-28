@@ -94,7 +94,7 @@ class Mosaic3FocusMeas(Mosaic3Measurer):
         # RawMeasurer.run() (both in measure_raw.py)
         meas = super(Mosaic3FocusMeas, self).run(ps=ps, focus=True)
 
-        if not 'nmatched' in meas:
+        if meas is None or not 'nmatched' in meas:
             print('No stars detected!; abandoning focus frame measurement')
             return meas
         # if meas['nmatched'] < 10:

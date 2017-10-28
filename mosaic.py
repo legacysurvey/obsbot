@@ -15,7 +15,7 @@ class MosaicNominalCalibration(NominalCalibration):
         self.zp0 = dict(
             g = 26.930,
             r = 27.014,
-            z = 26.518,
+            z  = 26.518,
             zd = 26.518,
             D51 = 24.351,
             )
@@ -33,7 +33,8 @@ class MosaicNominalCalibration(NominalCalibration):
         self.sky0 = dict(
             g = 22.04,
             r = 20.91,
-            z = 18.46,
+            z  = 18.46,
+            zd = 18.46,
             D51 = 22.,
             )
 
