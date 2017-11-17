@@ -48,6 +48,10 @@ for seqnum in range(1, 58):
     print('%2i  %2i' % (seqnum, tally[seqnum]))
 
 
-
-
-
+T.cut(T.good)
+for seqnum in range(1, 58):
+    print()
+    print('SEQNUM', seqnum)
+    print('Date (UTC)         Expnum Seeing Exptime Transparency Object   Seqnum')
+    for t in T[T.seqnum == seqnum]:
+        print('%-20s %i %6.2f %6.1f %6.2f %-16s %i' % (str(mjdtodate(t.mjd_obs))[:19], t.expnum, t.seeing, t.exptime, t.transparency, t.object.strip(), t.seqnum))
