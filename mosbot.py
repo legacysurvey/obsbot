@@ -255,7 +255,7 @@ class Mosbot(Obsbot):
             # tonight.sh: start exposure
             script.append('\n### Exposure %i ###\n' % seq)
             script.append('echo "%i" > %s' % (seq, seqnumfn))
-            
+
             if seq > 1:
                 script.append('# Check for file "%s"; read out and quit if it exists' % quitfile)
                 script.append('if [ -f %s ]; then\n  . read.sh; rm %s; exit 0;\nfi' %
