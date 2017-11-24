@@ -259,8 +259,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     
     TT = []
     for band in bands:
-        G = T[T.band == band]
-        TT.append(G)
+        TT.append(T[T.band == band])
 
     plt.clf()
     plt.subplots_adjust(hspace=0.1, top=0.98, right=0.95, left=0.1,
@@ -313,18 +312,23 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     bbox = dict(facecolor='white', alpha=0.8, edgecolor='none')
     
     SP = 5
-    mx = 2.05
+    # which ones will we use to set the scale?
+    I = np.flatnonzero((T.seeing > 0) * (T.exptime > 30))
+    mn,mx = T.seeing[I].min(), T.seeing[I].max()
+    mx = min(mx, 2.5)
+    yl,yh = mn - 0.05*(mx-mn), mx + 0.05*(mx-mn)
+    #print('mn,mx', mn,mx, 'yl,yh', yl,yh)
+    
     plt.subplot(SP,1,1)
     for band,Tb in zip(bands, TT):
-        I = np.flatnonzero(Tb.seeing > 0)
+        I = np.flatnonzero((Tb.seeing > 0) * (Tb.exptime > 60))
         if len(I):
             plt.plot(Tb.mjd_obs[I], Tb.seeing[I], 'o',
-                     color=ccmap.get(band, xcolor))
+                     color=ccmap.get(band, xcolor), mec='k')
 
         I = np.flatnonzero(Tb.seeing > mx)
         if len(I):
             plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
-    yl,yh = plt.ylim()
     plt.axhline(2.0, color='k', alpha=0.5)
     plt.axhline(1.3, color='k', alpha=0.5)
     plt.axhline(1.2, color='k', alpha=0.1)
@@ -349,7 +353,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
              color=ccmap.get(band, xcolor),
              solid_joinstyle='bevel')
 
-    plt.ylim(yl,min(yh,mx))
+    plt.ylim(yl,yh)
     plt.ylabel('Seeing (arcsec)')
 
     ax = plt.axis()
@@ -359,10 +363,10 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
                  rotation=90, va='top')
     plt.axis(ax)
 
+    ## Sky background
     plt.subplot(SP,1,2)
 
     T.dsky = np.zeros(len(T), np.float32)
-    mx = 2.0
     minsky = -0.15
     nomskies = []
     medskies = []
@@ -374,9 +378,18 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
             print('Unknown filter for sky:', band)
             continue
         T.dsky[T.band == band] = Tb.sky - sky0
+
+    # set the range based on:
+    # -- do we need to add a "darker than 15-deg twi" cut?
+    I = np.flatnonzero((T.seeing > 0) * (T.exptime > 30))
+    mn,mx = T.dsky[I].min(), T.dsky[I].max()
+    mn = max(mn, -2.0)
+    yl,yh = mn - 0.05*(mx-mn), mx + 0.05*(mx-mn)
+
+    for band,Tb in zip(bands, TT):
         I = np.flatnonzero(Tb.sky > 0)
         if len(I):
-            plt.plot(Tb.mjd_obs[I], Tb.sky[I] - sky0, 'o',
+            plt.plot(Tb.mjd_obs[I], Tb.sky[I] - sky0, 'o', mec='k',
                      color=ccmap.get(band, xcolor))
             minsky = min(minsky, min(Tb.sky[I] - sky0))
             nomskies.append((band, sky0))
@@ -384,11 +397,10 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         I = np.flatnonzero((Tb.sky - sky0) > mx)
         if len(I):
             plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
+        I = np.flatnonzero((Tb.sky - sky0) < mn)
+        if len(I):
+            plt.plot(Tb.mjd_obs[I], [mn]*len(I), '^', **limitstyle(band))
 
-    yl,yh = plt.ylim()
-    yh = min(yh, mx)
-    yl = minsky - 0.03 * (yh-yl)
-            
     txt = ', '.join(['%s=%.2f' % (band,sky0) for band,sky0 in nomskies])
     xl,xh = plt.xlim()
     plt.text((xl+xh)/2., min(0., (yl + 0.95*(yh-yl))), txt,
@@ -436,13 +448,14 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     plt.ylim(yl,yh)
     plt.ylabel('Sky - nominal (mag)')
 
+    ## Transparency
     plt.subplot(SP,1,3)
     mx = 1.2
-    mn = 0.5
+    mn = 0.3
     for band,Tb in zip(bands, TT):
         I = np.flatnonzero(Tb.transparency > 0)
         if len(I):
-            plt.plot(Tb.mjd_obs[I], Tb.transparency[I], 'o',
+            plt.plot(Tb.mjd_obs[I], Tb.transparency[I], 'o', mec='k',
                      color=ccmap.get(band, xcolor))
         I = np.flatnonzero(Tb.transparency > mx)
         if len(I):
@@ -469,7 +482,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
                  '%.2f' % latest.transparency, ha='center', bbox=bbox)
     plt.ylim(yl, yh)
 
-    # Exposure time plot
+    ## Exposure time plot
     plt.subplot(SP,1,4)
     mx = 300
     for band,Tb in zip(bands, TT):
@@ -480,6 +493,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
             continue
         basetime = fid.exptime
         lo,hi = fid.exptime_min, fid.exptime_max
+        # Exposure time we should have taken
         exptime = basetime * Tb.expfactor
         clipped = np.clip(exptime, lo, hi)
         if band == 'z':
@@ -497,9 +511,9 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         plt.plot(Tb.mjd_obs, clipped, 'o', mec='k', mfc='none', ms=9)
 
         # Actual exposure times taken, marked with filled colored circles.
-        I = np.flatnonzero(Tb.exptime > 0)
+        I = np.flatnonzero(Tb.exptime > 30)
         if len(I):
-            plt.plot(Tb.mjd_obs[I], Tb.exptime[I], 'o',
+            plt.plot(Tb.mjd_obs[I], Tb.exptime[I], 'o', mec='k',
                      color=ccmap.get(band, xcolor))
 
     yl,yh = plt.ylim()
