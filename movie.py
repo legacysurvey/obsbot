@@ -17,13 +17,19 @@ def plot_init():
 def plot_one(args):
     import pylab as plt
     
-    (opt, obs, ax, tiles, filtddec, fcmap, passmap,
+    (opt, ax, tiles, filtddec, fcmap, passmap,
      also, LSTs, times, ras, decs, ddecs, fieldname, passnum, exptime, i,
      filtcc, alsocolors, ddecmap, fn) = args
     print('Plotting', fn)
 
     moon = ephem.Moon()
 
+    if opt.mosaic:
+        from camera_mosaic import ephem_observer
+    else:
+        from camera_decam import ephem_observer
+    obs = ephem_observer()
+    
     if opt.wide:
         plt.figure(figsize=(12,8))
     plt.subplots_adjust(left=0.1, right=0.95)
@@ -438,7 +444,7 @@ def main():
         #print('Exposure', i, 'of', len(J))
         fn = '%s-%03i.png' % (opt.base, i)
         fn = os.path.join(os.path.dirname(args[0]),fn)
-        pargs = (opt, obs, ax, tiles, filtddec, fcmap, passmap,
+        pargs = (opt, ax, tiles, filtddec, fcmap, passmap,
                 also, LSTs, times, ras, decs, ddecs, fieldname, passnum, exptime, i,
                 filtcc, alsocolors, ddecmap, fn)
         allargs.append(pargs)
