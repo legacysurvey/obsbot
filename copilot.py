@@ -314,7 +314,10 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     SP = 5
     # which ones will we use to set the scale?
     I = np.flatnonzero((T.seeing > 0) * (T.exptime > 30))
-    mn,mx = T.seeing[I].min(), T.seeing[I].max()
+    if len(I):
+        mn,mx = T.seeing[I].min(), T.seeing[I].max()
+    else:
+        mn,mx = 0.7, 2.5
     mx = min(mx, 2.5)
     yl,yh = mn - 0.05*(mx-mn), mx + 0.05*(mx-mn)
     #print('mn,mx', mn,mx, 'yl,yh', yl,yh)
@@ -382,7 +385,10 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     # set the range based on:
     # -- do we need to add a "darker than 15-deg twi" cut?
     I = np.flatnonzero((T.seeing > 0) * (T.exptime > 30))
-    mn,mx = T.dsky[I].min(), T.dsky[I].max()
+    if len(I):
+        mn,mx = T.dsky[I].min(), T.dsky[I].max()
+    else:
+        mn,mx = -2, 1
     mn = max(mn, -2.0)
     yl,yh = mn - 0.05*(mx-mn), mx + 0.05*(mx-mn)
 
