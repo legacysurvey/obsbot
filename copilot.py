@@ -981,6 +981,8 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         kwa.update(ext=ext)
     if opt.n_fwhm is not None:
         kwa.update(n_fwhm=opt.n_fwhm)
+    if opt.maxshift is not None:
+        kwa.update(measargs=dict(maxshift=opt.maxshift))
     M = measure_raw(fn, ps=ps, **kwa)
 
     if opt.doplots:
@@ -1413,6 +1415,7 @@ def main(cmdlineargs=None, get_copilot=False):
     parser.add_option('--rawdata', help='Directory to monitor for new images: default $%s if set, else "rawdata"' % data_env_var, default=None)
 
     parser.add_option('--n-fwhm', default=None, type=int, help='Number of stars on which to measure FWHM')
+    parser.add_option('--maxshift', default=None, type=int, help='Maximum search radius for astrometric offset vs Pan-STARRS, in arcsec, default 240.')
     
     parser.add_option('--no-db', dest='db', default=True, action='store_false',
                       help='Do not append results to database')
