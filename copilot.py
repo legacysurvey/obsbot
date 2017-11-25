@@ -319,9 +319,10 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     else:
         mn,mx = 0.7, 2.5
     mx = min(mx, 2.5)
-    yl,yh = mn - 0.05*(mx-mn), mx + 0.05*(mx-mn)
+    yl,yh = mn - 0.15*(mx-mn), mx + 0.05*(mx-mn)
     #print('mn,mx', mn,mx, 'yl,yh', yl,yh)
     
+    ## Seeing
     plt.subplot(SP,1,1)
     for band,Tb in zip(bands, TT):
         I = np.flatnonzero((Tb.seeing > 0) * (Tb.exptime > 60))
@@ -347,9 +348,6 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         plt.text(latest.mjd_obs, yl+0.03*(yh-yl),
                  '%.2f' % latest.seeing, ha='center', bbox=bbox)
 
-    #xl,xh = plt.xlim()
-    #plt.text((xl+xh)/2., 
-    
     y = yl + 0.01*(yh-yl)
     plt.plot(np.vstack((T.mjd_obs, T.mjd_end)),
              np.vstack((y, y)), '-', lw=3, alpha=0.5,
@@ -390,7 +388,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     else:
         mn,mx = -2, 1
     mn = max(mn, -2.0)
-    yl,yh = mn - 0.05*(mx-mn), mx + 0.05*(mx-mn)
+    yl,yh = mn - 0.15*(mx-mn), mx + 0.05*(mx-mn)
 
     for band,Tb in zip(bands, TT):
         I = np.flatnonzero(Tb.sky > 0)
