@@ -1004,7 +1004,8 @@ class NgcBot(NewFileWatcher):
 
                 if coverage > good_coverage:
                     tweets.append((txt, plotfn))
-
+                else:
+                    print('Coverage', coverage, 'less than target', good_coverage, 'so not tweeting')
         # Select a random good-looking plot
         if len(goodplots):
             irandom = np.random.randint(0, len(goodplots))

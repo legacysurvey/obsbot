@@ -59,17 +59,18 @@ for j in J:
     if lsthr < 12. and lsthr > 25./60. and lsthr < 2.+25./60.: #lsthr < 3.+37./60:  # 00:25
         print('Over the pole')
 
-        if True:
+        if False:
+            # Take Arjun's script and plug in the approx_datetime
             if nexti >= len(A):
                 break
             jnew = A[nexti]
             jnew.update(approx_datetime=j['approx_datetime'])
             nexti += 1
-            print('tile', nexti)
         else:
+            # Pull from my list of tiles computed at the beginning of this
+            # script
             t = T[nexti]
             nexti += 1
-            print('tile', nexti)
             jnew = dict(RA=t.ra, 
                         dec=t.dec,
                         approx_datetime=j['approx_datetime'],
@@ -79,6 +80,8 @@ for j in J:
                         seqid='1',
                         seqnum=nexti,
                         expTime=80)
+
+        print('tile', nexti)
 
         newJ.append(jnew)
 
