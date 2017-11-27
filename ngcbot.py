@@ -60,6 +60,7 @@ def main():
 
     parser.add_option('--tweet', default=False, action='store_true',
                       help='Send a tweet for each galaxy?')
+    parser.add_option('--coverage', type=float, help='Set coverage fraction threshold for sending tweets')
     parser.add_option('--only', default=False, action='store_true',
                       help='Only run the command-line files, then quit')
     parser.add_option('--flats', default=False, action='store_true',
@@ -979,6 +980,8 @@ class NgcBot(NewFileWatcher):
             print('Saved', plotfn)
 
             good_coverage = 0.75
+            if self.opt.coverage is not None:
+                good_coverage = self.opt.coverage
             if coverage > good_coverage:
                 goodplots.append(plotfn)
             
@@ -1006,6 +1009,7 @@ class NgcBot(NewFileWatcher):
                     tweets.append((txt, plotfn))
                 else:
                     print('Coverage', coverage, 'less than target', good_coverage, 'so not tweeting')
+
         # Select a random good-looking plot
         if len(goodplots):
             irandom = np.random.randint(0, len(goodplots))
