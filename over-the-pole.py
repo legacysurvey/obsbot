@@ -19,8 +19,8 @@ T.cut(T.z_done == 0)
 print(len(T), 'candidate tiles')
 print('RA range', T.ra.min(), T.ra.max())
 
-T.cut(T.ra > 155.)
-T.cut(T.dec < 81.5)
+#T.cut(T.ra > 155.)
+#T.cut(T.dec < 81.5)
 
 Tall = T[np.lexsort((T.ra, T.dec))]
 
@@ -70,8 +70,13 @@ for j in J:
     #if lsthr < 12. and lsthr > 25./60. and lsthr < 2.+25./60.: #lsthr < 3.+37./60:  # 00:25
 
     #### LST range to replace
-    if lsthr < 12. and lsthr > 4.5 and lsthr < 6.25:
-    
+    #if lsthr < 12. and lsthr > 4.5 and lsthr < 6.25:
+
+    time = ephem.Date(str(j['approx_datetime']))
+    t0 = ephem.Date('2017-11-27 05:10:00')
+    t1 = ephem.Date('2017-11-27 06:15:00')
+
+    if time > t0 and time < t1:
         print('Over the pole')
 
         if False:
@@ -115,13 +120,15 @@ for j in J:
             #print('  Tile', obj, 'RA,Dec', t.ra, t.dec,
             #      'Airmass', airmass, 'HA', np.rad2deg(float(ha)), 'deg')
             I = np.flatnonzero(np.logical_not(Tall.taken) *
-                               (Tall.airmass < 2.) *
+                               (Tall.airmass < 2.5) *
                                (Tall.ha > -80) * (Tall.ha < +80))
             print(len(I), 'tiles in airmass and HA range and not taken yet')
             for t in Tall[I]:
                 print('  Tile', t.ra, t.dec, 'airmass', t.airmass, 'ha', t.ha)
             plt.clf()
             plt.plot(Tall.ra, Tall.dec, 'k.', alpha=0.5)
+            K = np.flatnonzero(Tall.taken)
+            plt.plot(Tall.ra[K], Tall.dec[K], 'rx', mew=2, ms=8)
             plt.scatter(Tall.ra[I], Tall.dec[I], c=Tall.airmass[I])
             plt.colorbar()
             plt.savefig('otp-%02i.png' % nexti)
