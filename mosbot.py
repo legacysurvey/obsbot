@@ -681,7 +681,7 @@ class Mosbot(Obsbot):
             # Overwrite the default planned exposures with blanks to avoid
             # running the defaults (eg, at end of night).
             seqstart = seqnum + 1 + iahead
-            seqend = self.n_exposures - 1
+            seqend = self.n_exposures
             print('Overwriting remaining exposure scripts (%i to %i inclusive) with blanks.' % (seqstart, seqend))
             for nextseq in range(seqstart, seqend+1):
                 print('Blanking out exposure %i' % nextseq)
