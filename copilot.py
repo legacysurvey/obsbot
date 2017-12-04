@@ -962,7 +962,8 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         skip = True
         
     if skip:
-        m.save()
+        if db:
+            m.save()
         return None
 
     if opt.doplots:
