@@ -18,6 +18,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--mzls', action='store_true',
                         help='Set MzLS (default: DECaLS)')
+    parser.add_argument('--ann', help='Set annotated-CCDs file')
     opt = parser.parse_args()
 
     if opt.mzls:
@@ -30,7 +31,7 @@ def main():
 
         bands = 'z'
 
-        declo,dechi = 30,80
+        declo,dechi = -5,90
 
         f = open('obstatus/bad_expid.txt')
         bad_expids = set()
@@ -81,8 +82,11 @@ def main():
     print('Copilot expfactor extremes:', np.percentile(copilot.expfactor[copilot.expfactor != 0], [1,99]))
 
     survey = LegacySurveyData()
-    print('Reading annotated CCDs files...')
-    ccds = survey.get_annotated_ccds()
+    if opt.ann:
+        ccds = fits_table(opt.ann)
+    else:
+        print('Reading annotated CCDs files...')
+        ccds = survey.get_annotated_ccds()
     print(len(ccds), 'CCDs')
 
     # Fix parsing of OBJECT field to tileid...
@@ -176,6 +180,9 @@ def main():
 
     expnums,I = np.unique(ccds.expnum, return_index=True)
     print(len(expnums), 'unique exposures (with tileids)')
+
+    ccds.photometric = (ccds.ccd_cuts == 0)
+
     # Compute the mean depth per exposure
     E = ccds[I]
     for expnum in expnums:
@@ -184,6 +191,7 @@ def main():
         assert(len(j) == 1)
         j = j[0]
         E.photometric[j] = np.all(ccds.photometric[I])
+        #E.photometric[j] = np.all(ccds.ccd_cuts[I] == 0)
         if len(np.unique(ccds.photometric[I])) == 2:
             print('Exposure', expnum, 'has photometric and non-photometric CCDs')
             non = I[ccds.photometric[I] == False]
@@ -943,7 +951,7 @@ def cmap_discretize(cmap, N):
     indices = linspace(0, 1., N+1)
     cdict = {}
     for ki,key in enumerate(('red','green','blue')):
-        cdict[key] = [ (indices[i], colors_rgba[i-1,ki], colors_rgba[i,ki]) for i in xrange(N+1) ]
+        cdict[key] = [ (indices[i], colors_rgba[i-1,ki], colors_rgba[i,ki]) for i in range(N+1) ]
     # Return colormap object.
     return matplotlib.colors.LinearSegmentedColormap(cmap.name + "_%d"%N, cdict, 1024)
 

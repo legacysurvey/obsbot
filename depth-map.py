@@ -20,7 +20,7 @@ def mosaic_wcs(ra, dec, pixbin=1.):
 #     plot.plot('outline')
 
 def from_ccds():
-    from legacypipe.survey import *
+    from legacypipe.survey import LegacySurveyData
 
     W,H = 1300,800
     plot = Plotstuff(size=(W,H), outformat='png')
@@ -338,5 +338,5 @@ def cmap_discretize(cmap, N):
 
 
 if __name__ == '__main__':
-    #from_ccds()
+    from_ccds()
     main()
