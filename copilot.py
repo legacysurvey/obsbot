@@ -279,6 +279,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     # low nmatched
     I = np.flatnonzero((T.nmatched >= 0) * (T.nmatched < 10))
     for i in I:
+        print('Exposure', T.expnum[i], ': nmatched', T.nmatched[i])
         bads.append((i, 'nmatched'))
 
     if allobs is not None:
