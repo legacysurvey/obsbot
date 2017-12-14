@@ -457,8 +457,9 @@ class RawMeasurer(object):
         #print(len(I), 'spatial matches with large radius', self.maxshift,
         #      'arcsec,', radius, 'pix')
 
-        bins = 2*int(np.ceil(radius))
-        #print('Histogramming with', bins, 'bins')
+        # Broad (5-pixel) bins are okay because we're going to refine them later... right?
+        bins = 2*int(np.ceil(radius / 5.))
+        print('Histogramming with', bins, 'bins')
         histo,xe,ye = np.histogram2d(dx, dy, bins=bins,
                                      range=((-radius,radius),(-radius,radius)))
         # smooth histogram before finding peak -- fuzzy matching
@@ -472,7 +473,9 @@ class RawMeasurer(object):
         
         if ps is not None:
             plt.clf()
-            plothist(dx, dy, range=((-radius,radius),(-radius,radius)))
+            #plothist(dx, dy, range=((-radius,radius),(-radius,radius)), nbins=bins)
+            plt.imshow(histo, interpolation='nearest', origin='lower', extent=[-radius, radius, -radius, radius],
+                       cmap='hot')
             plt.xlabel('dx (pixels)')
             plt.ylabel('dy (pixels)')
             plt.title('Offsets to PS1 stars')
