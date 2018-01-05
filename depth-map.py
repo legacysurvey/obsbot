@@ -31,7 +31,10 @@ def from_ccds():
     print(Counter(T.tilepass).most_common())
 
     T.depth = T.galdepth - T.decam_extinction[:,4]
-    
+
+    plt.figure(1, figsize=(13,8))
+    plt.subplots_adjust(left=0.01, right=0.99, bottom=0.01, top=0.95)
+
     imgs = []
     for passnum in [1,2,3, 9]:#, 0]:
         if passnum == 0:
@@ -48,19 +51,25 @@ def from_ccds():
             tt = 'Pass %i' % passnum
         print(len(I), 'tiles for pass', passnum)
 
-        depthmap = depth_map_for_ccds(survey, ccds[I])
+        depthmap,wcs = depth_map_for_ccds(survey, T[I])
         iv = 1./(10.**((depthmap - 22.5) / -2.5))**2
 
         if passnum in [1,2,3]:
             imgs.append(iv)
         if passnum == 9:
-            img = imgs[0]
+            iv = imgs[0]
             for im in imgs[1:]:
-                img += im
+                iv += im
+            depthmap = -2.5 * (np.log10(1./np.sqrt(iv)) - 9.)
+        #wcs_unflipped = anwcs_create_hammer_aitoff(195., 65., zoom, W, H, False)
+        #anwcs_write(wcs_unflipped, 'plot.wcs')
+        #hdr = fitsio.read_header('plot.wcs')
+        fitsio.write('depth-p%i.fits' % passnum, depthmap, clobber=True)
+        #header=hdr,
+        print('Unique depths:', np.unique(depthmap.ravel()))
 
-        fitsio.write('depth-p%i.fits' % passnum, img, header=hdr, clobber=True)
-        print('Unique depths:', np.unique(img.ravel()))
-
+        H,W = wcs.shape
+        
         cm = matplotlib.cm.viridis
         #cm = matplotlib.cm.jet
         cm = cmap_discretize(cm, 10)
@@ -69,7 +78,7 @@ def from_ccds():
 
         plt.clf()
         lo,hi = 21.5,23.5
-        hh = img.ravel()
+        hh = depthmap.ravel()
         hh = hh[hh != 0]
         plt.hist(np.clip(hh, lo, hi), 50, range=(lo,hi))
         plt.xlim(lo, hi)
@@ -90,31 +99,31 @@ def from_ccds():
         #tiles.cut(tiles.get('pass') == passnum)
         tiles.cut(tiles.get('pass') == 1)
         tiles.cut(tiles.in_desi == 1)
-        ok,tiles.x,tiles.y = plot.wcs.radec2pixelxy(tiles.ra, tiles.dec)
+        ok,tiles.x,tiles.y = wcs.radec2pixelxy(tiles.ra, tiles.dec)
         tiles.x -= 1
         tiles.y -= 1
         tiles.cut(ok)
         
         plt.figure(1)
         plt.clf()
-        img[img == 0] = np.nan
+        depthmap[depthmap == 0] = np.nan
 
         plt.plot(tiles.x, H-tiles.y, 'k.', alpha=0.1)
         
-        plt.imshow(img, interpolation='nearest', origin='lower',
+        plt.imshow(depthmap, interpolation='nearest', origin='lower',
                    vmin=lo, vmax=hi, cmap=cm)
         plt.xticks([]); plt.yticks([])
         ax = plt.axis()
-        H,W = img.shape
+        H,W = depthmap.shape
         for d in range(30, 90, 10):
             rr = np.arange(0, 360, 1)
             dd = np.zeros_like(rr) + d
-            ok,xx,yy = plot.wcs.radec2pixelxy(rr, dd)
+            ok,xx,yy = wcs.radec2pixelxy(rr, dd)
             plt.plot(xx, H-yy, 'k-', alpha=0.1)
         for r in range(0, 360, 30):
             dd = np.arange(20, 90, 1.)
             rr = np.zeros_like(dd) + r
-            ok,xx,yy = plot.wcs.radec2pixelxy(rr, dd)
+            ok,xx,yy = wcs.radec2pixelxy(rr, dd)
             plt.plot(xx, H-yy, 'k-', alpha=0.1)
         plt.axis(ax)
         plt.colorbar()
@@ -128,21 +137,21 @@ def from_ccds():
             drange = 1.
         
             plt.clf()
-            img[img == 0] = np.nan
-            plt.imshow(img, interpolation='nearest', origin='lower',
+            depthmap[depthmap == 0] = np.nan
+            plt.imshow(depthmap, interpolation='nearest', origin='lower',
                        vmin=goal-drange, vmax=goal+drange, cmap='RdBu')
             plt.xticks([]); plt.yticks([])
             ax = plt.axis()
-            H,W = img.shape
+            H,W = depthmap.shape
             for d in range(30, 90, 10):
                 rr = np.arange(0, 360, 1)
                 dd = np.zeros_like(rr) + d
-                ok,xx,yy = plot.wcs.radec2pixelxy(rr, dd)
+                ok,xx,yy = wcs.radec2pixelxy(rr, dd)
                 plt.plot(xx, H-yy, 'k-', alpha=0.1)
             for r in range(0, 360, 30):
                 dd = np.arange(20, 90, 1.)
                 rr = np.zeros_like(dd) + r
-                ok,xx,yy = plot.wcs.radec2pixelxy(rr, dd)
+                ok,xx,yy = wcs.radec2pixelxy(rr, dd)
                 plt.plot(xx, H-yy, 'k-', alpha=0.1)
             plt.axis(ax)
             cb = plt.colorbar()
@@ -210,7 +219,7 @@ def main():
             plot.alpha = np.clip(maxfrac * depthfrac, 0., 1.)
             plot.apply_settings()
             plot.plot('outline')
-    
+
         img = plot.get_image_as_numpy(flip=True)
         print('Image', img.dtype, img.shape)
         img = img[:,:,0]
@@ -664,7 +673,9 @@ def depth_map_for_ccds(survey, ccds):
     W,H = 4800,3200
     plot = Plotstuff(size=(W,H), outformat='png')
     zoom = 2.7
-    plot.wcs = anwcs_create_hammer_aitoff(195., 65., zoom, W, H, True)
+    args = (195., 65., zoom, W, H, True)
+    wcs = anwcs_create_hammer_aitoff(*args)
+    plot.wcs = anwcs_create_hammer_aitoff(*args)
     
     plot.color = 'black'
     plot.plot('fill')
@@ -704,7 +715,7 @@ def depth_map_for_ccds(survey, ccds):
     # back to sig -> depth
     img = -2.5 * (np.log10(1./np.sqrt(img * targetiv)) - 9.)
     img[np.logical_not(np.isfinite(img))] = 0.
-    return img
+    return img, wcs
 
 
 def depth_map_for_tiles(tiles):
@@ -843,11 +854,11 @@ def djs_update():
         tiles.depth = np.zeros(len(tiles)) + 22.2
 
         todo_depth = depth_map_for_tiles(tiles[tiles.z_done == 0])
-        fitsio.write(fn, todo_depth)
+        fitsio.write(fn, todo_depth, clobber=True)
 
         recent_depth = depth_map_for_tiles(tiles[tiles.recent *
                                                  (tiles.z_done != 0)])
-        fitsio.write(fn2, recent_depth)
+        fitsio.write(fn2, recent_depth, clobber=True)
         #tiles.cut(np.logical_or(tiles.z_done == 0, tiles.recent))
         #print(len(tiles), 'with z_done = 0, or taken recently')
     else:
@@ -859,17 +870,6 @@ def djs_update():
     depth = fitsio.read(fn)
     print('Depth:', depth.shape, depth.dtype)
 
-    fn = 'depth-dr6plus2.fits'
-    if not os.path.exists(fn):
-        survey = LegacySurveyData()
-        ccds = fits_table(os.path.join(survey.survey_dir, 'ccds-annotated-mosaic-dr6plus2.fits.gz'))
-        print(len(ccds), 'CCDs')
-        ccds.depth = ccds.galdepth - ccds.decam_extinction[:,4]
-        depth2 = depth_map_for_ccds(survey, ccds)
-        fitsio.write(fn, depth2)
-    else:
-        depth2 = fitsio.read(fn)
-
     ima = dict(interpolation='nearest', origin='lower',
                vmin=22.0, vmax=23.0, cmap='RdBu')
 
@@ -878,12 +878,6 @@ def djs_update():
     
     plt.clf()
     plt.imshow(depth, **ima)
-    plt.colorbar()
-    plt.title('Existing DR6plus tile depth')
-    ps.savefig()
-
-    plt.clf()
-    plt.imshow(depth2, **ima)
     plt.colorbar()
     plt.title('Existing DR6plus2 tile depth')
     ps.savefig()
@@ -903,8 +897,7 @@ def djs_update():
     iv1 = 1./(10.**((depth - 22.5) / -2.5))**2
     iv2 = 1./(10.**((todo_depth  - 22.5) / -2.5))**2
     iv3 = 1./(10.**((recent_depth  - 22.5) / -2.5))**2
-    iv4 = 1./(10.**((depth2  - 22.5) / -2.5))**2
-    depth = -2.5 * (np.log10(1./np.sqrt(iv1 + iv2 + iv3 + iv4)) - 9.)
+    depth = -2.5 * (np.log10(1./np.sqrt(iv1 + iv2 + iv3)) - 9.)
 
     plt.clf()
     plt.imshow(depth, **ima)
@@ -913,7 +906,7 @@ def djs_update():
     ps.savefig()
 
     # Currently how deep are the to-do tiles?
-    currdepth = -2.5 * (np.log10(1./np.sqrt(iv1 + iv3 + iv4)) - 9.)
+    currdepth = -2.5 * (np.log10(1./np.sqrt(iv1 + iv3)) - 9.)
     todo_tiles = tiles[tiles.z_done == 0]
     measure_map_at_tiles(todo_tiles, wcs, currdepth)
 
@@ -933,7 +926,24 @@ def djs_update():
              'r-')
     plt.title('%i to-do tiles already pass depth requirements' % len(sh))
     ps.savefig()
+
+
+    I = np.flatnonzero(np.logical_not(
+        (todo_tiles.depth_90 > targetdepth) *
+        (todo_tiles.depth_95 > targetdepth-0.3) *
+        (todo_tiles.depth_98 > targetdepth-0.6)))
+    print(len(I), 'to-do tiles do not already meet depth requirements')
     
+    plt.clf()
+    plt.imshow(currdepth, **ima)
+    plt.colorbar()
+    sh = todo_tiles[I]
+    plt.plot(np.vstack((sh.x1, sh.x2, sh.x3, sh.x4, sh.x1)),
+             np.vstack((sh.y1, sh.y2, sh.y3, sh.y4, sh.y1)),
+             'r-')
+    plt.title('%i to-do tiles do not already pass depth requirements' % len(sh))
+    ps.savefig()
+
     
     #tiles.cut(tiles.dec > 30)
     tiles.cut(np.lexsort((tiles.ra, tiles.dec)))
