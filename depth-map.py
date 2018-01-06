@@ -846,21 +846,20 @@ def djs_update():
         #plt.plot(tt.ra[I], tt.dec[I], 'r.')
         #plt.savefig('depth-djs-9-%i.png' % passnum)
         tiles.edge[Ipass[I]] = True
-        
+
     fn = 'depth-djs-todo.fits'
     fn2 = 'depth-djs-recent.fits'
     if not os.path.exists(fn):
+        t = tiles[tiles.z_done == 0]
         # give them nominal depth
-        tiles.depth = np.zeros(len(tiles)) + 22.2
-
-        todo_depth = depth_map_for_tiles(tiles[tiles.z_done == 0])
+        t.depth = np.zeros(len(tiles)) + 22.2
+        todo_depth = depth_map_for_tiles(t)
         fitsio.write(fn, todo_depth, clobber=True)
 
-        recent_depth = depth_map_for_tiles(tiles[tiles.recent *
-                                                 (tiles.z_done != 0)])
+        t = tiles[tiles.recent * (tiles.z_done == 1)]
+        t.depth = np.zeros(len(tiles)) + 22.2
+        recent_depth = depth_map_for_tiles(t)
         fitsio.write(fn2, recent_depth, clobber=True)
-        #tiles.cut(np.logical_or(tiles.z_done == 0, tiles.recent))
-        #print(len(tiles), 'with z_done = 0, or taken recently')
     else:
         todo_depth = fitsio.read(fn)
         recent_depth = fitsio.read(fn2)
@@ -915,6 +914,10 @@ def djs_update():
                        (todo_tiles.depth_98 > targetdepth-0.6))
     print(len(I), 'to-do tiles already meet depth requirements')
 
+    tt = fits_table()
+    tt.tileid = todo_tiles.tileid[I]
+    tt.writeto('todo-done-tiles.fits')
+    
     plt.clf()
     plt.imshow(currdepth, **ima)
     plt.colorbar()
@@ -1052,9 +1055,23 @@ def djs_update():
     
     tiles.xmean = (tiles.x1 + tiles.x2 + tiles.x3 + tiles.x4) / 4.
     tiles.ymean = (tiles.y1 + tiles.y2 + tiles.y3 + tiles.y4) / 4.
-    sh = tiles[Ishallow]
-    sh.cut(sh.get('pass') == 1)
-    print(len(sh), 'shallow in pass 1')
+
+    sh = tiles[tiles.shallow * (tiles.edge == False) * (tiles.bstarv > 30.) * (tiles.z_done == 1)]
+    print(len(sh), 'tiles predicted to be under-depth (and not to-do, and without bright star)')
+
+    # sort by pass
+    sh = sh[np.argsort(sh.get('pass'))]
+
+    #for ii,t in enumerate(sh):
+
+        # Search for nearby tiles
+        # Try re-taking them in order of depth and keep the first one that works
+        
+        #iv3 = 1./(10.**((recent_depth  - 22.5) / -2.5))**2
+        
+
+    # sh.cut(sh.get('pass') == 1)
+    # print(len(sh), 'shallow in pass 1')
     for ii,t in enumerate(sh[:20]):
         plt.clf()
         plt.subplot(1,2,1)
@@ -1077,8 +1094,8 @@ def djs_update():
         bstr = ''
         if t.bstarv < 20:
             bstr = ', bright star: %.1f' % t.bstarv
-        plt.suptitle('Tile %i, RA,Dec %.3f,%.3f, depths %.2f / %.2f / %.2f%s' %
-                  (t.tileid, t.ra, t.dec, t.depth_90, t.depth_95, t.depth_98, bstr))
+        plt.suptitle('Tile %i, RA,Dec %.3f,%.3f, depths %.2f / %.2f / %.2f%s, Z_done %s, Z_expnum %i' %
+                  (t.tileid, t.ra, t.dec, t.depth_90, t.depth_95, t.depth_98, bstr, t.z_done == 1, t.z_expnum))
 
 
         plt.subplot(1,2,2)
