@@ -196,10 +196,10 @@ class Mosbot(Obsbot):
         (forced,ffn) = get_forced_pass(forcedir=self.scriptdir)
         print('heartbeat.  forced pass:', forced, 'vs previous', self.last_forced, '(dir:', self.scriptdir, ')')
         if forced != self.last_forced:
-            if self.latest_meas is not None:
-                print('Noticed change of force:', self.last_forced, 'to', forced, '; updating plan')
-                self.update_for_image(self.latest_meas)
-                self.last_forced = forced
+            print('Noticed change of force:', self.last_forced, 'to', forced,
+                  '; updating plan')
+            self.update_for_image(self.latest_meas, forcepass=forced)
+            self.last_forced = forced
         
     def filter_new_files(self, fns):
         return [fn for fn in fns if
@@ -368,30 +368,37 @@ class Mosbot(Obsbot):
 
         return True
 
-    def update_for_image(self, M):
+    def update_for_image(self, M, forcepass=None):
+        # M: measurements for the image that's we're going to use to update
+        # exposure times.
+
         # filename patterns for the exposure and slew scripts
         expscriptpat  = os.path.join(self.scriptdir, self.expscriptpattern)
         slewscriptpat = os.path.join(self.scriptdir, self.slewscriptpattern)
+
+        if M is not None:
+            # Choose the pass, based on...
+            trans  = M['transparency']
+            seeing = M['seeing']
+            skybright = M['skybright']
+            # eg, nominal = 20, sky = 19, brighter is 1 mag brighter than nom.
+            meas_band = M['band']
+            nomsky = self.nom.sky(meas_band)
+            brighter = nomsky - skybright
         
-        # Choose the pass, based on...
-        trans  = M['transparency']
-        seeing = M['seeing']
-        skybright = M['skybright']
-        # eg, nominal = 20, sky = 19, brighter is 1 mag brighter than nom.
-        meas_band = M['band']
-        nomsky = self.nom.sky(meas_band)
-        brighter = nomsky - skybright
+            print('Transparency: %6.02f' % trans)
+            print('Seeing      : %6.02f' % seeing)
+            print('Sky         : %6.02f' % skybright)
+            print('Nominal sky : %6.02f' % nomsky)
+            print('Sky over nom: %6.02f   (positive means brighter than nominal)' %
+                  brighter)
     
-        print('Transparency: %6.02f' % trans)
-        print('Seeing      : %6.02f' % seeing)
-        print('Sky         : %6.02f' % skybright)
-        print('Nominal sky : %6.02f' % nomsky)
-        print('Sky over nom: %6.02f   (positive means brighter than nominal)' %
-              brighter)
-
-        nextpass = choose_pass(trans, seeing, skybright, nomsky,
-                               forcedir=self.scriptdir)
-
+            nextpass = choose_pass(trans, seeing, skybright, nomsky,
+                                   forcedir=self.scriptdir)
+        elif forcepass is not None:
+            nextpass = forcepass
+        else:
+            nextpass = self.opt.passnum
         print()
         print('Selected pass:', nextpass)
         print()
@@ -402,12 +409,18 @@ class Mosbot(Obsbot):
         now = ephem.now()
 
         # Read the current sequence number
-        print('%s: reading sequence number from %s' %
-              (str(ephem.now()), self.seqnumpath))
-        f = open(self.seqnumpath, 'r')
-        s = f.read()
-        f.close()
-        seqnum = int(s)
+        if os.path.exists(self.seqnumpath):
+            print('%s: reading sequence number from %s' %
+                  (str(ephem.now()), self.seqnumpath))
+            f = open(self.seqnumpath, 'r')
+            s = f.read()
+            f.close()
+            seqnum = int(s)
+        else:
+            # Tonight.sh may not have started yet -- pretend that
+            # we're currently taking seqnum=0, so the next one to be
+            # planned is seqnum=1.
+            seqnum = 0
         print('%s: sequence number: %i' % (str(now), seqnum))
         
         # 'iplan': the tile index we will use for exposure # 'seqnum'
@@ -509,7 +522,7 @@ class Mosbot(Obsbot):
             slew = 0.
             if lasttile is None:
                 # Look up the tile we previously planned
-                prevname = self.planned_tiles[nextseq - 1]
+                prevname = self.planned_tiles.get(nextseq - 1, None)
                 Jall = self.J1 + self.J2 + self.J3
                 I, = np.nonzero([str(j['object']) == prevname for j in Jall])
                 if len(I) == 0:
@@ -562,81 +575,82 @@ class Mosbot(Obsbot):
 
             lasttile = jplan
             lastdate = self.obs.date
+
+            if M is not None:
+                if M['band'] == nextband:
+                    nextsky = skybright
+                else:
+                    # Guess that the sky is as much brighter than canonical
+                    # in the next band as it is in this one!
+                    nextsky = ((skybright - nomsky) + self.nom.sky(nextband))
+    
+                fid = self.nom.fiducial_exptime(nextband)
+                expfactor = exposure_factor(fid, self.nom,
+                                            airmass, ebv, seeing, nextsky, trans)
+                print('Exposure factor:', expfactor)
+    
+                expfactor_orig = expfactor
+    
+                # Adjust for previous exposures?
+                if self.opt.adjust:
+                    debug=True
+                    adjfactor,others = self.adjust_for_previous(
+                        tile, nextband, fid, debug=debug, get_others=True)
+                    # Don't adjust exposure times down, only up.
+                    adjfactor = max(adjfactor, 1.0)
+                    expfactor *= adjfactor
+                else:
+                    adjfactor = 0.
+                    others = []
+    
+                exptime = expfactor * fid.exptime
+    
+                ### HACK -- safety factor!
+                print('Exposure time:', exptime)
+                exptime *= 1.1
+                print('Exposure time with safety factor:', exptime)
+                exptime_unclipped = exptime
+    
+                exptime = np.clip(exptime, fid.exptime_min, fid.exptime_max)
+                print('Clipped exptime', exptime)
+    
+                exptime_satclipped = 0.
+                if nextband == 'z':
+                    # Compute cap on exposure time to avoid saturation /
+                    # loss of dynamic range.
+                    t_sat = self.nom.saturation_time(nextband, nextsky)
+                    if exptime > t_sat:
+                        exptime_satclipped = t_sat
+                        exptime = t_sat
+                        print('Reduced exposure time to avoid z-band saturation:',
+                        '%.1f' % exptime)
+                exptime = int(np.ceil(exptime))
+    
+                print('Changing exptime from', jplan['expTime'], 'to', exptime)
+                jplan['expTime'] = exptime
+
+                # Update the computed exposure-time database.
+                if self.opt.db:
+                    try:
+                        # NOTE, these kwargs MUST match the names in models.py
+                        self.update_exptime_db(
+                            nextseq, others, tileid=tile.tileid,
+                            passnumber=nextpass, band=nextband, airmass=airmass,
+                            ebv=ebv, meas_band=meas_band,
+                            zeropoint=M['zp'], transparency=trans,
+                            seeing=seeing, sky=skybright, expfactor=expfactor_orig,
+                            adjfactor=adjfactor,
+                            exptime_unclipped=exptime_unclipped,
+                            exptime_satclipped=exptime_satclipped,
+                            exptime=exptime)
+                    except:
+                        print('Failed to update computed-exptime database.')
+                        import traceback
+                        traceback.print_exc()
+                        # carry on
                 
-            if M['band'] == nextband:
-                nextsky = skybright
-            else:
-                # Guess that the sky is as much brighter than canonical
-                # in the next band as it is in this one!
-                nextsky = ((skybright - nomsky) + self.nom.sky(nextband))
-
-            fid = self.nom.fiducial_exptime(nextband)
-            expfactor = exposure_factor(fid, self.nom,
-                                        airmass, ebv, seeing, nextsky, trans)
-            print('Exposure factor:', expfactor)
-
-            expfactor_orig = expfactor
-
-            # Adjust for previous exposures?
-            if self.opt.adjust:
-                debug=True
-                adjfactor,others = self.adjust_for_previous(
-                    tile, nextband, fid, debug=debug, get_others=True)
-                # Don't adjust exposure times down, only up.
-                adjfactor = max(adjfactor, 1.0)
-                expfactor *= adjfactor
-            else:
-                adjfactor = 0.
-                others = []
-
-            exptime = expfactor * fid.exptime
-
-            ### HACK -- safety factor!
-            print('Exposure time:', exptime)
-            exptime *= 1.1
-            print('Exposure time with safety factor:', exptime)
-            exptime_unclipped = exptime
-
-            exptime = np.clip(exptime, fid.exptime_min, fid.exptime_max)
-            print('Clipped exptime', exptime)
-
-            exptime_satclipped = 0.
-            if nextband == 'z':
-                # Compute cap on exposure time to avoid saturation /
-                # loss of dynamic range.
-                t_sat = self.nom.saturation_time(nextband, nextsky)
-                if exptime > t_sat:
-                    exptime_satclipped = t_sat
-                    exptime = t_sat
-                    print('Reduced exposure time to avoid z-band saturation:',
-                    '%.1f' % exptime)
-            exptime = int(np.ceil(exptime))
-
-            print('Changing exptime from', jplan['expTime'], 'to', exptime)
-            jplan['expTime'] = exptime
-
             print('Predict tile will be observed at', str(self.obs.date),
                   'vs approx_datetime', jplan.get('approx_datetime',None))
-
-            # Update the computed exposure-time database.
-            if self.opt.db:
-                try:
-                    # NOTE, these kwargs MUST match the names in models.py
-                    self.update_exptime_db(
-                        nextseq, others, tileid=tile.tileid,
-                        passnumber=nextpass, band=nextband, airmass=airmass,
-                        ebv=ebv, meas_band=meas_band,
-                        zeropoint=M['zp'], transparency=trans,
-                        seeing=seeing, sky=skybright, expfactor=expfactor_orig,
-                        adjfactor=adjfactor,
-                        exptime_unclipped=exptime_unclipped,
-                        exptime_satclipped=exptime_satclipped,
-                        exptime=exptime)
-                except:
-                    print('Failed to update computed-exptime database.')
-                    import traceback
-                    traceback.print_exc()
-                    # carry on
 
             status = ('Exp %i: Tile %s, Pass %i, RA %s, Dec %s' %
                       (nextseq, tilename, nextpass, rastr, decstr))
@@ -663,6 +677,7 @@ class Mosbot(Obsbot):
             os.rename(slewtmpfn, slewscriptfn)
             print('Wrote', slewscriptfn)
 
+            exptime = jplan['expTime']
             self.obs.date += (exptime + self.nom.overhead) / 86400.
 
             print('%s: updated exposure %i to tile %s' %
