@@ -47,6 +47,8 @@ def main(cmdlineargs=None, get_mosbot=False):
     parser.add_option('--no-cut-past', dest='cut_before_now',
                       default=True, action='store_false',
                       help='Do not cut tiles that were supposed to be observed in the past')
+    parser.add_option('--sequence', action='store_true', default=False,
+                      help='Try to observe contiguous sequences of tiles')
 
     parser.add_option('--rawdata', help='Directory to monitor for new images: default $MOS3_DATA if set, else "rawdata"', default=None)
     parser.add_option('--script', dest='scriptfn', help='Write top-level shell script, default is %default', default='/mosaic3/exec/mosbot/tonight.sh')
@@ -190,6 +192,7 @@ class Mosbot(Obsbot):
         self.latest_meas = None
 
         self.last_forced = None
+        self.sequence_offset = 0
 
     def heartbeat(self):
         from obsbot import get_forced_pass
@@ -368,10 +371,11 @@ class Mosbot(Obsbot):
 
         return True
 
-    def update_for_image(self, M, forcepass=None):
+    def update_for_image(self, M, forcepass=None, now=None):
         # M: measurements for the image that's we're going to use to update
         # exposure times.
-
+        # now: for testing purposes only; defaults to ephem.now()
+        
         # filename patterns for the exposure and slew scripts
         expscriptpat  = os.path.join(self.scriptdir, self.expscriptpattern)
         slewscriptpat = os.path.join(self.scriptdir, self.slewscriptpattern)
@@ -406,7 +410,8 @@ class Mosbot(Obsbot):
         # Choose the next tile from the right JSON tile list Jp
         J = [self.J1,self.J2,self.J3][nextpass-1]
 
-        now = ephem.now()
+        if now is None:
+            now = ephem.now()
 
         # Read the current sequence number
         if os.path.exists(self.seqnumpath):
@@ -425,8 +430,27 @@ class Mosbot(Obsbot):
         
         # 'iplan': the tile index we will use for exposure # 'seqnum'
         iplan = None
-        if self.opt.cut_before_now:
-            # The usual case
+        if self.opt.sequence:
+            iplan = seqnum + self.sequence_offset
+            # Check whether the next tile will be observed more than an hour
+            # later than its scheduled time -- if so, skip a block of tiles.
+            if iplan < len(J):
+                j = J[iplan]
+                tstart = ephem.Date(str(j['approx_datetime']))
+                if now > (tstart + 3600./86400.):
+                    print('The next tile will be observed more than an hour late.  Skipping a block of observations...')
+                    for i,j in enumerate(J[iplan:]):
+                        tstart = ephem.Date(str(j['approx_datetime']))
+                        if tstart <= now:
+                            continue
+                        print('Found tile', j['object'], 'which starts at', str(tstart))
+                        print('Skipping', i, 'tiles')
+                        self.sequence_offset += i
+                        iplan += i
+                        break
+
+        elif self.opt.cut_before_now:
+            # The usual case -- find the next tile scheduled for after now.
             for i,j in enumerate(J):
                 tstart = ephem.Date(str(j['approx_datetime']))
                 if tstart <= now:
