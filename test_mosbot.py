@@ -30,10 +30,11 @@ class TestMosbot(unittest.TestCase):
         self.assertEqual(maybe_ha_flip(-90, -86, 3), True)
             
     
-    def set_json_files(self, start_time):
-        fn1 = os.path.join(self.testdatadir, 'pass1.json')
-        fn2 = os.path.join(self.testdatadir, 'pass2.json')
-        fn3 = os.path.join(self.testdatadir, 'pass3.json')
+    def set_json_files(self, start_time,
+                       pass1='pass1.json', pass2='pass2.json', pass3='pass3.json'):
+        fn1 = os.path.join(self.testdatadir, pass1)
+        fn2 = os.path.join(self.testdatadir, pass2)
+        fn3 = os.path.join(self.testdatadir, pass3)
 
         tmpfn1 = fn1 + '.tmp'
         tmpfn2 = fn2 + '.tmp'
@@ -64,7 +65,91 @@ class TestMosbot(unittest.TestCase):
         now = ephem.now()
         print('Now:', now)
         self.set_json_files(now)
+
+    def test_sequence(self):
+        from mosbot import main
+        import tempfile
+        import ephem
+        now = ephem.now()
+        print('Now:', now)
+        # Make the plans start one hour ago.
+        now -= (1./24.)
+        self.set_json_files(now,
+                            pass1='2017-03-01-p1.json',
+                            pass2='2017-03-01-p2.json',
+                            pass3='2017-03-01-p3.json')
+        tempdir = tempfile.mkdtemp()
+        args = ['--script', os.path.join(tempdir, 'tonight.sh'),
+        # '--no-cut-past',
+        '--sequence', '--pass', '1']
+        args += self.jsonfiles
+        mosbot = main(cmdlineargs=args, get_mosbot=True)
+
+        # Touch forcepass1
+        f = open(os.path.join(tempdir, 'forcepass1'), 'w')
+        f.close()
+
+        tiles = [686811]
+
+        # BEFORE: check tile numbers -- starting after now.
+        for i,tile in enumerate(tiles):
+            fn = os.path.join(tempdir, 'expose-%i.sh' % (i+1))
+            txt = open(fn).read()
+            tilename = 'MzLS_%i_z' % tile
+            print('Checking for tile', tilename, 'in file', fn)
+            assert(tilename in txt)
+
+        print('Updating as though two hours late.')
+
+        mosbot.update_for_image({
+            'airmass': 1.019,
+            'skybright': 19.372964228396995,
+            'transparency': 0.94911683705518535,
+            'zp': 26.348159194305978,
+            'seeing': 0.9776841626480679,
+            'band': 'z'},
+            now = now + (3./24.))
+
+        tiles = [664120, 661867, 661868, 659585, 659586, 661869]
         
+        # AFTER: check tile numbers.
+        for i,tile in enumerate(tiles):
+            fn = os.path.join(tempdir, 'expose-%i.sh' % (i+1))
+            txt = open(fn).read()
+            tilename = 'MzLS_%i_z' % tile
+            print('Checking for tile', tilename, 'in file', fn)
+            assert(tilename in txt)
+
+        print('Updating after seqnum=3')
+            
+        # Pretend that we're at seqnum=3 and assert that we proceed with the
+        # same set of tiles.
+        # write sequence number
+        f = open(mosbot.seqnumpath, 'w')
+        f.write('3\n')
+        f.close()
+            
+        mosbot.update_for_image({
+            'airmass': 1.019,
+            'skybright': 19.372964228396995,
+            'transparency': 0.94911683705518535,
+            'zp': 26.348159194305978,
+            'seeing': 0.9776841626480679,
+            'band': 'z'},
+            now = now + ((3.*3600 + 3.*80)/86400.))
+
+        tiles = [664120, 661867, 661868, 659585, 659586, 661869]
+        
+        # AFTER: check tile numbers.
+        for i,tile in enumerate(tiles):
+            fn = os.path.join(tempdir, 'expose-%i.sh' % (i+1))
+            txt = open(fn).read()
+            tilename = 'MzLS_%i_z' % tile
+            print('Checking for tile', tilename, 'in file', fn)
+            assert(tilename in txt)
+            
+
+            
     def test_new_file(self):
         from mosbot import main
         import tempfile
