@@ -1085,7 +1085,6 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
     set_tile_fields(m, phdr, tiles)
 
     m.save()
-
     return M
 
 def bounce_process_image(X):
