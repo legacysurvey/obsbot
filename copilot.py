@@ -1169,6 +1169,8 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart):
         P = None
     else:
         P = fits_table(botplanfn)
+        if len(P) == 0:
+            P = None
         
     msorted = list(mm.order_by('mjd_obs'))
     mlast   = msorted[-1]
@@ -1195,8 +1197,8 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart):
     if nightly:
         rd.append((np.array([m.rabore for m in msorted]),
                    np.array([m.decbore for m in msorted])))
-    
-    if not nightly:
+
+    if not nightly and P is not None:
         # Plot the planned exposures per pass.
         P.color = np.array([ccmap.get(f[:1],'k') for f in P.filter])
         I = np.flatnonzero(P.type == '1')
@@ -1232,7 +1234,7 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart):
     lp.append(pl[0])
     lt.append('Last exposure')
 
-    if not nightly:
+    if not nightly and P is not None:
         I = np.flatnonzero(P.type == 'P')
         # Bold the first few ones
         II = I[:6]
