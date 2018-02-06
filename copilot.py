@@ -372,6 +372,9 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     minsky = -0.15
     nomskies = []
     medskies = []
+
+    keepbands = []
+    keepTT = []
     for band,Tb in zip(bands, TT):
         try:
             sky0 = nom.sky(band)
@@ -380,6 +383,10 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
             print('Unknown filter for sky:', band)
             continue
         T.dsky[T.band == band] = Tb.sky - sky0
+        keepbands.append(band)
+        keepTT.append(Tb)
+    TT = keepTT
+    bands = keepbands
 
     # set the range based on:
     # -- do we need to add a "darker than 15-deg twi" cut?
@@ -392,6 +399,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     yl,yh = mn - 0.15*(mx-mn), mx + 0.05*(mx-mn)
 
     for band,Tb in zip(bands, TT):
+        sky0 = nom.sky(band)
         I = np.flatnonzero(Tb.sky > 0)
         if len(I):
             plt.plot(Tb.mjd_obs[I], Tb.sky[I] - sky0, 'o', mec='k',
