@@ -36,26 +36,59 @@ def from_ccds():
     print('Tile passes from CCDs table:')
     print(Counter(T.tilepass).most_common())
 
+    from camera_mosaic import ephem_observer
+    from obsbot import mjd_to_ephem_date, get_airmass
+    from jnox import ra2hms, dec2dms
+    import ephem
+    print('Recomputing airmasses assuming MOSAIC camera...')
+    T.airmass = np.zeros(len(T), np.float32)
+    obs = ephem_observer()
+    for i,(mjd,ra,dec) in enumerate(zip(T.mjd_obs, T.ra, T.dec)):
+        obs.date = mjd_to_ephem_date(mjd)
+        rastr  = ra2hms(ra)
+        decstr = dec2dms(dec)
+        ephemstr = str('%s,f,%s,%s,20' % ('name', rastr, decstr))
+        etile = ephem.readdb(ephemstr)
+        etile.compute(obs)
+        T.airmass[i] = get_airmass(float(etile.alt))
+    print('done computing airmasses')
+    
     #####
     #T.cut(T.expnum == 152537)
     #print('Cut to', len(T), 'with expnum 152537')
     
     T.depth = T.galdepth - T.decam_extinction[:,4]
 
+    T.seeing = T.fwhm * T.pixscale_mean
+    kx = 0.10
+    zp0 = 26.4
+    T.transparency = 10.**(-0.4 * (zp0 - T.ccdzpt - kx*(T.airmass-1.)))
+
     plt.figure(1, figsize=(13,8))
     plt.subplots_adjust(left=0.01, right=0.99, bottom=0.01, top=0.95)
+    
+    plt.clf()
+    plt.scatter(T.ra, T.dec, c=T.transparency, s=3)
+    plt.colorbar()
+    plt.savefig('transp.png')
 
+    for passnum in [1,2,3]:
+        plt.clf()
+        I = np.flatnonzero(T.tilepass == passnum)
+        plt.scatter(T.ra[I], T.dec[I], c=T.transparency[I], s=3)
+        plt.colorbar()
+        plt.savefig('transp-p%i.png' % passnum)
+
+        plt.clf()
+        plt.scatter(T.ra[I], T.dec[I], c=T.airmass[I], s=3)
+        plt.colorbar()
+        plt.savefig('airmass-p%i.png' % passnum)
+    
     imgs = []
     seeings = []
     transps = []
 
     for passnum in [1,2,3, 0,  9]:
-        # if passnum == 0:
-        #     I = np.flatnonzero((T.tilepass >= 1) *
-        #                        (T.tilepass <= 3) *
-        #                        (T.depth > 10))
-        #     tt = 'All Passes'
-        # elif passnum == 9:
         if passnum == 9:
             I = []
             tt = 'All Passes'
@@ -69,9 +102,11 @@ def from_ccds():
         #cm = matplotlib.cm.jet
         cm = cmap_discretize(cm, 10)
 
-        seeing,transp,wcs = best_seeing_map_for_ccds(survey, T[I])
-
-        if passnum == 9:
+        if passnum != 9:
+            seeing,transp,wcs = best_seeing_map_for_ccds(survey, T[I])
+            seeings.append(seeing)
+            transps.append(transp)
+        else:
             seeing = seeings[0]
             transp = transps[0]
             for s,t in zip(seeings, transps):
@@ -81,19 +116,18 @@ def from_ccds():
                 sI = (s != 0)
                 seeing[sI] = np.minimum(seeing[sI], s[sI])
                 transp = np.maximum(transp, t)
-        else:
-            seeings.append(seeing)
-            transps.append(transp)
         
         lo,hi = 0.5, 2.0
-        # plt.clf()
-        # plt.imshow(seeing, interpolation='nearest', origin='lower',
-        #            vmin=lo, vmax=hi, cmap=cm)
-        # plt.xticks([]); plt.yticks([])
-        # plt.title('Best seeing: %s' % tt)
-        # plt.colorbar()
-        # plt.savefig('depth-p%i-15.png' % passnum)
-
+        if passnum == 9:
+            plt.clf()
+            plt.imshow(median_filter(seeing, size=3),
+                       interpolation='nearest', origin='lower',
+                       vmin=lo, vmax=hi, cmap=cm)
+            plt.xticks([]); plt.yticks([])
+            plt.title('Best seeing (unfiltered): %s' % tt)
+            plt.colorbar()
+            plt.savefig('depth-p%i-17.png' % passnum)
+        
         plt.clf()
         plt.imshow(median_filter(seeing, size=3),
                    interpolation='nearest', origin='lower',
@@ -111,18 +145,17 @@ def from_ccds():
         plt.title('Best transparency: %s' % tt)
         plt.colorbar()
         plt.savefig('depth-p%i-16.png' % passnum)
-
         
-        depthmap,wcs = depth_map_for_ccds(survey, T[I])
-        iv = 1./(10.**((depthmap - 22.5) / -2.5))**2
-
-        if passnum == 9:
+        if passnum != 9:
+            depthmap,wcs = depth_map_for_ccds(survey, T[I])
+            iv = 1./(10.**((depthmap - 22.5) / -2.5))**2
+            imgs.append(iv)
+        else:
             iv = imgs[0]
             for im in imgs[1:]:
                 iv += im
             depthmap = -2.5 * (np.log10(1./np.sqrt(iv)) - 9.)
-        else:
-            imgs.append(iv)
+
         #wcs_unflipped = anwcs_create_hammer_aitoff(195., 65., zoom, W, H, False)
         #anwcs_write(wcs_unflipped, 'plot.wcs')
         #hdr = fitsio.read_header('plot.wcs')
@@ -130,6 +163,9 @@ def from_ccds():
         #header=hdr,
         print('Unique depths:', np.unique(depthmap.ravel()))
 
+        fitsio.write('seeing-p%i.fits' % passnum, seeing, clobber=True)
+        fitsio.write('transp-p%i.fits' % passnum, transp, clobber=True)
+        
         H,W = wcs.shape
         
         plt.figure(2)
@@ -793,12 +829,6 @@ def best_seeing_map_for_ccds(survey, ccds):
     plot.outline.stepsize = 2000
     plot.op = CAIRO_OPERATOR_LIGHTEN
 
-    ccds.seeing = ccds.fwhm * ccds.pixscale_mean
-    #         transparency = 10.**(-0.4 * (zp0 - zp_obs - kx * (airmass - 1.)))
-    #                 k_co = 0.10,
-    
-    ccds.transparency = 10.**(-0.4 * (26.4 - ccds.ccdzpt))
-
     plot.alpha = 1.0
 
     for j,ccd in enumerate(ccds):
@@ -1456,10 +1486,6 @@ def update_tiles():
 
     tiles = fits_table('obstatus/mosaic-tiles_obstatus.fits')
 
-    wcs = anwcs('plot.wcs')
-    depths = dict([(i,fitsio.read('depth-p%i.fits' % i))
-                   for i in [1,2,3,9]])
-    
     brightstars = fits_table('BrightStarCatalog_Vmaglt10.fits')
 
     from legacypipe.survey import LegacySurveyData
@@ -1713,28 +1739,45 @@ def update_tiles():
 
 
     # Measure depth percentiles for tiles in depth maps
+    wcs = anwcs('plot.wcs')
+    print('Measuring depth map...')
+    depth = fitsio.read('depth-p9.fits')
+    seeing = fitsio.read('seeing-p9.fits')
+    transp = fitsio.read('transp-p9.fits')
     
-
+    #iv1 = 1./(10.**((depth - 22.5) / -2.5))**2
+    dd = measure_map_at_tiles(tiles[II], wcs, depth)
+    tiles.depth_90 = np.zeros(len(tiles), np.float32)
+    tiles.depth_95 = np.zeros(len(tiles), np.float32)
+    tiles.depth_98 = np.zeros(len(tiles), np.float32)
+    tiles.depth_90[II] = dd[:,0]
+    tiles.depth_95[II] = dd[:,1]
+    tiles.depth_98[II] = dd[:,2]
 
     # Measure best seeing per tile area
+    dd = measure_map_at_tiles(tiles[II], wcs, seeing, pcts=[50,90])
+    tiles.seeing_50 = np.zeros(len(tiles), np.float32)
+    tiles.seeing_90 = np.zeros(len(tiles), np.float32)
+    tiles.seeing_50[II] = dd[:,0]
+    tiles.seeing_90[II] = dd[:,1]
+
     # Measure best transparency per tile area
-
-
+    dd = measure_map_at_tiles(tiles[II], wcs, transp, pcts=[50,90])
+    tiles.transp_50 = np.zeros(len(tiles), np.float32)
+    tiles.transp_90 = np.zeros(len(tiles), np.float32)
+    tiles.transp_50[II] = dd[:,0]
+    tiles.transp_90[II] = dd[:,1]
 
     tiles.writeto('tiles-updated.fits.gz')
     
     tiles.z_done[II[np.logical_not(good)]] = 0
     tiles.writeto('tiles-todo-dstn.fits')
 
-
-
-    
-    
 if __name__ == '__main__':
-    #from_ccds()
-    #update_tiles()
+    from_ccds()
+    update_tiles()
     #when_missing()
     #tiles_todo()
-    djs_update()
+    #djs_update()
     #needed_tiles()
     #main()
