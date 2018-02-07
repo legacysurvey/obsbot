@@ -875,7 +875,7 @@ def depth_map_for_tiles(tiles):
     return img
 
 
-def measure_map_at_tiles(tiles, wcs, depth):
+def measure_map_at_tiles(tiles, wcs, depth, pcts=[10,5,2]):
     from astrometry.util.miscutils import point_in_poly
     # from mosaic_wcs
     tilesize = (4096 * 2 + 100) * 0.262 / 3600.
@@ -890,33 +890,20 @@ def measure_map_at_tiles(tiles, wcs, depth):
     ok3,tiles.x3,tiles.y3 = wcs.radec2pixelxy(rhi,dhi)
     ok4,tiles.x4,tiles.y4 = wcs.radec2pixelxy(rhi,dlo)
 
-    pcts = []
-
+    depths = []
     for itile,t in enumerate(tiles):
         # -1: FITS to numpy coords
         x0 = int(np.floor(min(t.x1, t.x2, t.x3, t.x4))) - 1
         y0 = int(np.floor(min(t.y1, t.y2, t.y3, t.y4))) - 1
         x1 = int(np.ceil( max(t.x1, t.x2, t.x3, t.x4))) - 1
         y1 = int(np.ceil( max(t.y1, t.y2, t.y3, t.y4))) - 1
-        #print('tile', t.ra, t.dec)
-        #print('x0,x1, y0,y1', x0,x1,y0,y1)
-        #print('  x0,y0', x0,y0)
-        #print('  w,h', 1+x1-x0, 1+y1-y0)
-        tiledepth = depth[y0:y1+1, x0:x1+1].copy()
-        #print('  tiledepth', tiledepth.min(), tiledepth.max())
-        # polygon
+        tiledepth = depth[y0:y1+1, x0:x1+1]
         xx,yy = np.meshgrid(np.arange(x0, x1+1), np.arange(y0, y1+1))
         poly = np.array([[t.x1,t.y1],[t.x2,t.y2],[t.x3,t.y3],[t.x4,t.y4]])
         inpoly = point_in_poly(xx, yy, poly-1)
-        [d1,d2,d3] = np.percentile(tiledepth[inpoly], [10, 5, 2])
-        #print('  Depth at completeness 90/95/98:', d1, d2, d3)
-        pcts.append((d1,d2,d3))
-
-    tiles.depth_90 = np.array([d[0] for d in pcts])
-    tiles.depth_95 = np.array([d[1] for d in pcts])
-    tiles.depth_98 = np.array([d[2] for d in pcts])
-    #for c in 'x1 y1 x2 y2 x3 y3 x4 y4'.split():
-    #    tiles.delete_column(c)
+        p = np.percentile(tiledepth[inpoly], pcts)
+        depths.append(p)
+    return np.array(depths)
 
 def djs_update():
     # Evaluate David's proposed tile file update
@@ -1058,8 +1045,10 @@ def djs_update():
     # Currently how deep are the to-do tiles?
     currdepth = -2.5 * (np.log10(1./np.sqrt(iv1 + iv3)) - 9.)
     todo_tiles = tiles[tiles.z_done == 0]
-    measure_map_at_tiles(todo_tiles, wcs, currdepth)
-
+    dd = measure_map_at_tiles(todo_tiles, wcs, currdepth)
+    todo_tiles.depth_90 = dd[:,0]
+    todo_tiles.depth_95 = dd[:,1]
+    todo_tiles.depth_98 = dd[:,2]
     I = np.flatnonzero((todo_tiles.depth_90 > targetdepth) *
                        (todo_tiles.depth_95 > targetdepth-0.3) *
                        (todo_tiles.depth_98 > targetdepth-0.6))
@@ -1100,7 +1089,10 @@ def djs_update():
     tiles.cut(np.lexsort((tiles.ra, tiles.dec)))
 
     print('Measuring depths...')
-    measure_map_at_tiles(tiles, wcs, depth)
+    dd = measure_map_at_tiles(tiles, wcs, depth)
+    tiles.depth_90 = dd[:,0]
+    tiles.depth_95 = dd[:,1]
+    tiles.depth_98 = dd[:,2]
     tiles.writeto('tile-depths.fits')
 
     tiles.shallow = np.logical_or(
@@ -1343,6 +1335,18 @@ def djs_update():
                   (t.tileid, t.ra, t.dec, t.depth_90, t.depth_95, t.depth_98, bstr, t.z_done == 1, t.z_expnum))
         ps.savefig()
 
+
+        #### Search for nearby tiles, look at their depths (90th
+        # pct?), starting with the shallowest (up to some cut?), ask
+        # if observing them would satisfy this tile.
+
+
+
+
+
+
+
+        
         
 def when_missing():
     from legacyzpts.psfzpt_cuts import *
@@ -1409,7 +1413,7 @@ def when_missing():
         plt.colorbar()
 
         p1 = p2 = p3 = None
-        
+
         for i in I:
             mwcs = mosaic_wcs(tiles.ra[i], tiles.dec[i])
             H,W = mwcs.shape
@@ -1453,7 +1457,6 @@ def update_tiles():
     tiles = fits_table('obstatus/mosaic-tiles_obstatus.fits')
 
     wcs = anwcs('plot.wcs')
-
     depths = dict([(i,fitsio.read('depth-p%i.fits' % i))
                    for i in [1,2,3,9]])
     
@@ -1467,33 +1470,22 @@ def update_tiles():
     ann.depth = ann.galdepth - ann.decam_extinction[:,4]
 
     # What about the annotated-CCDs entries with tileid = 0?
-    ann[ann.tileid == 0].writeto('annotated-tileid-0.fits')
+    #ann[ann.tileid == 0].writeto('annotated-tileid-0.fits')
     # These turn out to be from different propids, etc, and not on our
     # tile centers.
     
-    # max degrees between CCD center and nearest tile center
+    # max degrees between CCD center and its tile center
     max_offset = 0.24
 
-    #K = np.flatnonzero((tiles.get('pass') <= 3) * (tiles.in_desi == 1))
-    # I,J,d = match_radec(ann.ra, ann.dec, tiles.ra[K], tiles.dec[K], max_offset,
-    #                     nearest=True)
-    # astrom_ok = np.zeros(len(ann), bool)
-    # astrom_ok[I] = True
-    # print(np.sum(astrom_ok), 'have good astrometry')
-    # ann.cut(astrom_ok)
-
-    from astrometry.util.starutil_numpy import degrees_between,distsq2deg,radectoxyz
-    
+    from astrometry.util.starutil_numpy import distsq2deg,radectoxyz
     tileidmap = dict([(tid,i) for i,tid in enumerate(tiles.tileid)])
     tileindex = np.array([tileidmap.get(tid,-1) for tid in ann.tileid])
     K = np.flatnonzero(tileindex >= 0)
-    #d = np.array([degrees_between(ann.ra[k], ann.dec[k],
-    #                              tiles.ra[tileindex[k]], tiles.dec[tileindex[k]]) for k in K])
+    # sigh, my degrees_between function doesn't broadcast correctly, so DIY
     xyz1 = radectoxyz(ann.ra[K], ann.dec[K])
     xyz2 = radectoxyz(tiles.ra[tileindex[K]], tiles.dec[tileindex[K]])
     d2 = np.sum((xyz1 - xyz2)**2, axis=1)
     d = distsq2deg(d2)
-
     ann.astrom_ok = np.zeros(len(ann), bool)
     ann.astrom_ok[K] = (d < max_offset)
     print('Cut by bad astrom:', np.sum(d >= max_offset))
@@ -1652,19 +1644,6 @@ def update_tiles():
     print('All flags set:', psf_cuts_to_string(allbits))
 
     tiles.recent = np.zeros(len(tiles), bool)
-    # still = []
-    # for i in still_unmatched:
-    #     if tiles.z_date[i] > recent_date:
-    #         print('Tile date', tiles.z_date[i], 'is recent')
-    #         if tiles.z_expnum[i] in bad_expid:
-    #             print('But in bad_expid')
-    #         else:
-    #             tiles.recent[i] = True
-    #             continue
-    #     still.append(i)
-    # still_unmatched = still
-
-    # still = []
     for i in II:
         if tiles.z_date[i] > recent_date:
             print('Tile date', tiles.z_date[i], 'is recent')
@@ -1717,12 +1696,6 @@ def update_tiles():
             assert(len(I) == 0)
             #print(len(I), 'matches to ccds 3+')
 
-
-    # print()
-    # print('DATE   EXPNUM')
-    # for i in still_unmatched:
-    #     print(tiles.z_date[i], tiles.z_expnum[i])
-
     II = np.flatnonzero((tiles.in_desi == 1) * (tiles.get('pass') <= 3) * (tiles.dec > 30))
     print('Checking', len(II), 'tiles')
 
@@ -1738,10 +1711,23 @@ def update_tiles():
             (tiles.recent[II]))
     print('In annotated-CCDs, or third-pixl, or recent:', Counter(good))
 
-    tiles.writeto('tiles-updated.fits.gz')
 
+    # Measure depth percentiles for tiles in depth maps
+    
+
+
+    # Measure best seeing per tile area
+    # Measure best transparency per tile area
+
+
+
+    tiles.writeto('tiles-updated.fits.gz')
+    
     tiles.z_done[II[np.logical_not(good)]] = 0
     tiles.writeto('tiles-todo-dstn.fits')
+
+
+
     
     
 if __name__ == '__main__':
