@@ -930,12 +930,16 @@ def djs_update():
     targetdepth = 22.5
 
     #tiles = fits_table('mzls-update/mosaic-tiles_obstatus-update.fits')
-    tiles = fits_table('obstatus/mosaic-tiles_obstatus.fits')
+    #tiles = fits_table('obstatus/mosaic-tiles_obstatus.fits')
+    #tiles.recent = np.array([d > recent_date for d in tiles.z_date])
+
+    tiles = fits_table('tiles-todo-dstn.fits')
+    tiles.recent = np.logical_or(tiles.recent, tiles.maybe_good)
+
     tiles.cut(tiles.in_desi == 1)
     tiles.cut(tiles.get('pass') <= 3)
     tiles.cut(tiles.dec > 30)
     print(len(tiles), 'in footprint above Dec 30, pass 1/2/3')
-    tiles.recent = np.array([d > recent_date for d in tiles.z_date])
     print(sum(tiles.z_done == 0), 'tiles to-do')
 
     # Find tiles at the edge of the footprint.
@@ -959,19 +963,20 @@ def djs_update():
         #plt.savefig('depth-djs-9-%i.png' % passnum)
         tiles.edge[Ipass[I]] = True
 
-    fn = 'depth-djs-todo.fits'
-    fn2 = 'depth-djs-recent.fits'
-    if not os.path.exists(fn):
+    #fn = 'depth-djs-todo.fits'
+    #fn2 = 'depth-djs-recent.fits'
+    #if not os.path.exists(fn):
+    if True:
         t = tiles[tiles.z_done == 0]
         # give them nominal depth
         t.depth = np.zeros(len(tiles)) + 22.2
         todo_depth = depth_map_for_tiles(t)
-        fitsio.write(fn, todo_depth, clobber=True)
+        #fitsio.write(fn, todo_depth, clobber=True)
 
         t = tiles[tiles.recent * (tiles.z_done == 1)]
         t.depth = np.zeros(len(tiles)) + 22.2
         recent_depth = depth_map_for_tiles(t)
-        fitsio.write(fn2, recent_depth, clobber=True)
+        #fitsio.write(fn2, recent_depth, clobber=True)
     else:
         todo_depth = fitsio.read(fn)
         recent_depth = fitsio.read(fn2)
@@ -1094,6 +1099,7 @@ def djs_update():
     #tiles.cut(tiles.dec > 30)
     tiles.cut(np.lexsort((tiles.ra, tiles.dec)))
 
+    print('Measuring depths...')
     measure_map_at_tiles(tiles, wcs, depth)
     tiles.writeto('tile-depths.fits')
 
@@ -1126,6 +1132,9 @@ def djs_update():
     ps.savefig()
 
     bright = tiles[tiles.bstarv < 20]
+
+    #sh = tiles[tiles.shallow * (tiles.edge == False)]
+    #print(len(sh), 'shallow tiles')
     
     for passnum in [1,2,3]:
         plt.clf()
@@ -1219,72 +1228,77 @@ def djs_update():
         #iv3 = 1./(10.**((recent_depth  - 22.5) / -2.5))**2
         
 
-    ima = dict(interpolation='nearest', origin='lower',
-               vmin=22.0, vmax=23, cmap=cm)
-
     depth_p1 = fitsio.read('depth-p1.fits')
     depth_p2 = fitsio.read('depth-p2.fits')
     depth_p3 = fitsio.read('depth-p3.fits')
     depth_p = { 1: depth_p1,
                 2: depth_p2,
                 3: depth_p3 }
+
+    cm = 'Greys'
     
+    ima = dict(interpolation='nearest', origin='lower',
+               vmin=22.0, vmax=23, cmap=cm)
 
     ima2 = dict(interpolation='nearest', origin='lower',
                 vmin=21.5, vmax=22.5, cmap=cm)
 
+    tilestyle = dict(color='r', linestyle='-', linewidth=3)
+    
+    plt.subplots_adjust(left=0.01, right=0.99, bottom=0.01, top=0.9)
+    
     # sh.cut(sh.get('pass') == 1)
     # print(len(sh), 'shallow in pass 1')
     for ii,t in enumerate(sh[:20]):
-        plt.clf()
-        plt.subplot(1,2,1)
-        plt.imshow(depth, **ima)
-        plt.colorbar()
         margin = 30
-        plt.plot(np.vstack((t.x1, t.x2, t.x3, t.x4, t.x1)),
-                 np.vstack((t.y1, t.y2, t.y3, t.y4, t.y1)),
-                 **tilestyle)
-
-        I = np.flatnonzero((np.abs(tiles.xmean - t.xmean) < margin) *
-                           (np.abs(tiles.ymean - t.ymean) < margin))
-        for i in I:
-            plt.text(tiles.xmean[i], tiles.ymean[i], '%.2f' % tiles.z_depth[i],
-                     color='k', ha='center', va='center',
-                     bbox=dict(edgecolor='none', facecolor='white'))
-
-        plt.axis([t.xmean-margin, t.xmean+margin,
-                  t.ymean-margin, t.ymean+margin])
-
         bstr = ''
         if t.bstarv < 20:
             bstr = ', bright star: %.1f' % t.bstarv
-        plt.suptitle('Tile %i, RA,Dec %.3f,%.3f, depths %.2f / %.2f / %.2f%s, Z_done %s, Z_expnum %i' %
-                  (t.tileid, t.ra, t.dec, t.depth_90, t.depth_95, t.depth_98, bstr, t.z_done == 1, t.z_expnum))
-
-
-        plt.subplot(1,2,2)
-        plt.imshow(depth, **ima)
-        plt.colorbar()
-        plt.plot(np.vstack((t.x1, t.x2, t.x3, t.x4, t.x1)),
-                 np.vstack((t.y1, t.y2, t.y3, t.y4, t.y1)),
-                 **tilestyle)
-        plt.text(t.xmean, t.ymean, '%.2f' % t.z_depth,
-                 color='r', ha='center', va='center',
-                 bbox=dict(edgecolor='none', facecolor='white'))
-        I = np.flatnonzero((np.abs(ccds.xmean - t.xmean) < margin) *
-                           (np.abs(ccds.ymean - t.ymean) < margin))
-        for i in I:
-            plt.text(ccds.xmean[i], ccds.ymean[i], '%.2f' % ccds.depth[i],
-                     color='k', ha='center', va='center',
-                     bbox=dict(edgecolor='none', facecolor='white'))
-        plt.plot(np.vstack((ccds.x1[I], ccds.x2[I], ccds.x3[I], ccds.x4[I], ccds.x1[I])),
-                 np.vstack((ccds.y1[I], ccds.y2[I], ccds.y3[I], ccds.y4[I], ccds.y1[I])),
-                 'k-')
-
-        plt.axis([t.xmean-margin, t.xmean+margin,
-                  t.ymean-margin, t.ymean+margin])
-        
-        ps.savefig()
+        # plt.clf()
+        # plt.subplot(1,2,1)
+        # plt.imshow(depth, **ima)
+        # plt.colorbar()
+        # plt.plot(np.vstack((t.x1, t.x2, t.x3, t.x4, t.x1)),
+        #          np.vstack((t.y1, t.y2, t.y3, t.y4, t.y1)),
+        #          **tilestyle)
+        # 
+        # I = np.flatnonzero((np.abs(tiles.xmean - t.xmean) < margin) *
+        #                    (np.abs(tiles.ymean - t.ymean) < margin))
+        # for i in I:
+        #     plt.text(tiles.xmean[i], tiles.ymean[i], '%.2f' % tiles.z_depth[i],
+        #              color='k', ha='center', va='center',
+        #              bbox=dict(edgecolor='none', facecolor='white'))
+        # 
+        # plt.axis([t.xmean-margin, t.xmean+margin,
+        #           t.ymean-margin, t.ymean+margin])
+        # 
+        # plt.suptitle('Tile %i, RA,Dec %.3f,%.3f, depths %.2f / %.2f / %.2f%s, Z_done %s, Z_expnum %i' %
+        #           (t.tileid, t.ra, t.dec, t.depth_90, t.depth_95, t.depth_98, bstr, t.z_done == 1, t.z_expnum))
+        # 
+        # 
+        # plt.subplot(1,2,2)
+        # plt.imshow(depth, **ima)
+        # plt.colorbar()
+        # plt.plot(np.vstack((t.x1, t.x2, t.x3, t.x4, t.x1)),
+        #          np.vstack((t.y1, t.y2, t.y3, t.y4, t.y1)),
+        #          **tilestyle)
+        # plt.text(t.xmean, t.ymean, '%.2f' % t.z_depth,
+        #          color='r', ha='center', va='center',
+        #          bbox=dict(edgecolor='none', facecolor='white'))
+        # I = np.flatnonzero((np.abs(ccds.xmean - t.xmean) < margin) *
+        #                    (np.abs(ccds.ymean - t.ymean) < margin))
+        # for i in I:
+        #     plt.text(ccds.xmean[i], ccds.ymean[i], '%.2f' % ccds.depth[i],
+        #              color='k', ha='center', va='center',
+        #              bbox=dict(edgecolor='none', facecolor='white'))
+        # plt.plot(np.vstack((ccds.x1[I], ccds.x2[I], ccds.x3[I], ccds.x4[I], ccds.x1[I])),
+        #          np.vstack((ccds.y1[I], ccds.y2[I], ccds.y3[I], ccds.y4[I], ccds.y1[I])),
+        #          'k-')
+        # 
+        # plt.axis([t.xmean-margin, t.xmean+margin,
+        #           t.ymean-margin, t.ymean+margin])
+        # 
+        # ps.savefig()
 
         plt.clf()
         plt.subplot(2,2,1)
@@ -1294,7 +1308,7 @@ def djs_update():
         plt.plot(np.vstack((t.x1, t.x2, t.x3, t.x4, t.x1)),
                  np.vstack((t.y1, t.y2, t.y3, t.y4, t.y1)),
                  **tilestyle)
-        plt.plot(brightstars.x, brightstars.y, 'c.')
+        plt.plot(brightstars.x, brightstars.y, 'ro')
         plt.axis([t.xmean-margin, t.xmean+margin,
                   t.ymean-margin, t.ymean+margin])
         plt.title('Total depth')
@@ -1315,7 +1329,7 @@ def djs_update():
             expnums = np.unique(ccds.expnum[I])
             for expnum in expnums:
                 J = I[ccds.expnum[I] == expnum]
-                
+
                 plt.text(np.mean(ccds.xmean[J]), np.mean(ccds.ymean[J]),
                          '%.2f' % np.median(ccds.depth[J]),
                          color='k', ha='center', va='center',
@@ -1384,7 +1398,8 @@ def when_missing():
 
         #cm = matplotlib.cm.viridis
         #cm = cmap_discretize(cm, 10)
-        cm = 'Greys'
+        #cm = 'Greys'
+        cm = 'bone'
         
         plt.clf()
         lo,hi = 21.5,23.5
@@ -1451,6 +1466,43 @@ def update_tiles():
     print(len(ann), 'annotated CCDs')
     ann.depth = ann.galdepth - ann.decam_extinction[:,4]
 
+    # What about the annotated-CCDs entries with tileid = 0?
+    ann[ann.tileid == 0].writeto('annotated-tileid-0.fits')
+    # These turn out to be from different propids, etc, and not on our
+    # tile centers.
+    
+    # max degrees between CCD center and nearest tile center
+    max_offset = 0.24
+
+    #K = np.flatnonzero((tiles.get('pass') <= 3) * (tiles.in_desi == 1))
+    # I,J,d = match_radec(ann.ra, ann.dec, tiles.ra[K], tiles.dec[K], max_offset,
+    #                     nearest=True)
+    # astrom_ok = np.zeros(len(ann), bool)
+    # astrom_ok[I] = True
+    # print(np.sum(astrom_ok), 'have good astrometry')
+    # ann.cut(astrom_ok)
+
+    from astrometry.util.starutil_numpy import degrees_between,distsq2deg,radectoxyz
+    
+    tileidmap = dict([(tid,i) for i,tid in enumerate(tiles.tileid)])
+    tileindex = np.array([tileidmap.get(tid,-1) for tid in ann.tileid])
+    K = np.flatnonzero(tileindex >= 0)
+    #d = np.array([degrees_between(ann.ra[k], ann.dec[k],
+    #                              tiles.ra[tileindex[k]], tiles.dec[tileindex[k]]) for k in K])
+    xyz1 = radectoxyz(ann.ra[K], ann.dec[K])
+    xyz2 = radectoxyz(tiles.ra[tileindex[K]], tiles.dec[tileindex[K]])
+    d2 = np.sum((xyz1 - xyz2)**2, axis=1)
+    d = distsq2deg(d2)
+
+    ann.astrom_ok = np.zeros(len(ann), bool)
+    ann.astrom_ok[K] = (d < max_offset)
+    print('Cut by bad astrom:', np.sum(d >= max_offset))
+    print('Good astrom:', Counter(ann.astrom_ok))
+    print('Bad astrom:', len(np.unique(ann.expnum[ann.astrom_ok == False])), 'exposures')
+    print(np.sum(ann.astrom_ok), 'with good astrom')
+
+    ann.cut(ann.astrom_ok)
+    
     ann.ccdnum = np.zeros(len(ann), np.int16)
     for i,ccdname in enumerate(ann.ccdname):
         ccdnum = int(ccdname.replace('CCD','').replace('ccd',''), 10)
@@ -1500,10 +1552,6 @@ def update_tiles():
             tileidmap[tid].append(i)
     print('Built tile id map for', len(tileidmap), 'tile ids')
 
-    # What about the annotated-CCDs entries with tileid = 0?
-    ann[ann.tileid == 0].writeto('annotated-tileid-0.fits')
-
-    
     II = np.flatnonzero((tiles.in_desi == 1) * (tiles.get('pass') <= 3) * (tiles.dec > 30))
     print('Checking', len(II), 'tiles')
 
@@ -1574,6 +1622,7 @@ def update_tiles():
     max_expnums = max([len(v) for v in flags.values()])
     tiles.expnums_zpts = np.zeros((len(tiles), max_expnums), np.int32)
     tiles.flags_zpts = np.zeros((len(tiles), max_expnums), np.int32)
+    tiles.maybe_good = np.zeros(len(tiles), bool)
     for i in unmatched:
         if not i in flags:
             continue
@@ -1582,6 +1631,17 @@ def update_tiles():
         #print('tile', tiles.tileid[i], 'expnums', ee, 'flags', ff)
         tiles.expnums_zpts[i,:len(ee)] = np.array(ee)
         tiles.flags_zpts[i,:len(ff)] = np.array(ff)
+
+        from legacyzpts.psfzpt_cuts import CCD_CUT_BITS
+        
+        maybe = False
+        for e,f in zip(ee,ff):
+            # Images marked with only "not_third_pix" might still be okay.
+            if f & ~CCD_CUT_BITS['not_third_pix'] == 0:
+                maybe = True
+        tiles.maybe_good[i] = maybe
+
+    print(np.sum(tiles.maybe_good), 'tiles with matches in the zeropoints files might be okay (third-pixel)')
     
     print(len(still_unmatched), 'still umatched')
 
@@ -1591,19 +1651,49 @@ def update_tiles():
             allbits |= vv
     print('All flags set:', psf_cuts_to_string(allbits))
 
+    tiles.recent = np.zeros(len(tiles), bool)
+    # still = []
+    # for i in still_unmatched:
+    #     if tiles.z_date[i] > recent_date:
+    #         print('Tile date', tiles.z_date[i], 'is recent')
+    #         if tiles.z_expnum[i] in bad_expid:
+    #             print('But in bad_expid')
+    #         else:
+    #             tiles.recent[i] = True
+    #             continue
+    #     still.append(i)
+    # still_unmatched = still
+
+    # still = []
+    for i in II:
+        if tiles.z_date[i] > recent_date:
+            print('Tile date', tiles.z_date[i], 'is recent')
+            if tiles.z_expnum[i] in bad_expid:
+                print('But in bad_expid')
+            else:
+                tiles.recent[i] = True
+
+    still = []
+    for i in still_unmatched:
+        if not tiles.recent[i]:
+            still.append(i)
+    still_unmatched = still
+                
+    print('After dropping recent tiles, still', len(still_unmatched), 'unmatched')
+    
     I = np.argsort(np.array([tiles.z_expnum[i] for i in still_unmatched]))
     still_unmatched = [still_unmatched[i] for i in I]
     
-    print('Z_DATE:', [tiles.z_date[i] for i in still_unmatched])
+    print('Unique Z_DATEs:', np.unique([tiles.z_date[i] for i in still_unmatched]))
     print('Z_EXPNUMs:', [tiles.z_expnum[i] for i in still_unmatched])
 
     for i in still_unmatched:
         expnum = tiles.z_expnum[i]
         date = tiles.z_date[i]
-        print()
-        print('Tile', tiles.tileid[i])
-        print('Expnum', expnum)
-        print('Date', date)
+        # print()
+        # print('Tile', tiles.tileid[i])
+        # print('Expnum', expnum)
+        # print('Date', date)
         I = np.flatnonzero(ann.expnum == expnum)
         #print(len(I), 'matches to annotated')
         assert(len(I) == 0)
@@ -1628,18 +1718,37 @@ def update_tiles():
             #print(len(I), 'matches to ccds 3+')
 
 
-    print()
-    print('DATE   EXPNUM')
-    for i in still_unmatched:
-        print(tiles.z_date[i], tiles.z_expnum[i])
-    
+    # print()
+    # print('DATE   EXPNUM')
+    # for i in still_unmatched:
+    #     print(tiles.z_date[i], tiles.z_expnum[i])
+
+    II = np.flatnonzero((tiles.in_desi == 1) * (tiles.get('pass') <= 3) * (tiles.dec > 30))
+    print('Checking', len(II), 'tiles')
+
+    print('In annotated-CCDs:', Counter((tiles.n_exp[II] > 0)))
+    print('In annotated-CCDs, or third-pixel:',
+          Counter((tiles.n_exp[II] > 0) | (tiles.maybe_good[II])))
+
+    print('In annotated-CCDs, or recent:',
+          Counter((tiles.n_exp[II] > 0) | (tiles.recent[II])))
+
+    good = ((tiles.n_exp[II] > 0) |
+            (tiles.maybe_good[II]) |
+            (tiles.recent[II]))
+    print('In annotated-CCDs, or third-pixl, or recent:', Counter(good))
+
     tiles.writeto('tiles-updated.fits.gz')
-        
+
+    tiles.z_done[II[np.logical_not(good)]] = 0
+    tiles.writeto('tiles-todo-dstn.fits')
+    
+    
 if __name__ == '__main__':
     #from_ccds()
+    #update_tiles()
     #when_missing()
     #tiles_todo()
-    #djs_update()
+    djs_update()
     #needed_tiles()
     #main()
-    update_tiles()
