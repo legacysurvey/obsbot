@@ -326,11 +326,10 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     ## Seeing
     plt.subplot(SP,1,1)
     for band,Tb in zip(bands, TT):
-        I = np.flatnonzero((Tb.seeing > 0) * (Tb.exptime > 60))
+        I = np.flatnonzero((Tb.seeing > 0) * (Tb.exptime > 30))
         if len(I):
             plt.plot(Tb.mjd_obs[I], Tb.seeing[I], 'o',
                      color=ccmap.get(band, xcolor), mec='k')
-
         I = np.flatnonzero(Tb.seeing > mx)
         if len(I):
             plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
