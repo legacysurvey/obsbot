@@ -10,7 +10,7 @@ from glob import glob
 from astrometry.libkd.spherematch import match_radec
 
 # Last date included in the CCDs files
-recent_date = '2018-01-30'
+recent_date = '2018-02-11'
 
 def mosaic_wcs(ra, dec, pixbin=1.):
     # This is pretty close to the outline of the four Mosaic chips.
@@ -52,10 +52,6 @@ def from_ccds():
         etile.compute(obs)
         T.airmass[i] = get_airmass(float(etile.alt))
     print('done computing airmasses')
-    
-    #####
-    #T.cut(T.expnum == 152537)
-    #print('Cut to', len(T), 'with expnum 152537')
     
     T.depth = T.galdepth - T.decam_extinction[:,4]
 
@@ -947,11 +943,11 @@ def djs_update():
     targetdepth = 22.5
 
     #tiles = fits_table('mzls-update/mosaic-tiles_obstatus-update.fits')
-    #tiles = fits_table('obstatus/mosaic-tiles_obstatus.fits')
-    #tiles.recent = np.array([d > recent_date for d in tiles.z_date])
-
-    tiles = fits_table('tiles-todo-dstn.fits')
-    tiles.recent = np.logical_or(tiles.recent, tiles.maybe_good)
+    tiles = fits_table('obstatus/mosaic-tiles_obstatus.fits')
+    tiles.recent = np.array([d > recent_date for d in tiles.z_date])
+    #tiles = fits_table('tiles-todo-dstn.fits')
+    #tiles.recent = np.logical_or(tiles.recent, tiles.maybe_good)
+    #tiles = fits_table('obstatus/mosaic-tiles_remaining.fits')
 
     tiles.cut(tiles.in_desi == 1)
     tiles.cut(tiles.get('pass') <= 3)
@@ -1017,11 +1013,13 @@ def djs_update():
 
     tilestyle = dict(color='1', linestyle='-')
     
-    cm = matplotlib.cm.jet
+    #cm = matplotlib.cm.jet
+    cm = matplotlib.cm.RdBu
     cm = cmap_discretize(cm, 10)
     cm.set_bad('0.7')
     ima = dict(interpolation='nearest', origin='lower',
-               vmin=22.0, vmax=22.5, cmap=cm)
+               vmin=22, vmax=23, cmap=cm)
+    #vmin=22.0, vmax=22.5, cmap=cm)
     def plot_depth(depth):
         depth = depth.copy()
         depth[depth < 10] = np.nan
@@ -1076,6 +1074,8 @@ def djs_update():
     currdepth = -2.5 * (np.log10(1./np.sqrt(iv1 + iv3)) - 9.)
     todo_tiles = tiles[tiles.z_done == 0]
     dd = measure_map_at_tiles(todo_tiles, wcs, currdepth)
+    if len(dd) == 0:
+        dd = np.zeros((0,3), np.float32)
     todo_tiles.depth_90 = dd[:,0]
     todo_tiles.depth_95 = dd[:,1]
     todo_tiles.depth_98 = dd[:,2]
@@ -1174,9 +1174,9 @@ def djs_update():
         plt.plot(np.vstack((sh.x1, sh.x2, sh.x3, sh.x4, sh.x1)),
                  np.vstack((sh.y1, sh.y2, sh.y3, sh.y4, sh.y1)),
                  **tilestyle)
-        ax = plt.axis()
-        plt.plot(brightstars.x, brightstars.y, 'c.')
-        plt.axis(ax)
+        #ax = plt.axis()
+        #plt.plot(brightstars.x, brightstars.y, 'c.')
+        #plt.axis(ax)
         plt.title('Pass %i shallow tiles after projected depth: %i' %
                   (passnum, len(sh)))
         ps.savefig()
@@ -1257,7 +1257,7 @@ def djs_update():
                 2: depth_p2,
                 3: depth_p3 }
 
-    cm = 'Greys'
+    cm = 'bone'
     
     ima = dict(interpolation='nearest', origin='lower',
                vmin=22.0, vmax=23, cmap=cm)
@@ -1268,10 +1268,24 @@ def djs_update():
     tilestyle = dict(color='r', linestyle='-', linewidth=3)
     
     plt.subplots_adjust(left=0.01, right=0.99, bottom=0.01, top=0.9)
+
+
+    remain = fits_table('obstatus/mosaic-tiles_remaining.fits')
+    print('Remaining tiles:', remain)
+    rids = set(remain.tileid)
+    print('rids:', len(rids))
+    I, = np.nonzero([tid in rids for tid in tiles.tileid])
+    plot_tiles = tiles[I]
+    print(len(plot_tiles), 'remaining tiles to plot')
+
+    plot_tiles.writeto('remaining-updated.fits')
+
+    return
     
     # sh.cut(sh.get('pass') == 1)
     # print(len(sh), 'shallow in pass 1')
-    for ii,t in enumerate(sh[:20]):
+    #for ii,t in enumerate(sh[:20]):
+    for ii,t in enumerate(plot_tiles):
         margin = 30
         bstr = ''
         if t.bstarv < 20:
@@ -1361,8 +1375,8 @@ def djs_update():
                       t.ymean-margin, t.ymean+margin])
             plt.title('Pass %i depth' % p)
 
-        plt.suptitle('Tile %i, RA,Dec %.3f,%.3f, depths %.2f / %.2f / %.2f%s, Z_done %s, Z_expnum %i' %
-                  (t.tileid, t.ra, t.dec, t.depth_90, t.depth_95, t.depth_98, bstr, t.z_done == 1, t.z_expnum))
+        plt.suptitle('Tile %i, Pass %i, RA,Dec %.3f,%.3f, depths %.2f / %.2f / %.2f%s, Z_done %s, Z_expnum %i' %
+                  (t.tileid, t.get('pass'), t.ra, t.dec, t.depth_90, t.depth_95, t.depth_98, bstr, t.z_done == 1, t.z_expnum))
         ps.savefig()
 
 
@@ -1615,7 +1629,7 @@ def update_tiles():
         # Look for matches in the PSF-zeropoints files.
         tid = tiles.tileid[i]
         if not tid in ccdidmap:
-            print('Tile id', tid, 'not in CCDs either')
+            print('Tile id', tid, 'z_date', tiles.z_date[i], 'expnum', tiles.z_expnum[i], 'not in CCDs files')
             still_unmatched.append(i)
             continue
         #print('Tile id', tid, ': CCD cuts:', [psf_cuts_to_string(ccds.ccd_cuts[i]) for i in ccdidmap[tid]])
@@ -1633,7 +1647,11 @@ def update_tiles():
                 byexpnum[expnum] |= ccds.ccd_cuts[ii]
             else:
                 byexpnum[expnum] = ccds.ccd_cuts[ii]
-        print('Tile id', tid, 'by exposure:', [psf_cuts_to_string(v, join='|') for v in byexpnum.values()])
+        bstar = ''
+        if tiles.bstarv[i] < 10:
+            bstar = 'Bright star: %.1f' % (tiles.bstarv[i])
+        print('Tile id', tid, 'z_date', tiles.z_date[i], 'expnums', sorted(byexpnum.keys()),
+              'with flags by exposure:', [psf_cuts_to_string(v, join='|') for v in byexpnum.values()], bstar)
         flags[i] = byexpnum.values()
         expnums[i] = byexpnum.keys()
 
@@ -1672,9 +1690,10 @@ def update_tiles():
     tiles.recent = np.zeros(len(tiles), bool)
     for i in II:
         if tiles.z_date[i] > recent_date:
-            print('Tile date', tiles.z_date[i], 'is recent')
+            #print('Tile date', tiles.z_date[i], 'is recent')
             if tiles.z_expnum[i] in bad_expid:
-                print('But in bad_expid')
+                pass
+                #print('But in bad_expid')
             else:
                 tiles.recent[i] = True
 
@@ -1728,24 +1747,53 @@ def update_tiles():
     print('In annotated-CCDs:', Counter((tiles.n_exp[II] > 0)))
     print('In annotated-CCDs, or third-pixel:',
           Counter((tiles.n_exp[II] > 0) | (tiles.maybe_good[II])))
-
     print('In annotated-CCDs, or recent:',
           Counter((tiles.n_exp[II] > 0) | (tiles.recent[II])))
-
     good = ((tiles.n_exp[II] > 0) |
             (tiles.maybe_good[II]) |
             (tiles.recent[II]))
-    print('In annotated-CCDs, or third-pixl, or recent:', Counter(good))
+    print('In annotated-CCDs, or third-pixel, or recent:', Counter(good))
 
+    # Find tiles near at edge of the footprint
+    tiles.edge = np.zeros(len(tiles), bool)
+    for passnum in [1,2,3]:
+        Ipass = np.flatnonzero((tiles.get('pass') == passnum) *
+                               (tiles.in_desi == 1) *
+                               (tiles.dec > 30))
+        tt = tiles[Ipass]
+        radius = (4096*2 + 100) * np.sqrt(2) * 0.262 / 3600.
+        I,J,d,count = match_radec(tt.ra, tt.dec, tt.ra, tt.dec, radius, notself=True,
+                                  nearest=True, count=True)
+        thecounts = np.zeros(len(tt), int)
+        thecounts[I] = count
+        I = (thecounts < 6)
+        tiles.edge[Ipass[I]] = True
+
+    print('Edge tiles of interest:', Counter(tiles.edge[II]))
 
     # Measure depth percentiles for tiles in depth maps
     wcs = anwcs('plot.wcs')
-    print('Measuring depth map...')
     depth = fitsio.read('depth-p9.fits')
     seeing = fitsio.read('seeing-p9.fits')
     transp = fitsio.read('transp-p9.fits')
+
+    # todo = tiles[II[good == False]]
+    # print(len(todo), 'to-do tiles')
+    # recent = tiles[II[tiles.recent[II]]]
+    # print(len(recent), 'recent tiles')
+    # # Assume nominal depth for to-do and recent tiles.
+    # todo.depth = np.zeros(len(todo)) + 22.2
+    # todo_depth = depth_map_for_tiles(todo)
+    # recent.depth = np.zeros(len(recent)) + 22.2
+    # recent_depth = depth_map_for_tiles(recent)
+    # 
+    # # Combine depths
+    # iv1 = 1./(10.**((depth - 22.5) / -2.5))**2
+    # iv2 = 1./(10.**((recent_depth - 22.5) / -2.5))**2
+    # iv3 = 1./(10.**((todo_depth - 22.5) / -2.5))**2
+    # depth = -2.5 * (np.log10(1./np.sqrt(iv1 + iv2 + iv3)) - 9.)
     
-    #iv1 = 1./(10.**((depth - 22.5) / -2.5))**2
+    print('Measuring depth map...')
     dd = measure_map_at_tiles(tiles[II], wcs, depth)
     tiles.depth_90 = np.zeros(len(tiles), np.float32)
     tiles.depth_95 = np.zeros(len(tiles), np.float32)
@@ -1755,6 +1803,7 @@ def update_tiles():
     tiles.depth_98[II] = dd[:,2]
 
     # Measure best seeing per tile area
+    print('Measuring seeing map...')
     dd = measure_map_at_tiles(tiles[II], wcs, seeing, pcts=[50,90])
     tiles.seeing_50 = np.zeros(len(tiles), np.float32)
     tiles.seeing_90 = np.zeros(len(tiles), np.float32)
@@ -1762,6 +1811,7 @@ def update_tiles():
     tiles.seeing_90[II] = dd[:,1]
 
     # Measure best transparency per tile area
+    print('Measuring transparency map...')
     dd = measure_map_at_tiles(tiles[II], wcs, transp, pcts=[50,90])
     tiles.transp_50 = np.zeros(len(tiles), np.float32)
     tiles.transp_90 = np.zeros(len(tiles), np.float32)
@@ -1770,14 +1820,370 @@ def update_tiles():
 
     tiles.writeto('tiles-updated.fits.gz')
     
-    tiles.z_done[II[np.logical_not(good)]] = 0
-    tiles.writeto('tiles-todo-dstn.fits')
+    #tiles.z_done[II[np.logical_not(good)]] = 0
+    #tiles.writeto('tiles-todo-dstn.fits')
 
+    redo = np.logical_or(good == False,
+                         (tiles.edge[II] == False) *
+                         np.logical_or(tiles.seeing_50[II] > 1.4,
+                                       np.logical_or(tiles.transp_50[II] < 0.75,
+                                                     tiles.depth_90[II] < 22.4)))
+    tiles[II[redo]].writeto('tiles-todo-dstn.fits')
+
+    
+
+
+def plot_tiles():
+    from legacypipe.survey import LegacySurveyData
+    from astrometry.util.plotutils import PlotSequence
+
+    plt.figure(1, figsize=(13,8))
+    fig = plt.figure(1)
+
+    tiles = fits_table('tiles-updated.fits.gz')
+    tiles.cut(tiles.in_desi == 1)
+    tiles.cut(tiles.get('pass') <= 3)
+    tiles.cut(tiles.dec > 30)
+    print(len(tiles), 'in footprint above Dec 30, pass 1/2/3')
+
+    tiles[tiles.seeing_50 > 1.4].writeto('tiles-todo-seeing.fits')
+    tiles[tiles.transp_50 < 0.75].writeto('tiles-todo-transparency.fits')
+
+    ps = PlotSequence('remain')
+    
+    wcs = anwcs('plot.wcs')
+    
+    tilesize = (4096 * 2 + 100) * 0.262 / 3600.
+
+    dlo = tiles.dec - tilesize/2.
+    dhi = tiles.dec + tilesize/2.
+    cosdec = np.cos(np.deg2rad(tiles.dec))
+    rlo = tiles.ra - tilesize/2./cosdec
+    rhi = tiles.ra + tilesize/2./cosdec
+    ok1,tiles.x1,tiles.y1 = wcs.radec2pixelxy(rlo,dlo)
+    ok2,tiles.x2,tiles.y2 = wcs.radec2pixelxy(rlo,dhi)
+    ok3,tiles.x3,tiles.y3 = wcs.radec2pixelxy(rhi,dhi)
+    ok4,tiles.x4,tiles.y4 = wcs.radec2pixelxy(rhi,dlo)
+    tiles.xmean = (tiles.x1 + tiles.x2 + tiles.x3 + tiles.x4) / 4.
+    tiles.ymean = (tiles.y1 + tiles.y2 + tiles.y3 + tiles.y4) / 4.
+    tiles.cut(np.lexsort((tiles.ra, tiles.dec)))
+    
+    fn = 'depth-p9.fits'
+    depth = fitsio.read(fn)
+
+    depth_p1 = fitsio.read('depth-p1.fits')
+    depth_p2 = fitsio.read('depth-p2.fits')
+    depth_p3 = fitsio.read('depth-p3.fits')
+    depth_p = { 1: depth_p1,
+                2: depth_p2,
+                3: depth_p3 }
+    
+    brightstars = fits_table('BrightStarCatalog_Vmaglt10.fits')
+    ok,brightstars.x,brightstars.y = wcs.radec2pixelxy(brightstars.ra,
+                                                       brightstars.dec)
+
+    survey = LegacySurveyData()
+    ccds = survey.get_annotated_ccds()
+    ccds.depth = ccds.galdepth - ccds.decam_extinction[:,4]
+    ok1,ccds.x1,ccds.y1 = wcs.radec2pixelxy(ccds.ra0, ccds.dec0)
+    ok2,ccds.x2,ccds.y2 = wcs.radec2pixelxy(ccds.ra1, ccds.dec1)
+    ok3,ccds.x3,ccds.y3 = wcs.radec2pixelxy(ccds.ra2, ccds.dec2)
+    ok4,ccds.x4,ccds.y4 = wcs.radec2pixelxy(ccds.ra3, ccds.dec3)
+    ccds.xmean = (ccds.x1 + ccds.x2 + ccds.x3 + ccds.x4) / 4.
+    ccds.ymean = (ccds.y1 + ccds.y2 + ccds.y3 + ccds.y4) / 4.
+    
+    remain = fits_table('obstatus/mosaic-tiles_remaining.fits')
+    print('Remaining tiles:', len(remain))
+    rids = set(remain.tileid)
+    I, = np.nonzero([tid in rids for tid in tiles.tileid])
+    remain = tiles[I]
+    print(len(remain), 'remaining tiles matched')
+    remain.cut(np.argsort(remain.depth_90))
+    remain.cut(remain.depth_90 < 22.5)
+    print(len(remain), 'are below 90th-pct depth before including recent data')
+
+    # Assume we get nominal depth for recently-observed tiles...
+    recent = fits_table('obstatus/mosaic-tiles_obstatus.fits')
+    recent.cut([d > recent_date for d in recent.z_date])
+    print(len(recent), 'tiles observed since', recent_date)
+    recent.depth = np.zeros(len(recent)) + 22.2
+    recent_depth = depth_map_for_tiles(recent)
+
+    print(len(set(remain.tileid).intersection(set(recent.tileid))), 'tiles in common between "remain" and "recent"')
+
+    # 
+    iv1 = 1./(10.**((depth - 22.5) / -2.5))**2
+    iv3 = 1./(10.**((recent_depth - 22.5) / -2.5))**2
+    assert(np.all(iv1 >= 0))
+    assert(np.all(iv3 >= 0))
+    # Update remaining tiles with depth from recent measurements...
+    recdepth = -2.5 * (np.log10(1./np.sqrt(iv1 + iv3)) - 9.)
+    dd = measure_map_at_tiles(remain, wcs, recdepth)
+    print('Assuming nominal depth for recent tiles,',
+          np.sum(dd[:,0] < 22.5), 'remaining tiles are shallow')
+    # Plug in that new depth, & cut
+    remain.depth_90 = dd[:,0]
+    remain.cut(np.argsort(remain.depth_90))
+    remain.cut(remain.depth_90 < 22.5)
+    print('Cut to', len(remain), 'remaining tiles')
+
+    print(np.sum(remain.bstarv < 10), 'remaining tiles contain bright stars')
+    
+    dtodo = tiles[(tiles.in_desi == 1) * (tiles.get('pass') <= 3) *
+                  (tiles.dec > 30) * (tiles.edge == False) *
+                  (tiles.depth_90 < 22.5)]
+    print(len(dtodo), 'non-edge tiles are under-depth')
+    dtodo.cut(dtodo.bstarv > 10.)
+    print(len(dtodo), 'tiles are under-depth and do not contain bright stars')
+    #dtodo = fits_table('tiles-todo-dstn.fits')
+    #print(len(dtodo), 'dstn todo tiles')
+    #dtodo.cut(dtodo.depth_90 < 22.5)
+    print(len(dtodo), 'dstn todo tiles under depth')
+    dtodo.cut(np.argsort(dtodo.depth_90))
+
+    print(len(set(remain.tileid).intersection(set(dtodo.tileid))), 'tiles are in common, dtodo & remain')
+
+    print(len(set(dtodo.tileid).intersection(set(recent.tileid))), 'tiles in common between "dtodo" and "recent"')
+    
+    # Assume we get nominal depth for David's tiles...
+    rr = remain.copy()
+    rr.depth = np.zeros(len(rr)) + 22.2
+    remain_depth = depth_map_for_tiles(rr)
+    iv2 = 1./(10.**((remain_depth - 22.5) / -2.5))**2
+    assert(np.all(iv2 >= 0))
+    rdepth = -2.5 * (np.log10(1./np.sqrt(iv1 + iv2 + iv3)) - 9.)
+    dd = measure_map_at_tiles(dtodo, wcs, rdepth)
+    print(np.sum(dd[:,0] < 22.5), 'dtodo tiles are shallow, assuming nominal depth for remaining+recent tiles')
+    print(np.sum(dd[:,0] < 22.45), 'dtodo tiles are < 22.45, assuming nominal depth for remaining+recent tiles')
+    print(np.sum(dd[:,0] < 22.4), 'dtodo tiles are < 22.4, assuming nominal depth for remaining+recent tiles')
+
+    # Plug in that new depth
+    dtodo.depth_90 = dd[:,0]
+    dtodo.cut(np.argsort(dtodo.depth_90))
+    dtodo.cut(dtodo.depth_90 < 22.5)
+    
+    print(len(set(dtodo.tileid).intersection(set(recent.tileid))), 'tiles in common between "dtodo" (after cutting on updated depth) and "recent"')
+
+    print(len(set(dtodo.tileid).intersection(set(remain.tileid))), 'tiles in common between "dtodo" (after cutting on updated depth) and "remain"')
+
+    print(len(set(remain.tileid).intersection(set(dtodo.tileid))), 'tiles are in common, dtodo & remain')
+
+    cm = 'bone'
+    
+    ima = dict(interpolation='nearest', origin='lower',
+               vmin=22.0, vmax=23, cmap=cm)
+    ima2 = dict(interpolation='nearest', origin='lower',
+                vmin=21.5, vmax=22.5, cmap=cm)
+    tilestyle = dict(color='r', linestyle='-', linewidth=3)
+
+    plt.subplots_adjust(left=0.01, right=0.99, bottom=0.01, top=0.9)
+    import matplotlib.gridspec as gridspec
+
+    plt.clf()
+    plt.imshow(recdepth, **ima)
+    plt.xticks([]); plt.yticks([])
+    plt.colorbar()
+    plt.title('Current+recent depth')
+    ps.savefig()
+
+    plt.clf()
+    plt.imshow(recdepth, **ima)
+    plt.xticks([]); plt.yticks([])
+    plt.colorbar()
+    ax = plt.axis()
+    plt.plot(remain.x1, remain.y1, 'r.')
+    plt.axis(ax)
+    plt.title('Current+recent depth; %i remaining shallow tiles' % len(remain))
+    ps.savefig()
+
+    plt.clf()
+    plt.imshow(rdepth, **ima)
+    plt.xticks([]); plt.yticks([])
+    plt.colorbar()
+    ax = plt.axis()
+    plt.plot(dtodo.x1, dtodo.y1, 'r.')
+    plt.axis(ax)
+    plt.title('Current+recent+remaining depth; %i dstn shallow tiles' % len(dtodo))
+    ps.savefig()
+    
+    ### HACK
+    plot_tiles = dtodo
+    #plot_tiles = dtodo[np.argsort(dd[:,0])[:10]]
+    #plot_tiles = remain
+
+    iv_total = iv1 + iv2 + iv3
+
+    dotiles = []
+    
+    #for ii,t in enumerate(plot_tiles):
+    while True:
+
+        ii = np.argmin(dtodo.depth_90)
+        t = dtodo[ii]
+        print('Worst tile:', t.tileid, 'at depth', t.depth_90)
+        
+        if t.depth_90 > 22.5:
+            print('Tile', t.tileid, 'is already at depth')
+            break
+            #continue
+
+        margin = 30
+        bstr = ''
+        if t.bstarv < 20:
+            bstr = ', bright star: %.1f' % t.bstarv
+
+        if False:
+            plt.clf()
+            spec = gridspec.GridSpec(ncols=3, nrows=2)
+            fig.add_subplot(spec[0, :2])
+            plt.imshow(depth, **ima)
+            plt.xticks([]); plt.yticks([])
+            plt.plot(t.x1, t.y1, 'r.')
+    
+            #plt.subplot(2,3,1)
+            fig.add_subplot(spec[0, 2])
+            plt.imshow(depth, **ima)
+            plt.xticks([]); plt.yticks([])
+            plt.colorbar()
+            plt.plot(np.vstack((t.x1, t.x2, t.x3, t.x4, t.x1)),
+                     np.vstack((t.y1, t.y2, t.y3, t.y4, t.y1)),
+                     **tilestyle)
+            plt.plot(brightstars.x, brightstars.y, 'ro')
+            plt.axis([t.xmean-margin, t.xmean+margin,
+                      t.ymean-margin, t.ymean+margin])
+            plt.title('Total depth')
+    
+            for p in [1,2,3]:
+    
+                fig.add_subplot(spec[1, p-1])
+                #plt.subplot(2,2,p+1)
+                plt.imshow(depth_p[p], **ima2)
+                plt.colorbar()
+                plt.xticks([]); plt.yticks([])
+                margin = 30
+                plt.plot(np.vstack((t.x1, t.x2, t.x3, t.x4, t.x1)),
+                         np.vstack((t.y1, t.y2, t.y3, t.y4, t.y1)),
+                         **tilestyle)
+    
+                I = np.flatnonzero((np.abs(ccds.xmean - t.xmean) < margin) *
+                                   (np.abs(ccds.ymean - t.ymean) < margin) *
+                                   (ccds.tilepass == p))
+                expnums = np.unique(ccds.expnum[I])
+                for expnum in expnums:
+                    J = I[ccds.expnum[I] == expnum]
+    
+                    plt.text(np.mean(ccds.xmean[J]), np.mean(ccds.ymean[J]),
+                             '%.2f' % np.median(ccds.depth[J]),
+                             color='k', ha='center', va='center',
+                             bbox=dict(edgecolor='none', facecolor='white'))
+                
+                plt.axis([t.xmean-margin, t.xmean+margin,
+                          t.ymean-margin, t.ymean+margin])
+                plt.title('Pass %i depth' % p)
+    
+            cstr = ''
+            if t.tileid in set(remain.tileid):
+                cstr = ', in Remaining-tiles'
+            plt.suptitle('Tile %i, Pass %i, RA,Dec %.3f,%.3f, depths %.2f / %.2f / %.2f, Z_expnum %i%s%s' %
+                      (t.tileid, t.get('pass'), t.ra, t.dec, t.depth_90, t.depth_95, t.depth_98, t.z_expnum, bstr, cstr))
+            ps.savefig()
+
+
+        print('Added tile', t.tileid)
+        thistile = dtodo[np.array([ii])]
+        thistile.depth = np.zeros(len(thistile)) + 22.2
+        tdepth = depth_map_for_tiles(thistile)
+        iv = 1./(10.**((tdepth - 22.5) / -2.5))**2
+        iv_total += iv
+        rdepth = -2.5 * (np.log10(1./np.sqrt(iv_total)) - 9.)
+        dd = measure_map_at_tiles(dtodo, wcs, rdepth)
+        print('Before:', np.sum(dtodo.depth_90 < 22.5), 'tiles are under-depth; this tile', t.depth_90)
+        print('After :', np.sum(dd[:,0] < 22.5), 'tiles are under-depth; this tile', dd[ii,0])
+        dtodo.depth_90 = dd[:,0]
+
+        depth = rdepth
+        
+        dotiles.append(ii)
+
+    inorder = dtodo[np.array(dotiles)]
+    inorder.writeto('tiles-dstn-inorder.fits')
+
+    plt.clf()
+    plt.imshow(depth, **ima)
+    plt.xticks([]); plt.yticks([])
+    plt.colorbar()
+    ax = plt.axis()
+    plt.plot(inorder.x1, inorder.y1, 'r.')
+    plt.axis(ax)
+    plt.title('%i dstn shallow tiles in order' % len(inorder))
+    ps.savefig()
+
+
+    # If I *don't* assume that all David's *remain* tiles get taken, what
+    # is the ordered list?
+    # Have to re-cut the 'dtodo' list, because we previously cut after
+    # assuming we got the "remain" tiles.
+    dtodo = tiles[(tiles.in_desi == 1) * (tiles.get('pass') <= 3) *
+                  (tiles.dec > 30) * (tiles.edge == False) *
+                  (tiles.depth_90 < 22.5) * (tiles.bstarv > 10.)]
+    
+    iv_total = iv1 + iv3
+
+    rdepth = -2.5 * (np.log10(1./np.sqrt(iv_total)) - 9.)
+    dd = measure_map_at_tiles(dtodo, wcs, rdepth)
+    dtodo.depth_90 = dd[:,0]
+    print('Without assuming the remaining tiles are taken:', np.sum(dtodo.depth_90 < 22.5), 'tiles are under-depth')
+    
+    dotiles = []
+    while True:
+        ii = np.argmin(dtodo.depth_90)
+        t = dtodo[ii]
+        print('Worst tile:', t.tileid, 'at depth', t.depth_90)
+        
+        if t.depth_90 > 22.5:
+            print('Tile', t.tileid, 'is already at depth')
+            break
+
+        thistile = dtodo[np.array([ii])]
+        thistile.depth = np.zeros(len(thistile)) + 22.2
+        tdepth = depth_map_for_tiles(thistile)
+        iv = 1./(10.**((tdepth - 22.5) / -2.5))**2
+        iv_total += iv
+        rdepth = -2.5 * (np.log10(1./np.sqrt(iv_total)) - 9.)
+        dd = measure_map_at_tiles(dtodo, wcs, rdepth)
+        print('Before:', np.sum(dtodo.depth_90 < 22.5), 'tiles are under-depth; this tile', t.depth_90)
+        print('After :', np.sum(dd[:,0] < 22.5), 'tiles are under-depth; this tile', dd[ii,0])
+        dtodo.depth_90 = dd[:,0]
+
+        dotiles.append(ii)
+
+    inorder = dtodo[np.array(dotiles)]
+    inorder.writeto('tiles-dstn-inorder-solo.fits')
+    print(len(inorder), 'tiles without assuming "remaining" tiles get taken')
+    print(len(set(inorder.tileid).intersection(set(remain.tileid))), 'tiles in common with "remain"')
+
+    plt.clf()
+    plt.imshow(rdepth, **ima)
+    plt.xticks([]); plt.yticks([])
+    plt.colorbar()
+    ax = plt.axis()
+    plt.plot(inorder.x1, inorder.y1, 'r.')
+    plt.axis(ax)
+    plt.title('%i dstn shallow tiles in order' % len(inorder))
+    ps.savefig()
+
+    
 if __name__ == '__main__':
     from_ccds()
-    update_tiles()
+    #update_tiles()
+    djs_update()
+    plot_tiles()
     #when_missing()
     #tiles_todo()
-    #djs_update()
     #needed_tiles()
     #main()
+
+    # tiles = fits_table('mosaic-tiles_remaining.fits')
+    # ps = PlotSequence('remaining')
+    # plot_tiles(tiles, ps)
+    
