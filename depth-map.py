@@ -95,12 +95,10 @@ def from_ccds(mosaic=False, ngc=True):
     T.cut(T.ccd_cuts == 0)
     print('Cut to', len(T), 'with ccd_cuts == 0')
 
-    T = T[:1000]
-
-    # if ngc:
-    #     T.l, T.b = radectolb(T.ra, T.dec)
-    #     T.cut(T.b > 0)
-    #     print('Cut to', len(T), 'in NGC')
+    if ngc:
+        T.l, T.b = radectolb(T.ra, T.dec)
+        T.cut(T.b > 0)
+        print('Cut to', len(T), 'in NGC')
     
     print('Tile passes from CCDs table:')
     print(Counter(T.tilepass).most_common())
@@ -168,15 +166,15 @@ def from_ccds(mosaic=False, ngc=True):
     #         plt.colorbar()
     #         plt.savefig('airmass-%s-p%i.png' % (band, passnum))
     
-    imgs = []
-    seeings = []
-    transps = []
-
     compress = '[compress R; qz -1e-4]'
 
     #bands = ['r','z']
 
     for band in bands:
+        imgs = []
+        seeings = []
+        transps = []
+
         target = target_depths[band]
 
         for passnum in [1,2,3, 0,  9]:
@@ -304,6 +302,8 @@ def from_ccds(mosaic=False, ngc=True):
             plt.figure(1)
             plt.clf()
             depthmap[depthmap == 0] = np.nan
+            # this can happen for p9, not sure how
+            depthmap[depthmap < 0] = np.nan
     
             plt.plot(tiles.x, H-tiles.y, 'k.', alpha=0.1)
             
@@ -319,23 +319,22 @@ def from_ccds(mosaic=False, ngc=True):
             fn = prefix + '-12.png'
             plt.savefig(fn)
             print('Wrote', fn)
-            #if passnum == 0:
-            if True:
-                goal = target
-                drange = 1.
-                plt.clf()
-                depthmap[depthmap == 0] = np.nan
-                plt.imshow(depthmap, interpolation='nearest', origin='lower',
-                           vmin=goal-drange, vmax=goal+drange, cmap='RdBu')
-                plt.xticks([]); plt.yticks([])
-                draw_grid(wcs, H, ra_gridlines, dec_gridlines,
-                          ra_labels,dec_labels, **drawkwargs)
-                cb = plt.colorbar(orientation='horizontal')
-                cb.set_label('Depth')
-                plt.title(tt)
-                plt.savefig('depth-%s-p%i-13.png' % (band, passnum))
 
-
+            goal = target
+            drange = 1.
+            plt.clf()
+            plt.plot(tiles.x, H-tiles.y, 'k.', alpha=0.1)
+            cm2 = matplotlib.cm.RdBu
+            cm2.set_bad('0.7')
+            plt.imshow(depthmap, interpolation='nearest', origin='lower',
+                       vmin=goal-drange, vmax=goal+drange, cmap=cm2)
+            plt.xticks([]); plt.yticks([])
+            draw_grid(wcs, H, ra_gridlines, dec_gridlines,
+                      ra_labels,dec_labels, **drawkwargs)
+            cb = plt.colorbar(orientation='horizontal')
+            cb.set_label('Depth')
+            plt.title(tt)
+            plt.savefig('depth-%s-p%i-13.png' % (band, passnum))
             
 def main():
     W,H = 1300,800
@@ -897,7 +896,8 @@ def depth_map_for_ccds(survey, ccds, mosaic, ngc, targetdepth):
             # wcs = anwcs_create_hammer_aitoff(*args)
             # plot.wcs = anwcs_create_hammer_aitoff(*args)
 
-            W,H = 16000,2500
+            #W,H = 16000,2500
+            W,H = 32000,5000
             plot = Plotstuff(size=(W,H), outformat='png')
             pixscale = 340. / W
             ra,dec = 110., 8.
@@ -907,6 +907,13 @@ def depth_map_for_ccds(survey, ccds, mosaic, ngc, targetdepth):
             wcs = anwcs_create_cea_wcs(*args)
             plot.wcs = anwcs_create_cea_wcs(*args)
             anwcs_write(wcs, 'cea.wcs')
+
+            # ?
+            refy2 = (H/2. + 0.5 - dec / pixscale)
+            args2 = (ra, 0., refx, refy, pixscale, W, H, False)
+            wcs2 = anwcs_create_cea_wcs(*args2)
+            anwcs_write(wcs, 'cea-flip.wcs')
+
             
     #anwcs_write(wcs_unflipped, 'plot.wcs')
     
@@ -1041,34 +1048,55 @@ def depth_map_for_tiles(tiles):
     return img
 
 
-def measure_map_at_tiles(tiles, wcs, depth, pcts=[10,5,2]):
+def measure_map_at_tiles(tiles, wcs, depth, pcts=[10,5,2], get_polygon=None):
     from astrometry.util.miscutils import point_in_poly
-    # from mosaic_wcs
-    tilesize = (4096 * 2 + 100) * 0.262 / 3600.
 
-    dlo = tiles.dec - tilesize/2.
-    dhi = tiles.dec + tilesize/2.
-    cosdec = np.cos(np.deg2rad(tiles.dec))
-    rlo = tiles.ra - tilesize/2./cosdec
-    rhi = tiles.ra + tilesize/2./cosdec
-    ok1,tiles.x1,tiles.y1 = wcs.radec2pixelxy(rlo,dlo)
-    ok2,tiles.x2,tiles.y2 = wcs.radec2pixelxy(rlo,dhi)
-    ok3,tiles.x3,tiles.y3 = wcs.radec2pixelxy(rhi,dhi)
-    ok4,tiles.x4,tiles.y4 = wcs.radec2pixelxy(rhi,dlo)
+    if get_polygon is None:
+        # from mosaic_wcs
+        tilesize = (4096 * 2 + 100) * 0.262 / 3600.
+        dlo = tiles.dec - tilesize/2.
+        dhi = tiles.dec + tilesize/2.
+        cosdec = np.cos(np.deg2rad(tiles.dec))
+        rlo = tiles.ra - tilesize/2./cosdec
+        rhi = tiles.ra + tilesize/2./cosdec
+        ok1,tiles.x1,tiles.y1 = wcs.radec2pixelxy(rlo,dlo)
+        ok2,tiles.x2,tiles.y2 = wcs.radec2pixelxy(rlo,dhi)
+        ok3,tiles.x3,tiles.y3 = wcs.radec2pixelxy(rhi,dhi)
+        ok4,tiles.x4,tiles.y4 = wcs.radec2pixelxy(rhi,dlo)
 
     depths = []
     for itile,t in enumerate(tiles):
+        if get_polygon is None:
+            poly = np.array([[t.x1,t.y1],[t.x2,t.y2],[t.x3,t.y3],[t.x4,t.y4]])
+        else:
+            poly = get_polygon(tiles[itile], wcs)
         # -1: FITS to numpy coords
-        x0 = int(np.floor(min(t.x1, t.x2, t.x3, t.x4))) - 1
-        y0 = int(np.floor(min(t.y1, t.y2, t.y3, t.y4))) - 1
-        x1 = int(np.ceil( max(t.x1, t.x2, t.x3, t.x4))) - 1
-        y1 = int(np.ceil( max(t.y1, t.y2, t.y3, t.y4))) - 1
+        x0 = int(np.floor(min(poly[:,0]))) - 1
+        y0 = int(np.floor(min(poly[:,1]))) - 1
+        x1 = int(np.ceil (max(poly[:,0]))) - 1
+        y1 = int(np.ceil (max(poly[:,1]))) - 1
+        # x0 = int(np.floor(min(t.x1, t.x2, t.x3, t.x4))) - 1
+        # y0 = int(np.floor(min(t.y1, t.y2, t.y3, t.y4))) - 1
+        # x1 = int(np.ceil( max(t.x1, t.x2, t.x3, t.x4))) - 1
+        # y1 = int(np.ceil( max(t.y1, t.y2, t.y3, t.y4))) - 1
         tiledepth = depth[y0:y1+1, x0:x1+1]
         xx,yy = np.meshgrid(np.arange(x0, x1+1), np.arange(y0, y1+1))
-        poly = np.array([[t.x1,t.y1],[t.x2,t.y2],[t.x3,t.y3],[t.x4,t.y4]])
+
         inpoly = point_in_poly(xx, yy, poly-1)
+        #print('inpoly:', tiledepth[inpoly].shape)
         p = np.percentile(tiledepth[inpoly], pcts)
         depths.append(p)
+
+        # if itile < 5:
+        #     plt.clf()
+        #     plt.imshow(tiledepth * inpoly,
+        #                interpolation='nearest', origin='lower')
+        #     plt.plot(poly[:,0]-x0-1, poly[:,1]-y0-1, 'k-')
+        #     plt.savefig('tile-poly-%02i.png' % itile)
+
+        if itile % 1000 == 0:
+            print(itile, 'of', len(tiles))
+        
     return np.array(depths)
 
 def djs_update():
@@ -1649,11 +1677,6 @@ def update_tiles():
     print(len(ann), 'annotated CCDs')
     ann.depth = ann.galdepth - ann.decam_extinction[:,4]
 
-    # What about the annotated-CCDs entries with tileid = 0?
-    #ann[ann.tileid == 0].writeto('annotated-tileid-0.fits')
-    # These turn out to be from different propids, etc, and not on our
-    # tile centers.
-    
     # max degrees between CCD center and its tile center
     max_offset = 0.24
 
@@ -2312,10 +2335,116 @@ def plot_tiles():
     plt.title('%i dstn shallow tiles in order' % len(inorder))
     ps.savefig()
 
+def update_decam_tiles():
+    tiles = fits_table('obstatus/decam-tiles_obstatus.fits')
+    print(len(tiles), 'tiles')
+
+    Idesi = np.flatnonzero(tiles.in_desi == 1)
+    print(len(Idesi), 'tiles in DESI')
+
+    bands = ['g','r','z']
+
+    F=fitsio.FITS('decam.wcs.gz')
+    H,W = 4094,2046
+    refra,refdec = 180.,0.
+    wcsmap = dict()
+    for i in range(1, len(F)):
+        hdr = F[i].read_header()
+        stepsize = 1024
+        wcs = wcs_pv2sip_hdr(hdr, stepsize=stepsize, H=H)
+        #print(wcs.get_crval())
+        wcs.set_crval((refra, refdec))
+        wcs.set_height(H)
+        ccdname = hdr['EXTNAME'].strip()
+        wcsmap[ccdname] = wcs
+    outline = [
+        ('N29', W, 0),
+        ('N29', 0, 0),
+        ('N25', W, 0),
+        ('N25', 0, 0),
+        ('N20', W, 0),
+        ('N20', 0, 0),
+        ('N14', W, 0),
+        ('N8' , 0, 0),
+        ('N1' , W, 0),
+        ('S1' , 0, 0),
+        ('S8' , W, 0),
+        ('S14', 0, 0),
+        ('S20', W, 0),
+        ('S20', 0, 0),
+        ('S25', W, 0),
+        ('S25', 0, 0),
+        ('S29', W, 0),
+        ('S29', 0, 0),
+        ('S31', 0, H),
+        ('S31', W, H),
+        ('S28', 0, H),
+        ('S28', W, H),
+        ('S24', 0, H),
+        ('S24', W, H),
+        ('S19', 0, H),
+        ('S13', W, H),
+        ('S7' , 0, H),
+        ('N7' , W, H),
+        ('N13', 0, H),
+        ('N19', W, H),
+        ('N24', 0, H),
+        ('N24', W, H),
+        ('N28', 0, H),
+        ('N28', W, H),
+        ('N31', 0, H),
+        ('N31', W, H),
+        #('N29', W, 0),
+    ]
+    ra,dec = [],[]
+    for ccd,x,y in outline:
+        r,d = wcsmap[ccd].pixelxy2radec(x, y)
+        ra.append(r)
+        dec.append(d)
+    dra = np.array(ra) - refra
+    ddec = np.array(dec) - refdec
+
+    def get_polygon(tile, wcs):
+        cosdec = np.cos(np.deg2rad(tile.dec))
+        ra,dec = tile.ra + dra / cosdec, tile.dec + ddec
+        ok,x,y = wcs.radec2pixelxy(ra, dec)
+        H,W = wcs.shape
+        x = np.clip(x, 1, W)
+        y = np.clip(y, 1, H)
+        return np.vstack((x,y)).T
+
+    #depthmaps = dict([(b, fitsio.read('depth-%s-p9.fits.fz' % b)) for b in bands])
+    
+    # brutal... the cea.wcs file is upside-down (Y flipped) relative
+    # to the depth map.
+    wcs = anwcs('cea.wcs')
+    
+    for band in bands:
+        fn = 'depth-%s-p9.fits.fz' % band
+        print('Reading', fn)
+        depthmap = fitsio.read(fn)
+        # Brutal
+        depthmap = np.flipud(depthmap)
+        assert(depthmap.shape == wcs.shape)
+        
+        dd = measure_map_at_tiles(tiles[Idesi], wcs, depthmap,
+                                  get_polygon=get_polygon)
+        depth_90 = np.zeros(len(tiles), np.float32)
+        depth_95 = np.zeros(len(tiles), np.float32)
+        depth_98 = np.zeros(len(tiles), np.float32)
+        depth_90[Idesi] = dd[:,0]
+        depth_95[Idesi] = dd[:,1]
+        depth_98[Idesi] = dd[:,2]
+
+        tiles.set('depth_%s_90' % band, depth_90)
+        tiles.set('depth_%s_95' % band, depth_95)
+        tiles.set('depth_%s_98' % band, depth_98)
+        
+    tiles.writeto('tiles-depths.fits')    
     
 if __name__ == '__main__':
     from_ccds(ngc=False)
-    #update_tiles()
+    update_decam_tiles()
     #djs_update()
     #plot_tiles()
     #when_missing()
