@@ -170,11 +170,10 @@ def from_ccds(mp, mosaic=False, ngc=True):
     if ngc:
         prefix_pat = 'depth-ngc-%s-p%i'
     else:
-        prefix_pat = 'depth-%s-p%i'
+        prefix_pat = 'maps/depth-%s-p%i'
 
     assert((not mosaic) and (not ngc))
     wcsfn = 'cea.wcs'
-    wcs = anwcs(wcsfn, -1)
     
     args = []
     for band in bands:
@@ -192,6 +191,9 @@ def from_ccds(mp, mosaic=False, ngc=True):
                 args.append((fn, survey, T[I], mosaic, ngc, target))
     print('mp.map depths for', len(args), 'maps...')
     mp.map(write_depth_map, args)
+    print('Created maps.  Making plots...')
+
+    wcs = anwcs(wcsfn)
 
     for band in bands:
         totaldepth = 0.
@@ -305,6 +307,8 @@ def from_ccds(mp, mosaic=False, ngc=True):
             H,W = depthmap.shape
             imkwa = dict(interpolation='nearest', origin='lower',
                          extent=[0,W,0,H])
+
+            lo,hi = target-1, target+1
             
             plt.figure(1)
             plt.clf()
@@ -850,7 +854,9 @@ def write_depth_map(X):
     fn = X[0]
     args = X[1:]
     depthmap,wcs = depth_map_for_ccds(*args)
+    print('Writing', fn)
     fitsio.write(fn + compress, depthmap, clobber=True)
+    print('Wrote', fn)
 
 def depth_map_for_ccds(survey, ccds, mosaic, ngc, targetdepth):
     if mosaic:
@@ -903,8 +909,8 @@ def depth_map_for_ccds(survey, ccds, mosaic, ngc, targetdepth):
             # plot.wcs = anwcs_create_hammer_aitoff(*args)
 
             #W,H = 16000,2500
-            #W,H = 32000,5000
-            W,H = 64000,10000
+            W,H = 32000,5000
+            #W,H = 64000,10000
             plot = Plotstuff(size=(W,H), outformat='png')
             pixscale = 340. / W
             ra,dec = 110., 8.
@@ -957,16 +963,35 @@ def depth_map_for_ccds(survey, ccds, mosaic, ngc, targetdepth):
         plot.apply_settings()
         plot.plot('outline')
 
-    img = plot.get_image_as_numpy(flip=True)
+    # print('Creating numpy image...')
+    # img1 = plot.get_image_as_numpy(flip=True)
+    # img1 = img1[:,:,0]
+    # print('img1 range', img1.min(), img1.max())
+
+    print('Getting numpy view...')
+    img = plot.get_image_as_numpy_view()
+    print('Img:', img.shape, 'dtype', img.dtype)
+    print('Img range:', img.min(), img.max())
+
+    print('Cutting numpy image...')
+    #img = img[:,:,3]
     img = img[:,:,0]
+    # Format is argb32
+    #print('Cutting numpy image...')
+    #img = img[:,:,0]
+    print('Scaling image...')
     # It's a uint8; scale and convert to float
     img = img * 1./255.
     #print('Image', img.dtype, img.shape)
     img /= maxfrac
     # Now it's in factor of detiv of target depth.
     # back to sig -> depth
-    img = -2.5 * (np.log10(1./np.sqrt(img * targetiv)) - 9.)
+    with np.errstate(invalid='ignore', divide='ignore'):
+        img = -2.5 * (np.log10(1./np.sqrt(img * targetiv)) - 9.)
     img[np.logical_not(np.isfinite(img))] = 0.
+    # FIXME -- flip?
+
+    print('Depth range:', img.min(), img.max())
     return img, wcs
 
 
@@ -2456,7 +2481,8 @@ def update_decam_tiles():
 if __name__ == '__main__':
     from astrometry.util.multiproc import multiproc
 
-    threads = 12
+    #threads = 12
+    threads = 1
 
     mp = multiproc(threads)
     from_ccds(mp, ngc=False)
