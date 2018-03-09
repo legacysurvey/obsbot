@@ -38,12 +38,12 @@ def draw_grid(wcs, H, ra_gridlines, dec_gridlines, ra_labels, dec_labels,
         rr = dec_gridlines_ras
         dd = np.zeros_like(rr) + d
         ok,xx,yy = wcs.radec2pixelxy(rr, dd)
-        plt.plot(xx, H-yy, 'k-', alpha=0.1)
+        plt.plot(xx, yy, 'k-', alpha=0.1)
     for r in ra_gridlines:
         dd = ra_gridlines_decs
         rr = np.zeros_like(dd) + r
         ok,xx,yy = wcs.radec2pixelxy(rr, dd)
-        plt.plot(xx, H-yy, 'k-', alpha=0.1)
+        plt.plot(xx, yy, 'k-', alpha=0.1)
     if ra_labels_dec is None:
         ra_labels_dec = dec_gridlines[0]
     if dec_labels_ra is None:
@@ -51,7 +51,7 @@ def draw_grid(wcs, H, ra_gridlines, dec_gridlines, ra_labels, dec_labels,
     ok,xx,yy = wcs.radec2pixelxy(ra_labels, ra_labels_dec)
     plt.xticks(xx-0.5, ra_labels)
     ok,xx,yy = wcs.radec2pixelxy(dec_labels_ra, dec_labels)
-    plt.yticks(H-(yy-0.5), dec_labels)
+    plt.yticks((yy-0.5), dec_labels)
     plt.axis(ax)
 
 def from_ccds(mp, mosaic=False, ngc=True):
@@ -172,9 +172,6 @@ def from_ccds(mp, mosaic=False, ngc=True):
     else:
         prefix_pat = 'maps/depth-%s-p%i'
 
-    assert((not mosaic) and (not ngc))
-    wcsfn = 'cea.wcs'
-    
     args = []
     for band in bands:
         target = target_depths[band]
@@ -193,6 +190,9 @@ def from_ccds(mp, mosaic=False, ngc=True):
     mp.map(write_depth_map, args)
     print('Created maps.  Making plots...')
 
+    assert((not mosaic) and (not ngc))
+    #wcsfn = 'cea.wcs'
+    wcsfn = 'cea-flip.wcs'
     wcs = anwcs(wcsfn)
 
     for band in bands:
@@ -312,7 +312,7 @@ def from_ccds(mp, mosaic=False, ngc=True):
             
             plt.figure(1)
             plt.clf()
-            plt.plot(tiles.x, H-tiles.y, 'k.', alpha=0.1)
+            plt.plot(tiles.x, tiles.y, 'k.', alpha=0.1)
             plt.imshow(depthmap[::4,::4],
                        vmin=lo, vmax=hi, cmap=cm, **imkwa)
             plt.xticks([]); plt.yticks([])
@@ -327,7 +327,7 @@ def from_ccds(mp, mosaic=False, ngc=True):
             goal = target
             drange = 1.
             plt.clf()
-            plt.plot(tiles.x, H-tiles.y, 'k.', alpha=0.1)
+            plt.plot(tiles.x, tiles.y, 'k.', alpha=0.1)
             cm2 = matplotlib.cm.RdBu
             cm2.set_bad('0.9')
             plt.imshow(depthmap[::4,::4],
@@ -928,7 +928,7 @@ def depth_map_for_ccds(survey, ccds, mosaic, ngc, targetdepth):
 
             # ?
             refy2 = (H/2. + 0.5 - dec / pixscale)
-            args2 = (ra, 0., refx, refy, pixscale, W, H, False)
+            args2 = (ra, 0., refx, refy2, pixscale, W, H, False)
             wcs2 = anwcs_create_cea_wcs(*args2)
             wcsfn = 'cea-flip.wcs'
             if os.path.exists(wcsfn):
@@ -973,26 +973,32 @@ def depth_map_for_ccds(survey, ccds, mosaic, ngc, targetdepth):
     print('Img:', img.shape, 'dtype', img.dtype)
     print('Img range:', img.min(), img.max())
 
-    print('Cutting numpy image...')
-    #img = img[:,:,3]
-    img = img[:,:,0]
-    # Format is argb32
-    #print('Cutting numpy image...')
-    #img = img[:,:,0]
-    print('Scaling image...')
-    # It's a uint8; scale and convert to float
-    img = img * 1./255.
-    #print('Image', img.dtype, img.shape)
-    img /= maxfrac
-    # Now it's in factor of detiv of target depth.
-    # back to sig -> depth
+    print('Converting to depth...')
+    fimg = np.empty((H,W), np.float32)
     with np.errstate(invalid='ignore', divide='ignore'):
-        img = -2.5 * (np.log10(1./np.sqrt(img * targetiv)) - 9.)
-    img[np.logical_not(np.isfinite(img))] = 0.
-    # FIXME -- flip?
+        fimg[:,:] = -2.5 * (np.log10(1./np.sqrt(
+            img[::-1,:,0] * (1./255. * targetiv/maxfrac))) - 9.)
+    # note the "::-1" vertical flip here
 
-    print('Depth range:', img.min(), img.max())
-    return img, wcs
+    # print('Cutting numpy image...')
+    # #img = img[:,:,3]
+    # img = img[:,:,0]
+    # # Format is argb32
+    # #print('Cutting numpy image...')
+    # #img = img[:,:,0]
+    # print('Scaling image...')
+    # # It's a uint8; scale and convert to float
+    # img = img * 1./255.
+    # #print('Image', img.dtype, img.shape)
+    # img /= maxfrac
+    # # Now it's in factor of detiv of target depth.
+    # # back to sig -> depth
+    # with np.errstate(invalid='ignore', divide='ignore'):
+    #     img = -2.5 * (np.log10(1./np.sqrt(img * targetiv)) - 9.)
+    fimg[np.logical_not(np.isfinite(fimg))] = 0.
+    # FIXME -- flip?
+    print('Depth range:', fimg.min(), fimg.max())
+    return fimg, wcs
 
 
 def best_seeing_map_for_ccds(survey, ccds):
@@ -2451,29 +2457,21 @@ def update_decam_tiles():
 
     #depthmaps = dict([(b, fitsio.read('depth-%s-p9.fits.fz' % b)) for b in bands])
     
-    # brutal... the cea.wcs file is upside-down (Y flipped) relative
-    # to the depth map.
-    wcs = anwcs('cea.wcs')
+    wcs = anwcs('cea-flip.wcs')
     
     depths = []
     for band in bands:
         fn = 'maps/depth-%s-p9.fits.fz' % band
         print('Reading', fn)
         depthmap = fitsio.read(fn)
-        # Brutal
-        depthmap = np.flipud(depthmap)
         assert(depthmap.shape == wcs.shape)
         depths.append(depthmap)
 
-    # FIXME -- beware of flips here
-        
     # Adding projected depth of to-do tiles
     for iband,band in enumerate(bands):
         fn = 'maps/depth-todo-%s.fits.fz' % band
         print('Reading', fn)
         depthmap = fitsio.read(fn)
-        # Brutal
-        #depthmap = np.flipud(depthmap)
         assert(depthmap.shape == wcs.shape)
 
         iv1 = 1./(10.**((depthmap - 22.5) / -2.5))**2
@@ -2566,14 +2564,40 @@ def decam_todo_maps(mp):
 
     
 if __name__ == '__main__':
+
+    if False:
+        W,H = 32000,5000
+        pixscale = 340. / W
+        ra,dec = 110., 8.
+        refx = W/2. + 0.5
+        refy = (H/2. + 0.5 - dec / -pixscale)
+        args = (ra, 0., refx, refy, pixscale, W, H, True)
+        wcs = anwcs_create_cea_wcs(*args)
+        wcsfn = 'cea.wcs'
+        if os.path.exists(wcsfn):
+            print('WCS file exists:', wcsfn)
+        else:
+            anwcs_write(wcs, wcsfn)
+
+        # ?
+        refy2 = (H/2. + 0.5 - dec / pixscale)
+        args2 = (ra, 0., refx, refy2, pixscale, W, H, False)
+        wcs2 = anwcs_create_cea_wcs(*args2)
+        wcsfn = 'cea-flip.wcs'
+        if os.path.exists(wcsfn):
+            print('WCS file exists:', wcsfn)
+        else:
+            anwcs_write(wcs2, wcsfn)
+
+
     from astrometry.util.multiproc import multiproc
 
-    #threads = 12
-    threads = 3
+    threads = 12
+    #threads = 3
 
     mp = multiproc(threads)
-    #from_ccds(mp, ngc=False)
-    #decam_todo_maps(mp)
+    from_ccds(mp, ngc=False)
+    decam_todo_maps(mp)
     update_decam_tiles()
     #djs_update()
     #plot_tiles()
