@@ -8,9 +8,12 @@ from collections import Counter
 from scipy.ndimage.filters import minimum_filter, median_filter
 from glob import glob
 from astrometry.libkd.spherematch import match_radec
+from astrometry.util.starutil_numpy import radectolb
 
 # Last date included in the CCDs files
 recent_date = '2018-02-11'
+
+target_depths = dict(g=24.0, r=23.4, z=22.5)
 
 def mosaic_wcs(ra, dec, pixbin=1.):
     # This is pretty close to the outline of the four Mosaic chips.
@@ -20,236 +23,318 @@ def mosaic_wcs(ra, dec, pixbin=1.):
               float(W), float(H))
     return tan
 
-def from_ccds():
+def draw_grid(wcs, H, ra_gridlines, dec_gridlines, ra_labels, dec_labels,
+              ra_gridlines_decs=None, dec_gridlines_ras=None,
+              ra_labels_dec=None, dec_labels_ra=None):
+    if ra_gridlines_decs is None:
+        ra_gridlines_decs = dec_gridlines
+    if dec_gridlines_ras is None:
+        ra_gridlines_decs = ra_gridlines
+    ax = plt.axis()
+    for d in dec_gridlines:
+        rr = dec_gridlines_ras
+        dd = np.zeros_like(rr) + d
+        ok,xx,yy = wcs.radec2pixelxy(rr, dd)
+        plt.plot(xx, H-yy, 'k-', alpha=0.1)
+    for r in ra_gridlines:
+        dd = ra_gridlines_decs
+        rr = np.zeros_like(dd) + r
+        ok,xx,yy = wcs.radec2pixelxy(rr, dd)
+        plt.plot(xx, H-yy, 'k-', alpha=0.1)
+    if ra_labels_dec is None:
+        ra_labels_dec = dec_gridlines[0]
+    if dec_labels_ra is None:
+        dec_labels_ra = ra_gridlines[0]
+    ok,xx,yy = wcs.radec2pixelxy(ra_labels, ra_labels_dec)
+    plt.xticks(xx-0.5, ra_labels)
+    ok,xx,yy = wcs.radec2pixelxy(dec_labels_ra, dec_labels)
+    plt.yticks(H-(yy-0.5), dec_labels)
+    plt.axis(ax)
+
+def from_ccds(mosaic=False, ngc=True):
     from legacypipe.survey import LegacySurveyData
 
     # W,H = 1300,800
     # plot = Plotstuff(size=(W,H), outformat='png')
     # zoom = 2.5
     # plot.wcs = anwcs_create_hammer_aitoff(195., 60., zoom, W, H, True)
+    drawkwargs = {}
 
+    if mosaic:
+        obsfn = 'obstatus/mosaic-tiles_obstatus.fits'
+        dec_gridlines = list(range(30, 90, 10))
+        dec_gridlines_ras = np.arange(0, 360, 1)
+        ra_gridlines = range(0, 360, 30)
+        ra_gridlines_decs = np.arange(20, 90, 1.)
+    else:
+        obsfn = 'obstatus/decam-tiles_obstatus.fits'
+
+        if ngc:
+            dec_gridlines = list(range(-10, 31, 10))
+            dec_gridlines_ras = np.arange(100, 280, 1)
+            ra_gridlines = range(120, 271, 30)
+            ra_gridlines_decs = np.arange(-10, 36, 1.)
+            ra_labels = ra_gridlines
+            dec_labels = dec_gridlines
+        else:
+            dec_gridlines = list(range(-20, 40, 10))
+            dec_gridlines_ras = np.arange(0, 360, 1)
+            #dec_gridlines_ras = np.arange(-80, 280, 1)
+            ra_gridlines = range(0, 360, 30)
+            ra_gridlines_decs = np.arange(-20, 41, 1.)
+            ra_labels = ra_gridlines
+            dec_labels = dec_gridlines
+        drawkwargs.update(
+            ra_gridlines_decs=ra_gridlines_decs,
+            dec_gridlines_ras=dec_gridlines_ras,
+            )
+    
     survey = LegacySurveyData()
     T = survey.get_annotated_ccds()
     print('Read', len(T), 'CCDs from annotated table')
     T.cut(T.ccd_cuts == 0)
     print('Cut to', len(T), 'with ccd_cuts == 0')
+
+    if ngc:
+        T.l, T.b = radectolb(T.ra, T.dec)
+        T.cut(T.b > 0)
+        print('Cut to', len(T), 'in NGC')
+    
     print('Tile passes from CCDs table:')
     print(Counter(T.tilepass).most_common())
 
-    from camera_mosaic import ephem_observer
-    from obsbot import mjd_to_ephem_date, get_airmass
-    from jnox import ra2hms, dec2dms
-    import ephem
-    print('Recomputing airmasses assuming MOSAIC camera...')
-    T.airmass = np.zeros(len(T), np.float32)
-    obs = ephem_observer()
-    for i,(mjd,ra,dec) in enumerate(zip(T.mjd_obs, T.ra, T.dec)):
-        obs.date = mjd_to_ephem_date(mjd)
-        rastr  = ra2hms(ra)
-        decstr = dec2dms(dec)
-        ephemstr = str('%s,f,%s,%s,20' % ('name', rastr, decstr))
-        etile = ephem.readdb(ephemstr)
-        etile.compute(obs)
-        T.airmass[i] = get_airmass(float(etile.alt))
-    print('done computing airmasses')
+    if mosaic:
+        from camera_mosaic import ephem_observer
+        from obsbot import mjd_to_ephem_date, get_airmass
+        from jnox import ra2hms, dec2dms
+        import ephem
+        print('Recomputing airmasses assuming MOSAIC camera...')
+        T.airmass = np.zeros(len(T), np.float32)
+        obs = ephem_observer()
+        for i,(mjd,ra,dec) in enumerate(zip(T.mjd_obs, T.ra, T.dec)):
+            obs.date = mjd_to_ephem_date(mjd)
+            rastr  = ra2hms(ra)
+            decstr = dec2dms(dec)
+            ephemstr = str('%s,f,%s,%s,20' % ('name', rastr, decstr))
+            etile = ephem.readdb(ephemstr)
+            etile.compute(obs)
+            T.airmass[i] = get_airmass(float(etile.alt))
+        print('done computing airmasses')
+
+    from camera import nominal_cal
+
+    bands = ['g','r','z']
     
-    T.depth = T.galdepth - T.decam_extinction[:,4]
+    nom = nominal_cal
+
+    T.band = np.array([f.strip() for f in T.filter])
+    
+    # ugrizY
+    band_index = dict(g=1, r=2, z=4)
+    iband = np.array([band_index[b] for b in T.band])
+    T.depth = T.galdepth - T.decam_extinction[np.arange(len(T)), iband]
 
     T.seeing = T.fwhm * T.pixscale_mean
-    kx = 0.10
-    zp0 = 26.4
-    T.transparency = 10.**(-0.4 * (zp0 - T.ccdzpt - kx*(T.airmass-1.)))
 
+    #kx = 0.10
+    #zp0 = 26.4
+    #T.transparency = 10.**(-0.4 * (zp0 - T.ccdzpt - kx*(T.airmass-1.)))
+    kx = dict([(b, nom.fiducial_exptime(b).k_co) for b in bands])
+    zp0 = dict([(b, nom.zeropoint(b)) for b in bands])
+    T.transparency = np.array([10.**(-0.4 * (zp0[b] - zpt - kx[b]*(airmass-1.)))
+                               for b,zpt,airmass in zip(T.band, T.ccdzpt, T.airmass)])
+    
     plt.figure(1, figsize=(13,8))
-    plt.subplots_adjust(left=0.01, right=0.99, bottom=0.01, top=0.95)
+    #plt.subplots_adjust(left=0.01, right=0.99, bottom=0.01, top=0.95)
+    plt.subplots_adjust(left=0.03, right=0.99, bottom=0.01, top=0.95)
     
-    plt.clf()
-    plt.scatter(T.ra, T.dec, c=T.transparency, s=3)
-    plt.colorbar()
-    plt.savefig('transp.png')
-
-    for passnum in [1,2,3]:
-        plt.clf()
-        I = np.flatnonzero(T.tilepass == passnum)
-        plt.scatter(T.ra[I], T.dec[I], c=T.transparency[I], s=3)
-        plt.colorbar()
-        plt.savefig('transp-p%i.png' % passnum)
-
-        plt.clf()
-        plt.scatter(T.ra[I], T.dec[I], c=T.airmass[I], s=3)
-        plt.colorbar()
-        plt.savefig('airmass-p%i.png' % passnum)
+    # plt.clf()
+    # plt.scatter(T.ra, T.dec, c=T.transparency, s=3)
+    # plt.colorbar()
+    # plt.savefig('transp.png')
+    # 
+    # for band in bands:
+    #     for passnum in [1,2,3]:
+    #         plt.clf()
+    #         I = np.flatnonzero((T.tilepass == passnum) * (T.band == band))
+    #         plt.scatter(T.ra[I], T.dec[I], c=T.transparency[I], s=3)
+    #         plt.colorbar()
+    #         plt.savefig('transp-%s-p%i.png' % (band, passnum))
+    # 
+    #         plt.clf()
+    #         plt.scatter(T.ra[I], T.dec[I], c=T.airmass[I], s=3)
+    #         plt.colorbar()
+    #         plt.savefig('airmass-%s-p%i.png' % (band, passnum))
     
-    imgs = []
-    seeings = []
-    transps = []
+    compress = '[compress R; qz -1e-4]'
 
-    for passnum in [1,2,3, 0,  9]:
-        if passnum == 9:
-            I = []
-            tt = 'All Passes'
-        else:
-            I = np.flatnonzero((T.tilepass == passnum) *
-                               (T.depth > 10))
-            tt = 'Pass %i' % passnum
-        print(len(I), 'tiles for pass', passnum)
+    #bands = ['r','z']
 
-        cm = matplotlib.cm.viridis
-        #cm = matplotlib.cm.jet
-        cm = cmap_discretize(cm, 10)
+    for band in bands:
+        imgs = []
+        seeings = []
+        transps = []
 
-        if passnum != 9:
-            seeing,transp,wcs = best_seeing_map_for_ccds(survey, T[I])
-            seeings.append(seeing)
-            transps.append(transp)
-        else:
-            seeing = seeings[0]
-            transp = transps[0]
-            for s,t in zip(seeings, transps):
-                # Handle zeros...
-                sI = (seeing == 0)
-                seeing[sI] = s[sI]
-                sI = (s != 0)
-                seeing[sI] = np.minimum(seeing[sI], s[sI])
-                transp = np.maximum(transp, t)
-        
-        lo,hi = 0.5, 2.0
-        if passnum == 9:
+        target = target_depths[band]
+
+        for passnum in [1,2,3, 0,  9]:
+
+            if ngc:
+                prefix = 'depth-ngc-%s-p%i' % (band, passnum)
+            else:
+                prefix = 'depth-%s-p%i' % (band, passnum)
+                
+            if passnum == 9:
+                I = []
+                tt = '%s band, All Passes' % band
+            else:
+                I = np.flatnonzero((T.tilepass == passnum) *
+                                   (T.depth > 10) *
+                                   (T.band == band))
+                tt = '%s band, Pass %i' % (band, passnum)
+            print(len(I), 'tiles for pass', passnum, 'band', band)
+    
+            cm = matplotlib.cm.viridis
+            #cm = matplotlib.cm.jet
+            cm = cmap_discretize(cm, 10)
+    
+            # if passnum != 9:
+            #     seeing,transp,wcs = best_seeing_map_for_ccds(survey, T[I])
+            #     seeings.append(seeing)
+            #     transps.append(transp)
+            # else:
+            #     seeing = seeings[0]
+            #     transp = transps[0]
+            #     for s,t in zip(seeings, transps):
+            #         # Handle zeros...
+            #         sI = (seeing == 0)
+            #         seeing[sI] = s[sI]
+            #         sI = (s != 0)
+            #         seeing[sI] = np.minimum(seeing[sI], s[sI])
+            #         transp = np.maximum(transp, t)
+            # 
+            # lo,hi = 0.5, 2.0
+            # if passnum == 9:
+            #     plt.clf()
+            #     plt.imshow(median_filter(seeing, size=3),
+            #                interpolation='nearest', origin='lower',
+            #                vmin=lo, vmax=hi, cmap=cm)
+            #     plt.xticks([]); plt.yticks([])
+            #     plt.title('Best seeing (unfiltered): %s' % tt)
+            #     plt.colorbar()
+            #     plt.savefig('depth-%s-p%i-17.png' % (band, passnum))
+            # 
+            # plt.clf()
+            # plt.imshow(median_filter(seeing, size=3),
+            #            interpolation='nearest', origin='lower',
+            #            vmin=lo, vmax=hi, cmap=cm)
+            # plt.xticks([]); plt.yticks([])
+            # plt.title('Best seeing: %s' % tt)
+            # plt.colorbar()
+            # plt.savefig('depth-%s-p%i-15.png' % (band, passnum))
+            # 
+            # plt.clf()
+            # lo,hi = 0.5, 1.1
+            # plt.imshow(transp, interpolation='nearest', origin='lower',
+            #            vmin=lo, vmax=hi, cmap=cm)
+            # plt.xticks([]); plt.yticks([])
+            # plt.title('Best transparency: %s' % tt)
+            # plt.colorbar()
+            # plt.savefig('depth-%s-p%i-16.png' % (band, passnum))
+
+            if passnum != 9:
+                depthmap,wcs = depth_map_for_ccds(survey, T[I], mosaic, ngc, target)
+                iv = 1./(10.**((depthmap - 22.5) / -2.5))**2
+                imgs.append(iv)
+            else:
+                iv = imgs[0]
+                for im in imgs[1:]:
+                    iv += im
+                depthmap = -2.5 * (np.log10(1./np.sqrt(iv)) - 9.)
+    
+            #wcs_unflipped = anwcs_create_hammer_aitoff(195., 65., zoom, W, H, False)
+            #anwcs_write(wcs_unflipped, 'plot.wcs')
+            #hdr = fitsio.read_header('plot.wcs')
+            fn = '%s.fits.fz' % (prefix)
+            if os.path.exists(fn):
+                os.remove(fn)
+            fitsio.write(fn + compress, depthmap, clobber=True)
+            #header=hdr,
+            print('Unique depths:', np.unique(depthmap.ravel()))
+    
+            #fitsio.write('seeing-%s-p%i.fits' % (band, passnum), seeing, clobber=True)
+            #fitsio.write('transp-%s-p%i.fits' % (band, passnum), transp, clobber=True)
+            
+            H,W = wcs.shape
+            
+            plt.figure(2)
+    
             plt.clf()
-            plt.imshow(median_filter(seeing, size=3),
-                       interpolation='nearest', origin='lower',
-                       vmin=lo, vmax=hi, cmap=cm)
-            plt.xticks([]); plt.yticks([])
-            plt.title('Best seeing (unfiltered): %s' % tt)
-            plt.colorbar()
-            plt.savefig('depth-p%i-17.png' % passnum)
-        
-        plt.clf()
-        plt.imshow(median_filter(seeing, size=3),
-                   interpolation='nearest', origin='lower',
-                   vmin=lo, vmax=hi, cmap=cm)
-        plt.xticks([]); plt.yticks([])
-        plt.title('Best seeing: %s' % tt)
-        plt.colorbar()
-        plt.savefig('depth-p%i-15.png' % passnum)
-
-        plt.clf()
-        lo,hi = 0.5, 1.1
-        plt.imshow(transp, interpolation='nearest', origin='lower',
-                   vmin=lo, vmax=hi, cmap=cm)
-        plt.xticks([]); plt.yticks([])
-        plt.title('Best transparency: %s' % tt)
-        plt.colorbar()
-        plt.savefig('depth-p%i-16.png' % passnum)
-        
-        if passnum != 9:
-            depthmap,wcs = depth_map_for_ccds(survey, T[I])
-            iv = 1./(10.**((depthmap - 22.5) / -2.5))**2
-            imgs.append(iv)
-        else:
-            iv = imgs[0]
-            for im in imgs[1:]:
-                iv += im
-            depthmap = -2.5 * (np.log10(1./np.sqrt(iv)) - 9.)
-
-        #wcs_unflipped = anwcs_create_hammer_aitoff(195., 65., zoom, W, H, False)
-        #anwcs_write(wcs_unflipped, 'plot.wcs')
-        #hdr = fitsio.read_header('plot.wcs')
-        fitsio.write('depth-p%i.fits' % passnum, depthmap, clobber=True)
-        #header=hdr,
-        print('Unique depths:', np.unique(depthmap.ravel()))
-
-        fitsio.write('seeing-p%i.fits' % passnum, seeing, clobber=True)
-        fitsio.write('transp-p%i.fits' % passnum, transp, clobber=True)
-        
-        H,W = wcs.shape
-        
-        plt.figure(2)
-
-        plt.clf()
-        lo,hi = 21.5,23.5
-        hh = depthmap.ravel()
-        hh = hh[hh != 0]
-        plt.hist(np.clip(hh, lo, hi), 50, range=(lo,hi))
-        plt.xlim(lo, hi)
-        plt.title('Depths: %s' % tt)
-        plt.yticks([])
-        plt.ylabel('sky area')
-        plt.savefig('depth-p%i-10.png' % passnum)
-
-        plt.clf()
-        plt.hist(np.clip(T.depth[I], lo, hi), 50, range=(lo,hi))
-        plt.xlim(lo, hi)
-        plt.title('Depths: %s' % tt)
-        plt.ylabel('Number of CCDs')
-        plt.savefig('depth-p%i-11.png' % passnum)
-
-        tiles = fits_table('obstatus/mosaic-tiles_obstatus.fits')
-        #if passnum in [1,2,3]:
-        #tiles.cut(tiles.get('pass') == passnum)
-        tiles.cut(tiles.get('pass') == 1)
-        tiles.cut(tiles.in_desi == 1)
-        ok,tiles.x,tiles.y = wcs.radec2pixelxy(tiles.ra, tiles.dec)
-        tiles.x -= 1
-        tiles.y -= 1
-        tiles.cut(ok)
-        
-        plt.figure(1)
-        plt.clf()
-        depthmap[depthmap == 0] = np.nan
-
-        plt.plot(tiles.x, H-tiles.y, 'k.', alpha=0.1)
-        
-        plt.imshow(depthmap, interpolation='nearest', origin='lower',
-                   vmin=lo, vmax=hi, cmap=cm)
-        plt.xticks([]); plt.yticks([])
-        ax = plt.axis()
-        H,W = depthmap.shape
-        for d in range(30, 90, 10):
-            rr = np.arange(0, 360, 1)
-            dd = np.zeros_like(rr) + d
-            ok,xx,yy = wcs.radec2pixelxy(rr, dd)
-            plt.plot(xx, H-yy, 'k-', alpha=0.1)
-        for r in range(0, 360, 30):
-            dd = np.arange(20, 90, 1.)
-            rr = np.zeros_like(dd) + r
-            ok,xx,yy = wcs.radec2pixelxy(rr, dd)
-            plt.plot(xx, H-yy, 'k-', alpha=0.1)
-        plt.axis(ax)
-        plt.colorbar()
-        plt.title('Depth: %s' % tt)
-        plt.savefig('depth-p%i-12.png' % passnum)
-
-
-        #if passnum == 0:
-        if True:
-            goal = 22.5
-            drange = 1.
-        
+            lo,hi = target-1, target+1
+            hh = depthmap.ravel()
+            hh = hh[hh != 0]
+            plt.hist(np.clip(hh, lo, hi), 50, range=(lo,hi))
+            plt.xlim(lo, hi)
+            plt.title('Depths: %s' % tt)
+            plt.yticks([])
+            plt.ylabel('sky area')
+            plt.savefig('depth-%s-p%i-10.png' % (band, passnum))
+    
+            if len(I):
+                plt.clf()
+                plt.hist(np.clip(T.depth[I], lo+0.001, hi-0.001), 50,
+                         range=(lo,hi))
+                plt.xlim(lo, hi)
+                plt.title('Depths: %s' % tt)
+                plt.ylabel('Number of CCDs')
+                plt.savefig('depth-%s-p%i-11.png' % (band, passnum))
+    
+            tiles = fits_table(obsfn)
+            #if passnum in [1,2,3]:
+            #tiles.cut(tiles.get('pass') == passnum)
+            tiles.cut(tiles.get('pass') == 1)
+            tiles.cut(tiles.in_desi == 1)
+            ok,tiles.x,tiles.y = wcs.radec2pixelxy(tiles.ra, tiles.dec)
+            tiles.x -= 1
+            tiles.y -= 1
+            tiles.cut(ok)
+            
+            plt.figure(1)
             plt.clf()
             depthmap[depthmap == 0] = np.nan
+            # this can happen for p9, not sure how
+            depthmap[depthmap < 0] = np.nan
+    
+            plt.plot(tiles.x, H-tiles.y, 'k.', alpha=0.1)
+            
             plt.imshow(depthmap, interpolation='nearest', origin='lower',
-                       vmin=goal-drange, vmax=goal+drange, cmap='RdBu')
+                       vmin=lo, vmax=hi, cmap=cm)
             plt.xticks([]); plt.yticks([])
-            ax = plt.axis()
             H,W = depthmap.shape
-            for d in range(30, 90, 10):
-                rr = np.arange(0, 360, 1)
-                dd = np.zeros_like(rr) + d
-                ok,xx,yy = wcs.radec2pixelxy(rr, dd)
-                plt.plot(xx, H-yy, 'k-', alpha=0.1)
-            for r in range(0, 360, 30):
-                dd = np.arange(20, 90, 1.)
-                rr = np.zeros_like(dd) + r
-                ok,xx,yy = wcs.radec2pixelxy(rr, dd)
-                plt.plot(xx, H-yy, 'k-', alpha=0.1)
-            plt.axis(ax)
-            cb = plt.colorbar()
+
+            draw_grid(wcs, H, ra_gridlines, dec_gridlines, ra_labels,dec_labels,
+                      **drawkwargs)
+            plt.colorbar(orientation='horizontal')
+            plt.title('Depth: %s' % tt)
+            fn = prefix + '-12.png'
+            plt.savefig(fn)
+            print('Wrote', fn)
+
+            goal = target
+            drange = 1.
+            plt.clf()
+            plt.plot(tiles.x, H-tiles.y, 'k.', alpha=0.1)
+            cm2 = matplotlib.cm.RdBu
+            cm2.set_bad('0.7')
+            plt.imshow(depthmap, interpolation='nearest', origin='lower',
+                       vmin=goal-drange, vmax=goal+drange, cmap=cm2)
+            plt.xticks([]); plt.yticks([])
+            draw_grid(wcs, H, ra_gridlines, dec_gridlines,
+                      ra_labels,dec_labels, **drawkwargs)
+            cb = plt.colorbar(orientation='horizontal')
             cb.set_label('Depth')
             plt.title(tt)
-            plt.savefig('depth-p%i-13.png' % passnum)
-
-
+            plt.savefig('depth-%s-p%i-13.png' % (band, passnum))
             
 def main():
     W,H = 1300,800
@@ -761,13 +846,76 @@ def needed_tiles():
 
         
     
-def depth_map_for_ccds(survey, ccds):
-    W,H = 4800,3200
-    plot = Plotstuff(size=(W,H), outformat='png')
-    zoom = 2.7
-    args = (195., 65., zoom, W, H, True)
-    wcs = anwcs_create_hammer_aitoff(*args)
-    plot.wcs = anwcs_create_hammer_aitoff(*args)
+def depth_map_for_ccds(survey, ccds, mosaic, ngc, targetdepth):
+    if mosaic:
+        W,H = 4800,3200
+        plot = Plotstuff(size=(W,H), outformat='png')
+        zoom = 2.7
+        args = (195., 65., zoom, W, H, True)
+        wcs = anwcs_create_hammer_aitoff(*args)
+        plot.wcs = anwcs_create_hammer_aitoff(*args)
+    else:
+        if ngc:
+            W,H = 8000,2000
+            plot = Plotstuff(size=(W,H), outformat='png')
+
+            # refra,refdec = 190., 12.
+            # cd = 180. / W
+            # wcs = anwcs_new_tan(Tan(refra, refdec, W/2.+0.5, H/2.+0.5,
+
+            # zoom = 2.5
+            # args = (190., 12., zoom, W, H, True)
+            # wcs = anwcs_create_hammer_aitoff(*args)
+            # plot.wcs = anwcs_create_hammer_aitoff(*args)
+
+            pixscale = 180. / W
+            ra,dec = 190., 12.
+            refx = W/2. + 0.5
+            refy = (H/2. + 0.5 - dec / -pixscale)
+            args = (ra, 0., refx, refy, pixscale, W, H, True)
+            wcs = anwcs_create_cea_wcs(*args)
+            plot.wcs = anwcs_create_cea_wcs(*args)
+
+            anwcs_write(wcs, 'ngc-cea.wcs')
+
+        else:
+            # W,H = 15000,2500
+            # plot = Plotstuff(size=(W,H), outformat='png')
+            # zoom = 1.2
+            # args = (100., 5., zoom, W, H, True)
+            # wcs = anwcs_create_hammer_aitoff(*args)
+            # plot.wcs = anwcs_create_hammer_aitoff(*args)
+            # W,H = 8000,2000
+            # plot = Plotstuff(size=(W,H), outformat='png')
+
+            # refra,refdec = 190., 12.
+            # cd = 180. / W
+            # wcs = anwcs_new_tan(Tan(refra, refdec, W/2.+0.5, H/2.+0.5,
+            # zoom = 2.5
+            # args = (190., 12., zoom, W, H, True)
+            # wcs = anwcs_create_hammer_aitoff(*args)
+            # plot.wcs = anwcs_create_hammer_aitoff(*args)
+
+            #W,H = 16000,2500
+            W,H = 32000,5000
+            plot = Plotstuff(size=(W,H), outformat='png')
+            pixscale = 340. / W
+            ra,dec = 110., 8.
+            refx = W/2. + 0.5
+            refy = (H/2. + 0.5 - dec / -pixscale)
+            args = (ra, 0., refx, refy, pixscale, W, H, True)
+            wcs = anwcs_create_cea_wcs(*args)
+            plot.wcs = anwcs_create_cea_wcs(*args)
+            anwcs_write(wcs, 'cea.wcs')
+
+            # ?
+            refy2 = (H/2. + 0.5 - dec / pixscale)
+            args2 = (ra, 0., refx, refy, pixscale, W, H, False)
+            wcs2 = anwcs_create_cea_wcs(*args2)
+            anwcs_write(wcs, 'cea-flip.wcs')
+
+            
+    #anwcs_write(wcs_unflipped, 'plot.wcs')
     
     plot.color = 'black'
     plot.plot('fill')
@@ -776,7 +924,6 @@ def depth_map_for_ccds(survey, ccds):
     plot.outline.stepsize = 2000
     plot.op = CAIRO_OPERATOR_ADD
     
-    targetdepth = 22.5
     # This gives a 1-mag margin on the target depth
     maxfrac = 0.16
     
@@ -901,34 +1048,55 @@ def depth_map_for_tiles(tiles):
     return img
 
 
-def measure_map_at_tiles(tiles, wcs, depth, pcts=[10,5,2]):
+def measure_map_at_tiles(tiles, wcs, depth, pcts=[10,5,2], get_polygon=None):
     from astrometry.util.miscutils import point_in_poly
-    # from mosaic_wcs
-    tilesize = (4096 * 2 + 100) * 0.262 / 3600.
 
-    dlo = tiles.dec - tilesize/2.
-    dhi = tiles.dec + tilesize/2.
-    cosdec = np.cos(np.deg2rad(tiles.dec))
-    rlo = tiles.ra - tilesize/2./cosdec
-    rhi = tiles.ra + tilesize/2./cosdec
-    ok1,tiles.x1,tiles.y1 = wcs.radec2pixelxy(rlo,dlo)
-    ok2,tiles.x2,tiles.y2 = wcs.radec2pixelxy(rlo,dhi)
-    ok3,tiles.x3,tiles.y3 = wcs.radec2pixelxy(rhi,dhi)
-    ok4,tiles.x4,tiles.y4 = wcs.radec2pixelxy(rhi,dlo)
+    if get_polygon is None:
+        # from mosaic_wcs
+        tilesize = (4096 * 2 + 100) * 0.262 / 3600.
+        dlo = tiles.dec - tilesize/2.
+        dhi = tiles.dec + tilesize/2.
+        cosdec = np.cos(np.deg2rad(tiles.dec))
+        rlo = tiles.ra - tilesize/2./cosdec
+        rhi = tiles.ra + tilesize/2./cosdec
+        ok1,tiles.x1,tiles.y1 = wcs.radec2pixelxy(rlo,dlo)
+        ok2,tiles.x2,tiles.y2 = wcs.radec2pixelxy(rlo,dhi)
+        ok3,tiles.x3,tiles.y3 = wcs.radec2pixelxy(rhi,dhi)
+        ok4,tiles.x4,tiles.y4 = wcs.radec2pixelxy(rhi,dlo)
 
     depths = []
     for itile,t in enumerate(tiles):
+        if get_polygon is None:
+            poly = np.array([[t.x1,t.y1],[t.x2,t.y2],[t.x3,t.y3],[t.x4,t.y4]])
+        else:
+            poly = get_polygon(tiles[itile], wcs)
         # -1: FITS to numpy coords
-        x0 = int(np.floor(min(t.x1, t.x2, t.x3, t.x4))) - 1
-        y0 = int(np.floor(min(t.y1, t.y2, t.y3, t.y4))) - 1
-        x1 = int(np.ceil( max(t.x1, t.x2, t.x3, t.x4))) - 1
-        y1 = int(np.ceil( max(t.y1, t.y2, t.y3, t.y4))) - 1
+        x0 = int(np.floor(min(poly[:,0]))) - 1
+        y0 = int(np.floor(min(poly[:,1]))) - 1
+        x1 = int(np.ceil (max(poly[:,0]))) - 1
+        y1 = int(np.ceil (max(poly[:,1]))) - 1
+        # x0 = int(np.floor(min(t.x1, t.x2, t.x3, t.x4))) - 1
+        # y0 = int(np.floor(min(t.y1, t.y2, t.y3, t.y4))) - 1
+        # x1 = int(np.ceil( max(t.x1, t.x2, t.x3, t.x4))) - 1
+        # y1 = int(np.ceil( max(t.y1, t.y2, t.y3, t.y4))) - 1
         tiledepth = depth[y0:y1+1, x0:x1+1]
         xx,yy = np.meshgrid(np.arange(x0, x1+1), np.arange(y0, y1+1))
-        poly = np.array([[t.x1,t.y1],[t.x2,t.y2],[t.x3,t.y3],[t.x4,t.y4]])
+
         inpoly = point_in_poly(xx, yy, poly-1)
+        #print('inpoly:', tiledepth[inpoly].shape)
         p = np.percentile(tiledepth[inpoly], pcts)
         depths.append(p)
+
+        # if itile < 5:
+        #     plt.clf()
+        #     plt.imshow(tiledepth * inpoly,
+        #                interpolation='nearest', origin='lower')
+        #     plt.plot(poly[:,0]-x0-1, poly[:,1]-y0-1, 'k-')
+        #     plt.savefig('tile-poly-%02i.png' % itile)
+
+        if itile % 1000 == 0:
+            print(itile, 'of', len(tiles))
+        
     return np.array(depths)
 
 def djs_update():
@@ -1509,11 +1677,6 @@ def update_tiles():
     print(len(ann), 'annotated CCDs')
     ann.depth = ann.galdepth - ann.decam_extinction[:,4]
 
-    # What about the annotated-CCDs entries with tileid = 0?
-    #ann[ann.tileid == 0].writeto('annotated-tileid-0.fits')
-    # These turn out to be from different propids, etc, and not on our
-    # tile centers.
-    
     # max degrees between CCD center and its tile center
     max_offset = 0.24
 
@@ -2172,12 +2335,118 @@ def plot_tiles():
     plt.title('%i dstn shallow tiles in order' % len(inorder))
     ps.savefig()
 
+def update_decam_tiles():
+    tiles = fits_table('obstatus/decam-tiles_obstatus.fits')
+    print(len(tiles), 'tiles')
+
+    Idesi = np.flatnonzero(tiles.in_desi == 1)
+    print(len(Idesi), 'tiles in DESI')
+
+    bands = ['g','r','z']
+
+    F=fitsio.FITS('decam.wcs.gz')
+    H,W = 4094,2046
+    refra,refdec = 180.,0.
+    wcsmap = dict()
+    for i in range(1, len(F)):
+        hdr = F[i].read_header()
+        stepsize = 1024
+        wcs = wcs_pv2sip_hdr(hdr, stepsize=stepsize, H=H)
+        #print(wcs.get_crval())
+        wcs.set_crval((refra, refdec))
+        wcs.set_height(H)
+        ccdname = hdr['EXTNAME'].strip()
+        wcsmap[ccdname] = wcs
+    outline = [
+        ('N29', W, 0),
+        ('N29', 0, 0),
+        ('N25', W, 0),
+        ('N25', 0, 0),
+        ('N20', W, 0),
+        ('N20', 0, 0),
+        ('N14', W, 0),
+        ('N8' , 0, 0),
+        ('N1' , W, 0),
+        ('S1' , 0, 0),
+        ('S8' , W, 0),
+        ('S14', 0, 0),
+        ('S20', W, 0),
+        ('S20', 0, 0),
+        ('S25', W, 0),
+        ('S25', 0, 0),
+        ('S29', W, 0),
+        ('S29', 0, 0),
+        ('S31', 0, H),
+        ('S31', W, H),
+        ('S28', 0, H),
+        ('S28', W, H),
+        ('S24', 0, H),
+        ('S24', W, H),
+        ('S19', 0, H),
+        ('S13', W, H),
+        ('S7' , 0, H),
+        ('N7' , W, H),
+        ('N13', 0, H),
+        ('N19', W, H),
+        ('N24', 0, H),
+        ('N24', W, H),
+        ('N28', 0, H),
+        ('N28', W, H),
+        ('N31', 0, H),
+        ('N31', W, H),
+        #('N29', W, 0),
+    ]
+    ra,dec = [],[]
+    for ccd,x,y in outline:
+        r,d = wcsmap[ccd].pixelxy2radec(x, y)
+        ra.append(r)
+        dec.append(d)
+    dra = np.array(ra) - refra
+    ddec = np.array(dec) - refdec
+
+    def get_polygon(tile, wcs):
+        cosdec = np.cos(np.deg2rad(tile.dec))
+        ra,dec = tile.ra + dra / cosdec, tile.dec + ddec
+        ok,x,y = wcs.radec2pixelxy(ra, dec)
+        H,W = wcs.shape
+        x = np.clip(x, 1, W)
+        y = np.clip(y, 1, H)
+        return np.vstack((x,y)).T
+
+    #depthmaps = dict([(b, fitsio.read('depth-%s-p9.fits.fz' % b)) for b in bands])
+    
+    # brutal... the cea.wcs file is upside-down (Y flipped) relative
+    # to the depth map.
+    wcs = anwcs('cea.wcs')
+    
+    for band in bands:
+        fn = 'depth-%s-p9.fits.fz' % band
+        print('Reading', fn)
+        depthmap = fitsio.read(fn)
+        # Brutal
+        depthmap = np.flipud(depthmap)
+        assert(depthmap.shape == wcs.shape)
+        
+        dd = measure_map_at_tiles(tiles[Idesi], wcs, depthmap,
+                                  get_polygon=get_polygon)
+        depth_90 = np.zeros(len(tiles), np.float32)
+        depth_95 = np.zeros(len(tiles), np.float32)
+        depth_98 = np.zeros(len(tiles), np.float32)
+        depth_90[Idesi] = dd[:,0]
+        depth_95[Idesi] = dd[:,1]
+        depth_98[Idesi] = dd[:,2]
+
+        tiles.set('depth_%s_90' % band, depth_90)
+        tiles.set('depth_%s_95' % band, depth_95)
+        tiles.set('depth_%s_98' % band, depth_98)
+        
+    tiles.writeto('tiles-depths.fits')    
     
 if __name__ == '__main__':
-    from_ccds()
-    #update_tiles()
-    djs_update()
-    plot_tiles()
+    from_ccds(ngc=False)
+    update_decam_tiles()
+    #djs_update()
+    #plot_tiles()
     #when_missing()
     #tiles_todo()
     #needed_tiles()
