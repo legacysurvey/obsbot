@@ -2564,6 +2564,69 @@ def decam_todo_maps(mp):
     mp.map(write_depth_map, args)
 
 
+def des_zooms():
+    band = 'g'
+    target = target_depths[band]
+
+    fn = 'maps/depth-todo-%s.fits.fz' % band
+    todo = fitsio.FITS(fn)[1]
+    fn = 'maps/depth-%s-p9.fits.fz' % band
+    depthmap = fitsio.FITS(fn)[1]
+
+    T = fits_table('tiles-depths.fits')
+    T.cut(T.in_desi == 1)
+    print(len(T), 'tiles in DESI')
+    I = np.flatnonzero((T.in_des == 1) *
+                       (T.get('proj_depth_%s_90' % band) < target))
+    print(len(I), 'in DES with projected depth in', band, 'too shallow')
+
+    wcs = anwcs('cea.wcs')
+    H,W = wcs.shape
+    
+    # todo = 1./(10.**((todo - 22.5) / -2.5))**2
+    # depthmap = 1./(10.**((depthmap - 22.5) / -2.5))**2
+    # # Grab the already-done map for this band
+    # depthmap = -2.5 * (np.log10(1./np.sqrt(todo + depthmap)) - 9.)
+    # del todo
+
+    # wholedepth = depthmap.read()
+    # wholedepth = np.flipud(wholedepth)
+    # wholetodo = todo.read()
+    # plt.clf()
+    # plt.imshow(wholedepth, interpolation='nearest', origin='lower')
+    # ok,x,y = wcs.radec2pixelxy(T.ra[I], T.dec[I])
+    # plt.plot(x-1, y-1, 'r.')
+    # plt.savefig('depth.png')
+    # plt.clf()
+    # plt.imshow(wholetodo, interpolation='nearest', origin='lower')
+    # ok,x,y = wcs.radec2pixelxy(T.ra[I], T.dec[I])
+    # plt.plot(x-1, y-1, 'r.')
+    # plt.savefig('todo.png')
+    
+    size = 100
+
+    k = 1
+    for itile in I:
+        ok,x,y = wcs.radec2pixelxy(T.ra[itile], T.dec[itile])
+        x = int(x - 1)
+        y = int(y - 1)
+        if x < size or y < size or x >= W-size or y >= H-size:
+            continue
+        depth_todo = todo[y-size:y+size+1, x-size:x+size+1]
+        y2 = H-1 - y
+        depth_done = depthmap[y2-size:y2+size+1, x-size:x+size+1]
+        depth_done = np.flipud(depth_done)
+
+        plt.clf()
+        plt.subplot(1,2,1)
+        plt.imshow(depth_done, interpolation='nearest', origin='lower')
+        plt.subplot(1,2,2)
+        plt.imshow(depth_todo, interpolation='nearest', origin='lower')
+        fn = 'des-%02i.png' % k
+        plt.savefig(fn)
+        print('Wrote', fn)
+        k += 1
+        
     
 if __name__ == '__main__':
     from astrometry.util.multiproc import multiproc
@@ -2574,7 +2637,8 @@ if __name__ == '__main__':
     mp = multiproc(threads)
     #from_ccds(mp, ngc=False)
     #decam_todo_maps(mp)
-    update_decam_tiles()
+    #update_decam_tiles()
+    des_zooms()
     #djs_update()
     #plot_tiles()
     #when_missing()
