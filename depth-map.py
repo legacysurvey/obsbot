@@ -1086,7 +1086,7 @@ def depth_map_for_tiles(tiles):
     return img
 
 
-def measure_map_at_tiles(tiles, wcs, depth, pcts=[10,5,2], get_polygon=None):
+def measure_maps_at_tiles(tiles, wcs, maps, pcts=[10,5,2], get_polygon=None):
     from astrometry.util.miscutils import point_in_poly
 
     if get_polygon is None:
@@ -1102,7 +1102,7 @@ def measure_map_at_tiles(tiles, wcs, depth, pcts=[10,5,2], get_polygon=None):
         ok3,tiles.x3,tiles.y3 = wcs.radec2pixelxy(rhi,dhi)
         ok4,tiles.x4,tiles.y4 = wcs.radec2pixelxy(rhi,dlo)
 
-    depths = []
+    measures = np.zeros((len(tiles), len(maps), len(pcts)), np.float32)
     for itile,t in enumerate(tiles):
         if get_polygon is None:
             poly = np.array([[t.x1,t.y1],[t.x2,t.y2],[t.x3,t.y3],[t.x4,t.y4]])
@@ -1117,13 +1117,13 @@ def measure_map_at_tiles(tiles, wcs, depth, pcts=[10,5,2], get_polygon=None):
         # y0 = int(np.floor(min(t.y1, t.y2, t.y3, t.y4))) - 1
         # x1 = int(np.ceil( max(t.x1, t.x2, t.x3, t.x4))) - 1
         # y1 = int(np.ceil( max(t.y1, t.y2, t.y3, t.y4))) - 1
-        tiledepth = depth[y0:y1+1, x0:x1+1]
         xx,yy = np.meshgrid(np.arange(x0, x1+1), np.arange(y0, y1+1))
-
         inpoly = point_in_poly(xx, yy, poly-1)
-        #print('inpoly:', tiledepth[inpoly].shape)
-        p = np.percentile(tiledepth[inpoly], pcts)
-        depths.append(p)
+
+        for imap,themap in enumerate(maps):
+            zoom = themap[y0:y1+1, x0:x1+1]
+            p = np.percentile(zoom[inpoly], pcts)
+            measures[itile, imap, :] = p
 
         # if itile < 5:
         #     plt.clf()
@@ -1135,7 +1135,7 @@ def measure_map_at_tiles(tiles, wcs, depth, pcts=[10,5,2], get_polygon=None):
         if itile % 1000 == 0:
             print(itile, 'of', len(tiles))
         
-    return np.array(depths)
+    return measures
 
 def djs_update():
     # Evaluate David's proposed tile file update
@@ -2455,38 +2455,126 @@ def update_decam_tiles():
     # to the depth map.
     wcs = anwcs('cea.wcs')
     
+    depths = []
     for band in bands:
-        fn = 'depth-%s-p9.fits.fz' % band
+        fn = 'maps/depth-%s-p9.fits.fz' % band
         print('Reading', fn)
         depthmap = fitsio.read(fn)
         # Brutal
         depthmap = np.flipud(depthmap)
         assert(depthmap.shape == wcs.shape)
+        depths.append(depthmap)
+
+    # FIXME -- beware of flips here
         
-        dd = measure_map_at_tiles(tiles[Idesi], wcs, depthmap,
-                                  get_polygon=get_polygon)
+    # Adding projected depth of to-do tiles
+    for iband,band in enumerate(bands):
+        fn = 'maps/depth-todo-%s.fits.fz' % band
+        print('Reading', fn)
+        depthmap = fitsio.read(fn)
+        # Brutal
+        #depthmap = np.flipud(depthmap)
+        assert(depthmap.shape == wcs.shape)
+
+        iv1 = 1./(10.**((depthmap - 22.5) / -2.5))**2
+        # Grab the already-done map for this band
+        iv2 = 1./(10.**((depths[iband] - 22.5) / -2.5))**2
+        depthmap = -2.5 * (np.log10(1./np.sqrt(iv1 + iv2)) - 9.)
+        
+        depths.append(depthmap)
+        
+    dd = measure_maps_at_tiles(tiles[Idesi], wcs, depths,
+                               get_polygon=get_polygon)
+    for iband,band in enumerate(bands):
         depth_90 = np.zeros(len(tiles), np.float32)
         depth_95 = np.zeros(len(tiles), np.float32)
         depth_98 = np.zeros(len(tiles), np.float32)
-        depth_90[Idesi] = dd[:,0]
-        depth_95[Idesi] = dd[:,1]
-        depth_98[Idesi] = dd[:,2]
+        depth_90[Idesi] = dd[:,iband,0]
+        depth_95[Idesi] = dd[:,iband,1]
+        depth_98[Idesi] = dd[:,iband,2]
+        tiles.set('depth_%s_90' % (band), depth_90.copy())
+        tiles.set('depth_%s_95' % (band), depth_95.copy())
+        tiles.set('depth_%s_98' % (band), depth_98.copy())
 
-        tiles.set('depth_%s_90' % band, depth_90)
-        tiles.set('depth_%s_95' % band, depth_95)
-        tiles.set('depth_%s_98' % band, depth_98)
+        # Projected depth
+        depth_90[Idesi] = dd[:,len(bands)+iband,0]
+        depth_95[Idesi] = dd[:,len(bands)+iband,1]
+        depth_98[Idesi] = dd[:,len(bands)+iband,2]
+        tiles.set('proj_depth_%s_90' % (band), depth_90)
+        tiles.set('proj_depth_%s_95' % (band), depth_95)
+        tiles.set('proj_depth_%s_98' % (band), depth_98)
         
     tiles.writeto('tiles-depths.fits')    
+
+def decam_todo_maps(mp):
+    from legacypipe.survey import LegacySurveyData
+    bands = ['g','r','z']
+    obsfn = 'obstatus/decam-tiles_obstatus.fits'
+    tiles = fits_table(obsfn)
+    #tiles.cut(tiles.get('pass') == passnum)
+    #tiles.cut(tiles.get('pass') == 1)
+    tiles.cut(tiles.in_desi == 1)
+    tiles.cut(tiles.in_des == 0)
+
+    F=fitsio.FITS('decam.wcs.gz')
+    H,W = 4094,2046
+    nccd = len(F)-1
+    C = fits_table()
+    C.crpix1 = np.zeros(nccd, np.float32)
+    C.crpix2 = np.zeros(nccd, np.float32)
+    C.cd1_1 = np.zeros(nccd, np.float32)
+    C.cd1_2 = np.zeros(nccd, np.float32)
+    C.cd2_1 = np.zeros(nccd, np.float32)
+    C.cd2_2 = np.zeros(nccd, np.float32)
+    for i in range(nccd):
+        hdr = F[i+1].read_header()
+        C.crpix1[i] = hdr['CRPIX1']
+        C.crpix2[i] = hdr['CRPIX2']
+        C.cd1_1[i] = hdr['CD1_1']
+        C.cd1_2[i] = hdr['CD1_2']
+        C.cd2_1[i] = hdr['CD2_1']
+        C.cd2_2[i] = hdr['CD2_2']
+    print('Assuming', nccd, 'CCDs')
+
+    survey = LegacySurveyData()
+
+    args = []
+    for band in bands:
+        I = np.flatnonzero(tiles.get('%s_done' % band) == 0)
+        print(len(I), 'to do in', band)
+        target = target_depths[band]
+        depth = target - 0.3
+        ccds = fits_table()
+        c = np.zeros((len(I),nccd), np.float32)
+        for col in ['crpix1','crpix2','cd1_1','cd1_2','cd2_1','cd2_2']:
+            c[:,:] = C.get(col)[np.newaxis,:]
+            ccds.set(col, c.ravel().copy())
+        c[:,:] = tiles.ra[I,np.newaxis]
+        ccds.crval1 = c.ravel().copy()
+        c[:,:] = tiles.dec[I,np.newaxis]
+        ccds.crval2 = c.ravel().copy()
+        ccds.depth = np.zeros(len(ccds), np.float32) + depth
+        ccds.width  = np.zeros(len(ccds), np.int32) + 2046
+        ccds.height = np.zeros(len(ccds), np.int32) + 4094
+        fn = 'maps/depth-todo-%s.fits.fz' % band
+        if os.path.exists(fn):
+            print('Depth map already exists:', fn)
+        else:
+            args.append((fn, survey, ccds, False, False, target))
+    mp.map(write_depth_map, args)
+
+
     
 if __name__ == '__main__':
     from astrometry.util.multiproc import multiproc
 
     #threads = 12
-    threads = 1
+    threads = 3
 
     mp = multiproc(threads)
-    from_ccds(mp, ngc=False)
-    #update_decam_tiles()
+    #from_ccds(mp, ngc=False)
+    #decam_todo_maps(mp)
+    update_decam_tiles()
     #djs_update()
     #plot_tiles()
     #when_missing()
