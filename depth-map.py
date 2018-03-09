@@ -168,8 +168,6 @@ def from_ccds(mosaic=False, ngc=True):
     
     compress = '[compress R; qz -1e-4]'
 
-    #bands = ['r','z']
-
     for band in bands:
         imgs = []
         seeings = []
@@ -177,7 +175,7 @@ def from_ccds(mosaic=False, ngc=True):
 
         target = target_depths[band]
 
-        for passnum in [1,2,3, 0,  9]:
+        for passnum in [1,2,3,0,9]:
 
             if ngc:
                 prefix = 'depth-ngc-%s-p%i' % (band, passnum)
@@ -192,7 +190,7 @@ def from_ccds(mosaic=False, ngc=True):
                                    (T.depth > 10) *
                                    (T.band == band))
                 tt = '%s band, Pass %i' % (band, passnum)
-            print(len(I), 'tiles for pass', passnum, 'band', band)
+            print(len(I), 'CCDs for pass', passnum, 'band', band)
     
             cm = matplotlib.cm.viridis
             #cm = matplotlib.cm.jet
@@ -303,14 +301,18 @@ def from_ccds(mosaic=False, ngc=True):
             plt.clf()
             depthmap[depthmap == 0] = np.nan
             # this can happen for p9, not sure how
-            depthmap[depthmap < 0] = np.nan
-    
-            plt.plot(tiles.x, H-tiles.y, 'k.', alpha=0.1)
-            
-            plt.imshow(depthmap, interpolation='nearest', origin='lower',
-                       vmin=lo, vmax=hi, cmap=cm)
-            plt.xticks([]); plt.yticks([])
+            depthmap[depthmap < 1] = np.nan
+            depthmap[np.logical_not(np.isfinite(depthmap))] = np.nan
             H,W = depthmap.shape
+
+            imkwa = dict(interpolation='nearest', origin='lower',
+                         extent=[0,W,0,H])
+            
+            plt.plot(tiles.x, H-tiles.y, 'k.', alpha=0.1)
+
+            plt.imshow(depthmap[::4, ::4],
+                       vmin=lo, vmax=hi, cmap=cm, **imkwa)
+            plt.xticks([]); plt.yticks([])
 
             draw_grid(wcs, H, ra_gridlines, dec_gridlines, ra_labels,dec_labels,
                       **drawkwargs)
@@ -325,9 +327,10 @@ def from_ccds(mosaic=False, ngc=True):
             plt.clf()
             plt.plot(tiles.x, H-tiles.y, 'k.', alpha=0.1)
             cm2 = matplotlib.cm.RdBu
-            cm2.set_bad('0.7')
-            plt.imshow(depthmap, interpolation='nearest', origin='lower',
-                       vmin=goal-drange, vmax=goal+drange, cmap=cm2)
+            cm2.set_bad('0.9')
+            plt.imshow(depthmap[::4, ::4],
+                       vmin=goal-drange, vmax=goal+drange, cmap=cm2,
+                **imkwa)
             plt.xticks([]); plt.yticks([])
             draw_grid(wcs, H, ra_gridlines, dec_gridlines,
                       ra_labels,dec_labels, **drawkwargs)
@@ -565,7 +568,7 @@ def cmap_discretize(cmap, N):
     indices = linspace(0, 1., N+1)
     cdict = {}
     for ki,key in enumerate(('red','green','blue')):
-        cdict[key] = [ (indices[i], colors_rgba[i-1,ki], colors_rgba[i,ki]) for i in xrange(N+1) ]
+        cdict[key] = [ (indices[i], colors_rgba[i-1,ki], colors_rgba[i,ki]) for i in range(N+1) ]
     # Return colormap object.
     return matplotlib.colors.LinearSegmentedColormap(cmap.name + "_%d"%N, cdict, 1024)
 
@@ -1559,9 +1562,9 @@ def djs_update():
 
 
         
+from legacyzpts.psfzpt_cuts import *
         
 def when_missing():
-    from legacyzpts.psfzpt_cuts import *
 
     bad_expid = read_bad_expid()
     z0 = 26.20
