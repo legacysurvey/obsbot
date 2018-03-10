@@ -2578,7 +2578,7 @@ def des_zooms():
                        (T.get('proj_depth_%s_90' % band) < target))
     print(len(I), 'in DES with projected depth in', band, 'too shallow')
 
-    wcs = anwcs('cea.wcs')
+    wcs = anwcs('cea-flip.wcs')
     H,W = wcs.shape
     
     # todo = 1./(10.**((todo - 22.5) / -2.5))**2
@@ -2587,19 +2587,19 @@ def des_zooms():
     # depthmap = -2.5 * (np.log10(1./np.sqrt(todo + depthmap)) - 9.)
     # del todo
 
-    # wholedepth = depthmap.read()
-    # wholedepth = np.flipud(wholedepth)
-    # wholetodo = todo.read()
-    # plt.clf()
-    # plt.imshow(wholedepth, interpolation='nearest', origin='lower')
-    # ok,x,y = wcs.radec2pixelxy(T.ra[I], T.dec[I])
-    # plt.plot(x-1, y-1, 'r.')
-    # plt.savefig('depth.png')
-    # plt.clf()
-    # plt.imshow(wholetodo, interpolation='nearest', origin='lower')
-    # ok,x,y = wcs.radec2pixelxy(T.ra[I], T.dec[I])
-    # plt.plot(x-1, y-1, 'r.')
-    # plt.savefig('todo.png')
+    wholedepth = depthmap.read()
+    wholedepth = np.flipud(wholedepth)
+    wholetodo = todo.read()
+    plt.clf()
+    plt.imshow(wholedepth, interpolation='nearest', origin='lower')
+    ok,x,y = wcs.radec2pixelxy(T.ra[I], T.dec[I])
+    plt.plot(x-1, y-1, 'r.')
+    plt.savefig('depth.png')
+    plt.clf()
+    plt.imshow(wholetodo, interpolation='nearest', origin='lower')
+    ok,x,y = wcs.radec2pixelxy(T.ra[I], T.dec[I])
+    plt.plot(x-1, y-1, 'r.')
+    plt.savefig('todo.png')
     
     size = 100
 
@@ -2613,7 +2613,7 @@ def des_zooms():
         depth_todo = todo[y-size:y+size+1, x-size:x+size+1]
         y2 = H-1 - y
         depth_done = depthmap[y2-size:y2+size+1, x-size:x+size+1]
-        depth_done = np.flipud(depth_done)
+        #depth_done = np.flipud(depth_done)
 
         plt.clf()
         plt.subplot(1,2,1)
