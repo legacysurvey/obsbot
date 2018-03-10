@@ -146,7 +146,8 @@ def from_ccds(mp, mosaic=False, ngc=True):
     
     print('Setting up plots')
     plt.figure(1, figsize=(13,8))
-    plt.subplots_adjust(left=0.03, right=0.99, bottom=0.01, top=0.95)
+    #plt.subplots_adjust(left=0.03, right=0.99, bottom=0.01, top=0.95)
+    plt.subplots_adjust(left=0.03, right=0.99, bottom=0.05, top=0.95)
     
     # plt.clf()
     # plt.scatter(T.ra, T.dec, c=T.transparency, s=3)
@@ -208,16 +209,32 @@ def from_ccds(mp, mosaic=False, ngc=True):
             fn = '%s.fits.fz' % prefix
             if passnum != 9:
                 tt = '%s band, Pass %i' % (band, passnum)
+                print('Reading', fn)
                 depthmap = fitsio.read(fn)
                 iv = 1./(10.**((depthmap - 22.5) / -2.5))**2
                 totaldepth = totaldepth + iv
+
+                d = -2.5 * (np.log10(1./np.sqrt(totaldepth)) - 9.)
+                plt.clf()
+                plt.subplot(1,2,1)
+                plt.hist(depthmap.ravel(), 50, log=True)
+                plt.hist(d.ravel(), 50, log=True, range=(0,26), histtype='step', color='r')
+                plt.subplot(1,2,2)
+                plt.hist(iv.ravel(), 50, log=True, histtype='step', color='r')
+                plt.hist(totaldepth.ravel(), 50, log=True, histtype='step', color='k')
+                plt.savefig('depth-hist-%s-%i.png' % (band, passnum))
+
             else:
                 depthmap = -2.5 * (np.log10(1./np.sqrt(totaldepth)) - 9.)
                 tt = '%s band, All Passes' % band
                 if os.path.exists(fn):
                     print('Already exists:', fn)
                 else:
-                    fitsio.write(fn + compress, totaldepth, clobber=True)
+                    fitsio.write(fn + compress, depthmap, clobber=True)
+                    print('Wrote', fn)
+
+                #print('Re-reading', fn)
+                #depthmap = fitsio.read(fn)
     
             cm = matplotlib.cm.viridis
             cm = cmap_discretize(cm, 10)
@@ -2385,6 +2402,7 @@ def update_decam_tiles():
     print(len(Idesi), 'tiles in DESI')
 
     bands = ['g','r','z']
+    #bands = ['g']
 
     F=fitsio.FITS('decam.wcs.gz')
     H,W = 4094,2046
@@ -2446,6 +2464,8 @@ def update_decam_tiles():
     dra = np.array(ra) - refra
     ddec = np.array(dec) - refdec
 
+
+    # get_polygon uses "dra" and "ddec" from above.
     def get_polygon(tile, wcs):
         cosdec = np.cos(np.deg2rad(tile.dec))
         ra,dec = tile.ra + dra / cosdec, tile.dec + ddec
@@ -2455,8 +2475,6 @@ def update_decam_tiles():
         y = np.clip(y, 1, H)
         return np.vstack((x,y)).T
 
-    #depthmaps = dict([(b, fitsio.read('depth-%s-p9.fits.fz' % b)) for b in bands])
-    
     wcs = anwcs('cea-flip.wcs')
     
     depths = []
@@ -2468,18 +2486,85 @@ def update_decam_tiles():
         depths.append(depthmap)
 
     # Adding projected depth of to-do tiles
+    #todos = []
+    #totals = []
     for iband,band in enumerate(bands):
         fn = 'maps/depth-todo-%s.fits.fz' % band
         print('Reading', fn)
         depthmap = fitsio.read(fn)
         assert(depthmap.shape == wcs.shape)
 
+        #todos.append(depthmap)
+
         iv1 = 1./(10.**((depthmap - 22.5) / -2.5))**2
         # Grab the already-done map for this band
         iv2 = 1./(10.**((depths[iband] - 22.5) / -2.5))**2
         depthmap = -2.5 * (np.log10(1./np.sqrt(iv1 + iv2)) - 9.)
+
+        #totals.append(depthmap)
         
         depths.append(depthmap)
+
+
+    Ides = np.flatnonzero((tiles.in_desi == 1) * (tiles.in_des == 1))
+    print(len(Ides), 'tiles in DESI & DES')
+
+
+    plt.figure(1, figsize=(13,8))
+    plt.subplots_adjust(left=0.03, right=0.99, bottom=0.01, top=0.95)
+
+    # for band in bands:
+    #     for passnum in [0,1,2,3]:
+    #         fn = 'maps/depth-%s-p%i.fits.fz' % (band, passnum)
+    #         print('Reading', fn)
+    #         depth = fitsio.read(fn)
+    #         H,W = depth.shape
+    #         plt.clf()
+    #         plt.imshow(depth[::4,::4], interpolation='nearest', origin='lower',
+    #                    extent=[0,W,0,H], cmap='viridis', vmin=23, vmax=26)
+    #         plt.colorbar(orientation='horizontal')
+    #         plt.savefig('depth-meas-p%i.png' % passnum)
+    # 
+    # # g done + todo
+    # #depth = depths[-3]
+    # depth = totals[0]
+    # H,W = depth.shape
+    # plt.clf()
+    # plt.imshow(depth[::4,::4], interpolation='nearest', origin='lower',
+    #            extent=[0,W,0,H], cmap='viridis', vmin=23, vmax=26)
+    # poly = get_polygon(tiles[Ides[0]], wcs)
+    # plt.plot(poly[:,0], poly[:,1], 'k-')
+    # plt.colorbar(orientation='horizontal')
+    # plt.savefig('depth-meas-total.png')
+    # 
+    # # g todo
+    # depth = todos[0]
+    # H,W = depth.shape
+    # plt.clf()
+    # plt.imshow(depth[::4,::4], interpolation='nearest', origin='lower',
+    #            extent=[0,W,0,H], cmap='viridis', vmin=23, vmax=26)
+    # poly = get_polygon(tiles[Ides[0]], wcs)
+    # plt.plot(poly[:,0], poly[:,1], 'k-')
+    # plt.colorbar(orientation='horizontal')
+    # plt.savefig('depth-meas-todo.png')
+    # 
+    # # g done
+    # depth = depths[0]
+    # H,W = depth.shape
+    # plt.clf()
+    # plt.imshow(depth[::4,::4], interpolation='nearest', origin='lower',
+    #            extent=[0,W,0,H], cmap='viridis', vmin=23, vmax=26)
+    # poly = get_polygon(tiles[Ides[0]], wcs)
+    # plt.plot(poly[:,0], poly[:,1], 'k-')
+    # plt.colorbar(orientation='horizontal')
+    # plt.savefig('depth-meas-done.png')
+    # 
+    # x = np.mean(poly[:,0])
+    # y = np.mean(poly[:,1])
+    # plt.axis([x-200, x+200, y-200, y+200])
+    # plt.savefig('depth-meas-done-zoom.png')
+
+
         
     dd = measure_maps_at_tiles(tiles[Idesi], wcs, depths,
                                get_polygon=get_polygon)
@@ -2659,10 +2744,10 @@ if __name__ == '__main__':
     #threads = 3
 
     mp = multiproc(threads)
-    #from_ccds(mp, ngc=False)
+    from_ccds(mp, ngc=False)
     #decam_todo_maps(mp)
-    #update_decam_tiles()
-    des_zooms()
+    update_decam_tiles()
+    #des_zooms()
     #djs_update()
     #plot_tiles()
     #when_missing()
