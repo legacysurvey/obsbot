@@ -2397,16 +2397,8 @@ def plot_tiles():
     plt.title('%i dstn shallow tiles in order' % len(inorder))
     ps.savefig()
 
-def update_decam_tiles():
-    tiles = fits_table('obstatus/decam-tiles_obstatus.fits')
-    print(len(tiles), 'tiles')
-
-    Idesi = np.flatnonzero(tiles.in_desi == 1)
-    print(len(Idesi), 'tiles in DESI')
-
-    bands = ['g','r','z']
-    #bands = ['g']
-
+def get_decam_outline_function(close=False):
+    H,W = 4094,2046
     F=fitsio.FITS('decam.wcs.gz')
     H,W = 4094,2046
     refra,refdec = 180.,0.
@@ -2457,8 +2449,9 @@ def update_decam_tiles():
         ('N28', W, H),
         ('N31', 0, H),
         ('N31', W, H),
-        #('N29', W, 0),
     ]
+    if close:
+        outline.append(outline[0])
     ra,dec = [],[]
     for ccd,x,y in outline:
         r,d = wcsmap[ccd].pixelxy2radec(x, y)
@@ -2466,8 +2459,6 @@ def update_decam_tiles():
         dec.append(d)
     dra = np.array(ra) - refra
     ddec = np.array(dec) - refdec
-
-
     # get_polygon uses "dra" and "ddec" from above.
     def get_polygon(tile, wcs):
         cosdec = np.cos(np.deg2rad(tile.dec))
@@ -2477,7 +2468,19 @@ def update_decam_tiles():
         x = np.clip(x, 1, W)
         y = np.clip(y, 1, H)
         return np.vstack((x,y)).T
+    return get_polygon
 
+def update_decam_tiles():
+    tiles = fits_table('obstatus/decam-tiles_obstatus.fits')
+    print(len(tiles), 'tiles')
+
+    Idesi = np.flatnonzero(tiles.in_desi == 1)
+    print(len(Idesi), 'tiles in DESI')
+
+    bands = ['g','r','z']
+    #bands = ['g']
+
+    get_polygon = get_decam_outline_function()
     wcs = anwcs('cea-flip.wcs')
     
     depths = []
@@ -2654,19 +2657,55 @@ def des_zooms():
     band = 'g'
     target = target_depths[band]
 
+    fn = 'p0-exposures.fits'
+    if not os.path.exists(fn):
+        from legacypipe.survey import LegacySurveyData
+        survey = LegacySurveyData()
+        ccds = survey.get_annotated_ccds()
+        ccds.cut(ccds.tilepass == 0)
+        #ccds.cut(np.array([f.strip() == band for f in ccds.filter]))
+        print(len(ccds), 'band', band, 'pass 0')
+        #bores = set(zip(ccds.ra_bore, ccds.dec_bore))
+        #print(len(bores), 'unique boresights')
+        e,I = np.unique(ccds.expnum, return_index=True)
+        exps = ccds[I]
+        print(len(exps), 'unique exposures')
+        e2 = fits_table()
+        e2.ra = exps.ra_bore
+        e2.dec = exps.dec_bore
+        e2.filter = exps.filter
+        e2.writeto(fn)
+    exps = fits_table(fn)
+    exps.cut(np.array([f.strip() == band for f in exps.filter]))
+
+    T = fits_table('tiles-depths.fits')
+    T.cut(T.in_desi == 1)
+    print(len(T), 'tiles in DESI')
+
+    def wrap_ra(ra):
+        return ra + (ra > 180)*-360
+    
+    T.ra_wrap = wrap_ra(T.ra)
+    exps.ra_wrap = wrap_ra(exps.ra)
+
+    #plt.axis([60, -60, -20, 10])
+    T.cut((T.ra_wrap > -60) * (T.ra_wrap < 60) * (T.dec > -20) * (T.dec < 10))
+    exps.cut((exps.ra_wrap > -60) * (exps.ra_wrap < 60) *
+             (exps.dec > -20) * (exps.dec < 10))
+    
+    plt.figure(1, figsize=(13,8))
+    plt.subplots_adjust(left=0.03, right=0.99, bottom=0.05, top=0.95)
+
     fn = 'maps/depth-todo-%s.fits.fz' % band
     todo = fitsio.FITS(fn)[1]
     fn = 'maps/depth-%s-p9.fits.fz' % band
     depthmap = fitsio.FITS(fn)[1]
 
-    T = fits_table('tiles-depths.fits')
-    T.cut(T.in_desi == 1)
-    print(len(T), 'tiles in DESI')
     I = np.flatnonzero((T.in_des == 1) *
                        (T.get('proj_depth_%s_90' % band) < target))
     print(len(I), 'in DES with projected depth in', band, 'too shallow')
 
-    wcs = anwcs('cea.wcs')
+    wcs = anwcs('cea-flip.wcs')
     H,W = wcs.shape
     
     # todo = 1./(10.**((todo - 22.5) / -2.5))**2
@@ -2676,7 +2715,6 @@ def des_zooms():
     # del todo
 
     # wholedepth = depthmap.read()
-    # wholedepth = np.flipud(wholedepth)
     # wholetodo = todo.read()
     # plt.clf()
     # plt.imshow(wholedepth, interpolation='nearest', origin='lower')
@@ -2688,8 +2726,18 @@ def des_zooms():
     # ok,x,y = wcs.radec2pixelxy(T.ra[I], T.dec[I])
     # plt.plot(x-1, y-1, 'r.')
     # plt.savefig('todo.png')
+
+    get_polygon = get_decam_outline_function(close=True)
     
-    size = 100
+    size = 200
+
+    Ides = np.flatnonzero(T.in_des == 1)
+
+    Inotdes = np.flatnonzero(T.in_des == 0)
+    
+    Idone = np.flatnonzero(T.get('%s_done' % band) == 1)
+    Itodo = np.flatnonzero((T.get('%s_done' % band) == 0) * (T.in_des == 0))
+    
 
     k = 1
     for itile in I:
@@ -2698,21 +2746,89 @@ def des_zooms():
         y = int(y - 1)
         if x < size or y < size or x >= W-size or y >= H-size:
             continue
-        depth_todo = todo[y-size:y+size+1, x-size:x+size+1]
-        y2 = H-1 - y
-        depth_done = depthmap[y2-size:y2+size+1, x-size:x+size+1]
-        depth_done = np.flipud(depth_done)
+        x0 = x-size
+        y0 = y-size
+        x1 = x0+size*2+1
+        y1 = y0+size*2+1
+        depth_todo = todo[y0:y1, x0:x1]
+        depth_done = depthmap[y0:y1, x0:x1]
 
+        depth_sum = -2.5 * (np.log10(1./np.sqrt(
+            1./(10.**((depth_todo - 22.5) / -2.5))**2 +
+            1./(10.**((depth_done - 22.5) / -2.5))**2
+            )) - 9.)
+
+        ok,rr,dd = wcs.pixelxy2radec(np.array([x0,x0,x1,x1,x0]), np.array([y0,y1,y1,y0,y0]))
+        
         plt.clf()
-        plt.subplot(1,2,1)
-        plt.imshow(depth_done, interpolation='nearest', origin='lower')
-        plt.subplot(1,2,2)
-        plt.imshow(depth_todo, interpolation='nearest', origin='lower')
+        #plt.imshow(depth_done, interpolation='nearest', origin='lower')
+        #plt.subplot(1,2,2)
+        #plt.imshow(depth_todo, interpolation='nearest', origin='lower')
+
+        plt.subplot(1,3,1)
+        plt.plot(T.ra_wrap, T.dec, 'k.', alpha=0.1)
+        plt.plot(T.ra_wrap[Idone], T.dec[Idone], 'k.', alpha=0.5)
+        plt.plot(T.ra_wrap[Ides], T.dec[Ides], 'r.', alpha=0.5)
+        plt.plot(T.ra_wrap[itile], T.dec[itile], 'mo', ms=20, mec='m',
+                 mfc='none')
+        plt.axis('scaled')
+        plt.axis([60, -60, -20, 10])
+
+        plt.subplot(1,3,2)
+        plt.plot(T.ra_wrap[Inotdes], T.dec[Inotdes], 'k.', alpha=0.5)
+        plt.plot(exps.ra_wrap, exps.dec, 'r.', alpha=0.5)
+        plt.plot(T.ra_wrap[itile], T.dec[itile], 'mo', ms=20, mec='m',
+                 mfc='none')
+        plt.plot(wrap_ra(rr), dd, 'k-')
+        plt.axis('scaled')
+        plt.axis([T.ra_wrap[itile]+10, T.ra_wrap[itile]-10,
+                  T.dec[itile]-5, T.dec[itile]+5])
+
+        plt.subplot(1,3,3)
+        plt.imshow(depth_sum, interpolation='nearest', origin='lower',
+                   vmin=target-1, vmax=target+1, zorder=20)
+        plt.xticks([]); plt.yticks([])
+        plt.colorbar(orientation='horizontal')
+        ax = plt.axis()
+        poly = get_polygon(T[itile], wcs)
+        plt.plot(poly[:,0]-x0, poly[:,1]-y0, 'k-', zorder=30)
+
+        I,J,d = match_radec(T.ra[itile], T.dec[itile], T.ra[Inotdes], T.dec[Inotdes], 5.)
+        Inear = Inotdes[J]
+        for i in Inear:
+            poly = get_polygon(T[i], wcs)
+            plt.plot(poly[:,0]-x0, poly[:,1]-y0, '-', color='0.5', lw=2, zorder=25)
+        
+        # I,J,d = match_radec(T.ra[itile], T.dec[itile], T.ra[Idone], T.dec[Idone], 5.)
+        # Inear = Idone[J]
+        # for i in Inear:
+        #     poly = get_polygon(T[i], wcs)
+        #     plt.plot(poly[:,0]-x0, poly[:,1]-y0, '-', color='0.5', lw=2, zorder=25)
+        # 
+        # I,J,d = match_radec(T.ra[itile], T.dec[itile], T.ra[Itodo], T.dec[Itodo], 5.)
+        # Inear = Itodo[J]
+        # for i in Inear:
+        #     poly = get_polygon(T[i], wcs)
+        #     plt.plot(poly[:,0]-x0, poly[:,1]-y0, '-', color='b', lw=2, zorder=25)
+        #     
+        # I,J,d = match_radec(T.ra[itile], T.dec[itile], exps.ra_bore, exps.dec_bore, 5.)
+        # # class duck(object):
+        # #     pass
+        # for i in J:
+        #     #t = duck()
+        #     #t.ra = exps[i].ra_bore
+        #     #t.dec = exps[i].dec_bore
+        #     poly = get_polygon(exps[i], wcs)
+        #     plt.plot(poly[:,0]-x0, poly[:,1]-y0, '-', color='r', lw=2, zorder=25, alpha=0.25)
+
+        plt.axis(ax)
+        
         fn = 'des-%02i.png' % k
         plt.savefig(fn)
         print('Wrote', fn)
         k += 1
-        
+        if k > 25:
+            break
     
 if __name__ == '__main__':
 
@@ -2747,10 +2863,10 @@ if __name__ == '__main__':
     #threads = 3
 
     mp = multiproc(threads)
-    from_ccds(mp, ngc=False)
+    #from_ccds(mp, ngc=False)
     #decam_todo_maps(mp)
     #update_decam_tiles()
-    #des_zooms()
+    des_zooms()
     #djs_update()
     #plot_tiles()
     #when_missing()
