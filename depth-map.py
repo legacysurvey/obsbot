@@ -2679,6 +2679,8 @@ def des_zooms():
     T.cut(T.in_desi == 1)
     print(len(T), 'tiles in DESI')
 
+    T.cut(np.lexsort((T.ra, -T.dec)))
+    
     def wrap_ra(ra):
         return ra + (ra > 180)*-360
     
@@ -2762,30 +2764,39 @@ def des_zooms():
         #plt.subplot(1,2,2)
         #plt.imshow(depth_todo, interpolation='nearest', origin='lower')
 
-        plt.subplot(1,3,1)
-        plt.plot(T.ra_wrap, T.dec, 'k.', alpha=0.1)
+        ax1 = plt.subplot2grid((2, 2), (0, 0))
+        #plt.subplot(1,3,1)
+        plt.plot(T.ra_wrap[Inotdes], T.dec[Inotdes], 'k.', alpha=0.1)
         plt.plot(T.ra_wrap[Idone], T.dec[Idone], 'k.', alpha=0.5)
-        plt.plot(T.ra_wrap[Ides], T.dec[Ides], 'r.', alpha=0.5)
+        plt.plot(exps.ra_wrap, exps.dec, 'r.', alpha=0.5)
+        #plt.plot(T.ra_wrap[Ides], T.dec[Ides], 'r.', alpha=0.25)
         plt.plot(T.ra_wrap[itile], T.dec[itile], 'mo', ms=20, mec='m',
-                 mfc='none')
+                 mew=2, mfc='none')
+        plt.xlabel('RA')
+        plt.ylabel('Dec')
         plt.axis('scaled')
         plt.axis([60, -60, -20, 10])
 
-        plt.subplot(1,3,2)
+        ax2 = plt.subplot2grid((2, 2), (1, 0))
+        #plt.subplot(1,3,2)
         plt.plot(T.ra_wrap[Inotdes], T.dec[Inotdes], 'k.', alpha=0.5)
         plt.plot(exps.ra_wrap, exps.dec, 'r.', alpha=0.5)
         plt.plot(T.ra_wrap[itile], T.dec[itile], 'mo', ms=20, mec='m',
                  mfc='none')
         plt.plot(wrap_ra(rr), dd, 'k-')
+        plt.xlabel('RA')
+        plt.ylabel('Dec')
         plt.axis('scaled')
         plt.axis([T.ra_wrap[itile]+10, T.ra_wrap[itile]-10,
                   T.dec[itile]-5, T.dec[itile]+5])
 
-        plt.subplot(1,3,3)
+        ax3 = plt.subplot2grid((2, 2), (0, 1), rowspan=2)
+        #plt.subplot(1,3,3)
         plt.imshow(depth_sum, interpolation='nearest', origin='lower',
-                   vmin=target-1, vmax=target+1, zorder=20)
+                   vmin=target-1, vmax=target+1, zorder=20, cmap='RdBu')
         plt.xticks([]); plt.yticks([])
-        plt.colorbar(orientation='horizontal')
+        cb = plt.colorbar(orientation='horizontal')
+        cb.set_label('%s depth (90%% coverage)' % band)
         ax = plt.axis()
         poly = get_polygon(T[itile], wcs)
         plt.plot(poly[:,0]-x0, poly[:,1]-y0, 'k-', zorder=30)
@@ -2819,12 +2830,18 @@ def des_zooms():
         #     plt.plot(poly[:,0]-x0, poly[:,1]-y0, '-', color='r', lw=2, zorder=25, alpha=0.25)
 
         plt.axis(ax)
+
+        plt.suptitle('%s band tile (pass %i) at %.3f,%.3f: proj. depths %.2f / %.2f / %.2f' %
+                     (band, T.get('pass')[itile], T.ra[itile], T.dec[itile],
+                      T.get('proj_depth_%s_90' % band)[itile],
+                      T.get('proj_depth_%s_95' % band)[itile],
+                      T.get('proj_depth_%s_98' % band)[itile]))
         
         fn = 'des-%02i.png' % k
         plt.savefig(fn)
         print('Wrote', fn)
         k += 1
-        if k > 25:
+        if k > 100:
             break
     
 if __name__ == '__main__':
