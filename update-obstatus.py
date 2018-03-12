@@ -33,46 +33,52 @@ def main():
 
         declo,dechi = -5,90
 
-        f = open('obstatus/bad_expid.txt')
-        bad_expids = set()
-        for line in f:
-            line = line.strip()
-            if len(line) == 0:
-                continue
-            if line[0] == '#':
-                continue
-            words = line.split()
-            try:
-                expnum = int(words[0])
-            except:
-                print('Skipping line:', line)
-                continue
-            bad_expids.add(expnum)
-        print('Read', len(bad_expids), 'bad exposure numbers')
-
+        bad_expid_fn = 'obstatus/bad_expid.txt'
+        
     else:
         from decam import DecamNominalCalibration
         from camera_decam import database_filename, camera_name
         nom = DecamNominalCalibration()
 
+        # ln -s ~/observing/obstatus/bad_expid.txt obstatus/decam-bad_expid.txt
+        
         obstatus_fn = 'obstatus/decam-tiles_obstatus.fits'
         out_fn = 'decam-obstatus-depth.fits'
+
+        bad_expid_fn = 'obstatus/decam-bad_expid.txt'
 
         bands = 'grz'
 
         declo,dechi = -20,35
 
+    f = open(bad_expid_fn)
+    bad_expids = set()
+    for line in f:
+        line = line.strip()
+        if len(line) == 0:
+            continue
+        if line[0] == '#':
+            continue
+        words = line.split()
+        try:
+            expnum = int(words[0])
+        except:
+            print('Skipping line:', line)
+            continue
+        bad_expids.add(expnum)
+    print('Read', len(bad_expids), 'bad exposure numbers')
+        
     # Convert copilot db to fits.
     import obsdb
     from copilot import db_to_fits
     obsdb.django_setup(database_filename=database_filename)
     ccds = obsdb.MeasuredCCD.objects.all()
     copilot = db_to_fits(ccds)
-
     all_copilot = copilot.copy()
+    fn = 'copilot.fits'
+    copilot.writeto(fn)
+    print('Wrote', fn)
 
-    copilot.writeto('copilot.fits')
-    
     print(len(copilot), 'measured CCDs in copilot database')
     copilot.cut(np.array([c.strip() == camera_name for c in copilot.camera]))
     print(len(copilot), 'copilot CCDs with camera = "%s"' % camera_name)
