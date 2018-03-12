@@ -230,11 +230,14 @@ def from_ccds(mp, mosaic=False, ngc=True):
                 if os.path.exists(fn):
                     print('Already exists:', fn)
                 else:
-                    fitsio.write(fn + compress, depthmap, clobber=True)
+                    hdr = fitsio.read_header(wcsfn)
+                    fitsio.write(fn + compress, depthmap, clobber=True, header=hdr)
                     print('Wrote', fn)
 
-                #print('Re-reading', fn)
-                #depthmap = fitsio.read(fn)
+            # hdr = fitsio.read_header(wcsfn)
+            # os.unlink(fn)
+            # fitsio.write('wcs-'+fn + compress, depthmap, clobber=True, header=hdr)
+            # print('Wrote', fn)
     
             cm = matplotlib.cm.viridis
             cm = cmap_discretize(cm, 10)
@@ -2746,7 +2749,7 @@ if __name__ == '__main__':
     mp = multiproc(threads)
     from_ccds(mp, ngc=False)
     #decam_todo_maps(mp)
-    update_decam_tiles()
+    #update_decam_tiles()
     #des_zooms()
     #djs_update()
     #plot_tiles()
