@@ -2696,7 +2696,7 @@ def des_zooms(tiles_fn='tiles-depths.fits',
         return ra + (ra > 180)*-360
     
     T.ra_wrap = wrap_ra(T.ra)
-    #T.cut((T.ra_wrap > -60) * (T.ra_wrap < 60) * (T.dec > -20) * (T.dec < 10))
+    T.cut((T.ra_wrap > -60) * (T.ra_wrap < 60) * (T.dec > -20) * (T.dec < 10))
 
     expfn = 'p0-exposures.fits'
     if not os.path.exists(expfn):
@@ -2737,10 +2737,6 @@ def des_zooms(tiles_fn='tiles-depths.fits',
         fn = done_pattern % band
         depthmap = fitsio.FITS(fn)[1]
 
-        I = np.flatnonzero((T.in_des == 1) *
-                           (T.get('proj_depth_%s_90' % band) < target))
-        print(len(I), 'in DES with projected depth in', band, 'too shallow')
-
         wcs = anwcs('cea-flip.wcs')
         H,W = wcs.shape
     
@@ -2759,54 +2755,63 @@ def des_zooms(tiles_fn='tiles-depths.fits',
         Itodo = np.flatnonzero((T.get('%s_done' % band) == 0) * (T.in_des == 0))
 
         # Tiles to plot...
+        # I = np.flatnonzero((T.in_des == 1) *
+        #                    (T.get('proj_depth_%s_90' % band) < target))
+        # print(len(I), 'in DES with projected depth in', band, 'too shallow')
+
+        # I = np.flatnonzero((T.in_desi == 1) *
+        #                    (T.get('proj_depth_%s_90' % band) < target))
+        # print(len(I), 'in DESI with projected depth in', band, 'too shallow')
+
         I = np.flatnonzero((T.in_desi == 1) *
-                           (T.get('proj_depth_%s_90' % band) < target))
-        print(len(I), 'in DESI with projected depth in', band, 'too shallow')
+                           np.logical_or((np.abs(T.dec - 5) < 0.5) * (T.ra_wrap > 0),
+                                         (np.abs(T.dec - 2.8) < 0.5) * (T.ra_wrap < 0)))
 
         print('In-DESI: in-des tally:', Counter(T.in_des[I]))
 
-        wholedepth = depthmap.read()
-        wholetodo = todo.read()
-        depth_sum = -2.5 * (np.log10(1./np.sqrt(
-            1./(10.**((wholedepth - 22.5) / -2.5))**2 +
-            1./(10.**((wholetodo  - 22.5) / -2.5))**2
-        )) - 9.)
-        depth_sum[depth_sum < 1] = np.nan
-        depth_sum[np.logical_not(np.isfinite(depth_sum))] = np.nan    
-        plt.clf()
-        plt.imshow(depth_sum, interpolation='nearest', origin='lower',
-                   vmin=target-1, vmax=target+1, zorder=20, cmap='RdBu')
-        plt.xticks([]); plt.yticks([])
-        cb = plt.colorbar(orientation='horizontal')
-        cb.set_label('%s depth (90%% coverage)' % band)
-        
-        ok,x,y = wcs.radec2pixelxy(T.ra[I], T.dec[I])
-        plt.plot(x, y, 'm.', zorder=30)
-
-        # ok,x1,y1 = wcs.radec2pixelxy(300, -20)
-        # ok,x2,y2 = wcs.radec2pixelxy( 60,  10)
-        # plt.axis([min(x1,x2), max(x1,x2), min(y1,y2), max(y1,y2)])
-
-        plt.savefig('des-%s.png' % band)
-
-        # plt.clf()
-        # plt.imshow(wholedepth, interpolation='nearest', origin='lower',
-        #            vmin=target-1, vmax=target+1, zorder=20, cmap='RdBu')
-        # plt.xticks([]); plt.yticks([])
-        # cb = plt.colorbar(orientation='horizontal')
-        # cb.set_label('%s depth (90%% coverage)' % band)
-        # plt.savefig('des-%s-1.png' % band)
-        # 
-        # plt.clf()
-        # plt.imshow(wholetodo, interpolation='nearest', origin='lower',
-        #            vmin=target-1, vmax=target+1, zorder=20, cmap='RdBu')
-        # plt.xticks([]); plt.yticks([])
-        # cb = plt.colorbar(orientation='horizontal')
-        # cb.set_label('%s depth (90%% coverage)' % band)
-        # plt.savefig('des-%s-2.png' % band)
-
-
-        continue
+        if False:
+            wholedepth = depthmap.read()
+            wholetodo = todo.read()
+            depth_sum = -2.5 * (np.log10(1./np.sqrt(
+                1./(10.**((wholedepth - 22.5) / -2.5))**2 +
+                1./(10.**((wholetodo  - 22.5) / -2.5))**2
+            )) - 9.)
+            depth_sum[depth_sum < 1] = np.nan
+            depth_sum[np.logical_not(np.isfinite(depth_sum))] = np.nan    
+            plt.clf()
+            plt.imshow(depth_sum, interpolation='nearest', origin='lower',
+                       vmin=target-1, vmax=target+1, zorder=20, cmap='RdBu')
+            plt.xticks([]); plt.yticks([])
+            cb = plt.colorbar(orientation='horizontal')
+            cb.set_label('%s depth (90%% coverage)' % band)
+            
+            ok,x,y = wcs.radec2pixelxy(T.ra[I], T.dec[I])
+            plt.plot(x, y, 'm.', zorder=30)
+    
+            # ok,x1,y1 = wcs.radec2pixelxy(300, -20)
+            # ok,x2,y2 = wcs.radec2pixelxy( 60,  10)
+            # plt.axis([min(x1,x2), max(x1,x2), min(y1,y2), max(y1,y2)])
+    
+            plt.savefig('des-%s.png' % band)
+    
+            # plt.clf()
+            # plt.imshow(wholedepth, interpolation='nearest', origin='lower',
+            #            vmin=target-1, vmax=target+1, zorder=20, cmap='RdBu')
+            # plt.xticks([]); plt.yticks([])
+            # cb = plt.colorbar(orientation='horizontal')
+            # cb.set_label('%s depth (90%% coverage)' % band)
+            # plt.savefig('des-%s-1.png' % band)
+            # 
+            # plt.clf()
+            # plt.imshow(wholetodo, interpolation='nearest', origin='lower',
+            #            vmin=target-1, vmax=target+1, zorder=20, cmap='RdBu')
+            # plt.xticks([]); plt.yticks([])
+            # cb = plt.colorbar(orientation='horizontal')
+            # cb.set_label('%s depth (90%% coverage)' % band)
+            # plt.savefig('des-%s-2.png' % band)
+    
+    
+            continue
 
         # ok,x,y = wcs.radec2pixelxy(T.ra[I], T.dec[I])
         # plt.plot(x-1, y-1, 'r.')
@@ -2887,7 +2892,8 @@ def des_zooms(tiles_fn='tiles-depths.fits',
             Inear = Inotdes[J]
             for i in Inear:
                 poly = get_polygon(T[i], wcs)
-                plt.plot(poly[:,0]-x0, poly[:,1]-y0, '-', color='0.5', lw=2, zorder=25)
+                # Gray outlined nearby tiles?
+                #plt.plot(poly[:,0]-x0, poly[:,1]-y0, '-', color='0.5', lw=2, zorder=25)
             
             # I,J,d = match_radec(T.ra[itile], T.dec[itile], T.ra[Idone], T.dec[Idone], 5.)
             # Inear = Idone[J]
@@ -3039,6 +3045,9 @@ if __name__ == '__main__':
     fn = 'p0-exposures.fits'
     T = fits_table('des-tiles.fits')
     T.writeto(fn)
+    
+    #des_zooms(done_pattern='maps/depth-decals-all-%s.fits.fz',
+    #          todo_pattern='maps/depth-des-fake-%s.fits.fz')
 
     des_zooms(tiles_fn = 'tiles-depths-fake.fits',
               done_pattern='maps/depth-decals-all-%s.fits.fz',
