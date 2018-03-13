@@ -2723,6 +2723,8 @@ def des_zooms(tiles_fn='tiles-depths.fits',
     get_polygon = get_decam_outline_function(close=True)
     size = 200
 
+    shallow_set = set()
+
     for band in bands:
         target = target_depths[band]
 
@@ -2733,8 +2735,10 @@ def des_zooms(tiles_fn='tiles-depths.fits',
                  (exps.dec > -20) * (exps.dec < 10))
     
         fn = todo_pattern % band
+        print('Reading', fn)
         todo = fitsio.FITS(fn)[1]
         fn = done_pattern % band
+        print('Reading', fn)
         depthmap = fitsio.FITS(fn)[1]
 
         wcs = anwcs('cea-flip.wcs')
@@ -2763,13 +2767,35 @@ def des_zooms(tiles_fn='tiles-depths.fits',
         #                    (T.get('proj_depth_%s_90' % band) < target))
         # print(len(I), 'in DESI with projected depth in', band, 'too shallow')
 
-        I = np.flatnonzero((T.in_desi == 1) *
-                           np.logical_or((np.abs(T.dec - 5) < 0.5) * (T.ra_wrap > 0),
-                                         (np.abs(T.dec - 2.8) < 0.5) * (T.ra_wrap < 0)))
+        # I = np.flatnonzero((T.in_desi == 1) *
+        #                    np.logical_or((np.abs(T.dec - 5) < 0.5) * (T.ra_wrap > 0),
+        #                                  (np.abs(T.dec - 2.8) < 0.5) * (T.ra_wrap < 0)))
+
+        J,K,d = match_radec(T.ra[Ides], T.dec[Ides], T.ra[Inotdes], T.dec[Inotdes], 3.)
+        keep = np.zeros(len(T), bool)
+        keep[Ides[J]] = True
+        #keep[Inotdes[K]] = True
+
+        #I = np.flatnonzero((T.in_desi == 1) * (T.dec > -14))
+        #I = np.flatnonzero(keep * (T.dec > -14))
+        #I = I[np.argsort(T.get('proj_depth_%s_98' % band)[I])]
+
+        print('Band', band, 'target', target)
+
+        ok,x,y = wcs.radec2pixelxy(T.ra, T.dec)
+        x = x - 1
+        y = y - 1
+        inbounds = (x >= size) * (y >= size) * (x < (W-size)) * (y < (H-size))
+
+        I = np.flatnonzero(keep * (T.dec > -14) *
+                           inbounds * (T.get('proj_depth_%s_98' % band) < (target+0.2)))
+
+        print(len(I), 'shallow-ish')
+        shallow_set.update(I)
 
         print('In-DESI: in-des tally:', Counter(T.in_des[I]))
 
-        if False:
+        if True:
             wholedepth = depthmap.read()
             wholetodo = todo.read()
             depth_sum = -2.5 * (np.log10(1./np.sqrt(
@@ -2788,9 +2814,9 @@ def des_zooms(tiles_fn='tiles-depths.fits',
             ok,x,y = wcs.radec2pixelxy(T.ra[I], T.dec[I])
             plt.plot(x, y, 'm.', zorder=30)
     
-            # ok,x1,y1 = wcs.radec2pixelxy(300, -20)
-            # ok,x2,y2 = wcs.radec2pixelxy( 60,  10)
-            # plt.axis([min(x1,x2), max(x1,x2), min(y1,y2), max(y1,y2)])
+            ok,x1,y1 = wcs.radec2pixelxy(300, -20)
+            ok,x2,y2 = wcs.radec2pixelxy( 75,  10)
+            plt.axis([min(x1,x2), max(x1,x2), min(y1,y2), max(y1,y2)])
     
             plt.savefig('des-%s.png' % band)
     
@@ -2931,6 +2957,15 @@ def des_zooms(tiles_fn='tiles-depths.fits',
             k += 1
             if k > 100:
                 break
+
+
+
+    print(len(shallow_set), '"shallow"')
+    I = np.array(list(shallow_set))
+    sh = T[I]
+    sh.cut(np.argsort(sh.proj_depth_g_98))
+    sh.writeto('tiles-des-tiling.fits')
+
     
 if __name__ == '__main__':
 
