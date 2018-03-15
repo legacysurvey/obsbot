@@ -2849,6 +2849,174 @@ def des_zooms():
     
 if __name__ == '__main__':
 
+    if not os.path.exists('maps/depth-fake-g.fits.fz'):
+        d1 = fitsio.read('maps/depth-decals-all-g.fits.fz')
+        d2 = fitsio.read('maps/depth-des-fake-g.fits.fz')
+        dsum = -2.5 * (np.log10(1./np.sqrt(
+            1./(10.**((d1 - 22.5) / -2.5))**2 +
+            1./(10.**((d2 - 22.5) / -2.5))**2
+            )) - 9.)
+        del d1,d2
+        wcsfn = 'cea-flip.wcs'
+        hdr = fitsio.read_header(wcsfn)
+        fitsio.write('/tmp/depth-fake-g.fits.fz', dsum, clobber=True, header=hdr)
+        del dsum
+        cmd = 'imcopy /tmp/depth-fake-g.fits.fz"[20000:31000, 1:2600]" maps/depth-fake-g.fits.fz'
+        print(cmd)
+        os.system(cmd)
+
+    fn ='maps/depth-fake-g.fits.fz'
+    depth = fitsio.read(fn)
+    wcs = anwcs(fn)
+    plt.figure(1, figsize=(13,8))
+    plt.subplots_adjust(left=0.03, right=0.99, bottom=0.05, top=0.95)
+    plt.clf()
+    plt.imshow(depth, interpolation='nearest', origin='lower',
+               vmin=23, vmax=25, cmap='bone')
+    cbar = plt.colorbar(orientation='horizontal')
+    plt.savefig('depth-fake-g.png')
+
+    xy = [
+    # Bottom of the barrel
+        (10131, 1538),
+        (9816,  1545),
+        (9516,  1545),
+        (9244,  1537),
+        (8944,  1537),
+        (8628,  1537),
+        (8348,  1557),
+        (8054,  1555),
+        (7736,  1555),
+        (7427,  1555),
+        (6503,  1511),
+    # Top of the barrel
+        (10009, 1968),
+        (9713,  1960),
+        (9415,  1958),
+        (9119,  1958),
+        (8825,  1970),
+        (8517,  1968),
+        (8207,  1966),
+        (7907,  1958),
+        (7015,  1972),
+        (6721,  1982),
+    # Top of the tank
+        (4753, 2246),
+        (4449, 2246),
+        (4143, 2246),
+        (3843, 2246),
+        (3581, 2246),
+        (3261, 2246),
+        (2967, 2246),
+        (2647, 2246),
+        (2355, 2246),
+    # Corner
+        (2055, 908),
+        ]
+
+    plt.plot([x for x,y in xy], [y for x,y in xy], 'r.')
+    plt.savefig('depth-fake-g-1.png')
+
+
+    F=fitsio.FITS('decam.wcs.gz')
+    H,W = 4094,2046
+    nccd = len(F)-1
+    C = fits_table()
+    C.crpix1 = np.zeros(nccd, np.float32)
+    C.crpix2 = np.zeros(nccd, np.float32)
+    C.cd1_1 = np.zeros(nccd, np.float32)
+    C.cd1_2 = np.zeros(nccd, np.float32)
+    C.cd2_1 = np.zeros(nccd, np.float32)
+    C.cd2_2 = np.zeros(nccd, np.float32)
+    for i in range(nccd):
+        hdr = F[i+1].read_header()
+        C.crpix1[i] = hdr['CRPIX1']
+        C.crpix2[i] = hdr['CRPIX2']
+        C.cd1_1[i] = hdr['CD1_1']
+        C.cd1_2[i] = hdr['CD1_2']
+        C.cd2_1[i] = hdr['CD2_1']
+        C.cd2_2[i] = hdr['CD2_2']
+    print('Assuming', nccd, 'CCDs')
+
+    H,W = depth.shape
+
+    band = 'g'
+    target = target_depths[band]
+    depth = target - 0.3
+
+    detsig = 10.**((depth - 22.5) / -2.5)
+    #depthfrac = 1./detsig**2 / targetiv
+    newiv = 1./detsig**2
+    
+    #targetsig = 10.**((targetdepth - 22.5) / -2.5)
+    #targetiv = 1./targetsig**2
+    
+    plot = Plotstuff(size=(W,H), outformat='png')
+    plot.wcs = anwcs(fn)
+    print('Plot WCS:', plot.wcs)
+    plot.outline.fill = True
+    plot.outline.stepsize = 2000
+    plot.op = CAIRO_OPERATOR_ADD
+
+    ccds = fits_table()
+    c = np.zeros(nccd, np.float32)
+    for col in ['crpix1','crpix2','cd1_1','cd1_2','cd2_1','cd2_2']:
+        ccds.set(col, C.get(col))
+    ccds.crval1 = np.zeros(len(ccds))
+    ccds.crval2 = np.zeros(len(ccds))
+    #ccds.depth = np.zeros(len(ccds), np.float32) + depth
+    ccds.width  = np.zeros(len(ccds), np.int32) + 2046
+    ccds.height = np.zeros(len(ccds), np.int32) + 4094
+
+    depth_iv = 1./(10.**((depth - 22.5) / -2.5))**2
+
+    from legacypipe.survey import LegacySurveyData
+    survey = LegacySurveyData()
+    
+    for xx,yy in xy:
+
+        for dx in range(-10, 10+1):
+            for dy in range(-10, 10+1):
+                plot.color = 'black'
+                plot.plot('fill')
+                plot.color = 'white'
+                plot.alpha = 1.
+
+                ok,ra,dec = wcs.pixelxy2radec(xx+dx, yy+dy)
+
+                ccds.crval1[:] = ra
+                ccds.crval2[:] = dec
+
+                for ccd in ccds:
+                    mwcs = survey.get_approx_wcs(ccd)
+                    #print('CCD:', ccd)
+                    print('CCD WCS:', mwcs)
+                    plot.outline.wcs = anwcs_new_tan(mwcs)
+                    print('Plot outilne WCS:', plot.outline.wcs)
+                    #plot.apply_settings()
+                    plot.plot('outline')
+
+                img = plot.get_image_as_numpy_view()
+
+                iv = img[::-1,:,0] * (1./255. * newiv)
+
+                dsum = -2.5 * (np.log10(1./np.sqrt(
+                    depth_iv + iv
+                    )) - 9.)
+
+                plt.clf()
+                plt.subplot(2,1,1)
+                plt.imshow(dsum, interpolation='nearest', origin='lower',
+                           vmin=23, vmax=25, cmap='bone')
+                cbar = plt.colorbar()
+                plt.subplot(2,1,2)
+                plt.hist(dsum.ravel(), range=(0,25), bins=100)
+                plt.savefig('depth-fake-g-%i-%i.png' % (dx,dy))
+                
+        break
+    
+    sys.exit(0)
+    
     if False:
         W,H = 32000,5000
         pixscale = 340. / W
