@@ -2969,7 +2969,8 @@ def des_zooms(tiles_fn='tiles-depths.fits',
     
 if __name__ == '__main__':
 
-    if not os.path.exists('maps/depth-fake-g.fits.fz'):
+    fn ='maps/depth-fake-g.fits.fz'
+    if not os.path.exists(fn):
         d1 = fitsio.read('maps/depth-decals-all-g.fits.fz')
         d2 = fitsio.read('maps/depth-des-fake-g.fits.fz')
         dsum = -2.5 * (np.log10(1./np.sqrt(
@@ -2979,19 +2980,24 @@ if __name__ == '__main__':
         del d1,d2
         wcsfn = 'cea-flip.wcs'
         hdr = fitsio.read_header(wcsfn)
+        # HACK
+        H,W = 2600, 11001
+        hdr['IMAGEW'] = W
+        hdr['IMAGEH'] = H
         fitsio.write('/tmp/depth-fake-g.fits.fz', dsum, clobber=True, header=hdr)
         del dsum
-        cmd = 'imcopy /tmp/depth-fake-g.fits.fz"[20000:31000, 1:2600]" maps/depth-fake-g.fits.fz'
+        cmd = 'imcopy /tmp/depth-fake-g.fits.fz"[20000:31000, 1:2600]" %s' % fn
         print(cmd)
         os.system(cmd)
 
-    fn ='maps/depth-fake-g.fits.fz'
-    depth = fitsio.read(fn)
+    depthmap = fitsio.read(fn)
     wcs = anwcs(fn)
-    plt.figure(1, figsize=(13,8))
+
+    #plt.figure(1, figsize=(13,8))
+    plt.figure(1, figsize=(13,6))
     plt.subplots_adjust(left=0.03, right=0.99, bottom=0.05, top=0.95)
     plt.clf()
-    plt.imshow(depth, interpolation='nearest', origin='lower',
+    plt.imshow(depthmap, interpolation='nearest', origin='lower',
                vmin=23, vmax=25, cmap='bone')
     cbar = plt.colorbar(orientation='horizontal')
     plt.savefig('depth-fake-g.png')
@@ -3035,6 +3041,25 @@ if __name__ == '__main__':
         ]
 
     plt.plot([x for x,y in xy], [y for x,y in xy], 'r.')
+    ax = plt.axis()
+
+    xt,xl = [],[]
+    for r in [300,310,320,330,340,350,0,10,20,30,40,50,60]:
+        ok,x,y = wcs.radec2pixelxy(r, 0)
+        xt.append(x)
+        xl.append('%i' % r)
+    plt.xticks(xt, xl)
+    plt.xlabel('RA')
+    yt,yl = [],[]
+    for d in [-15,-10,-5,0,5,10,15]:
+        ok,x,y = wcs.radec2pixelxy(0, d)
+        yt.append(y)
+        yl.append('%i' % d)
+    plt.yticks(yt, yl)
+    plt.ylabel('Dec')
+
+    plt.axis(ax)
+
     plt.savefig('depth-fake-g-1.png')
 
 
@@ -3058,7 +3083,7 @@ if __name__ == '__main__':
         C.cd2_2[i] = hdr['CD2_2']
     print('Assuming', nccd, 'CCDs')
 
-    H,W = depth.shape
+    H,W = depthmap.shape
 
     band = 'g'
     target = target_depths[band]
@@ -3067,16 +3092,24 @@ if __name__ == '__main__':
     detsig = 10.**((depth - 22.5) / -2.5)
     #depthfrac = 1./detsig**2 / targetiv
     newiv = 1./detsig**2
-    
+
+    print('newiv', newiv)
+
     #targetsig = 10.**((targetdepth - 22.5) / -2.5)
     #targetiv = 1./targetsig**2
+
+    get_polygon = get_decam_outline_function(close=True)
     
     plot = Plotstuff(size=(W,H), outformat='png')
-    plot.wcs = anwcs(fn)
-    print('Plot WCS:', plot.wcs)
+    plotwcs = anwcs(fn)
+    plot.wcs = plotwcs
+
+    #print('Plot WCS:', plot.wcs)
+    #anwcs_print_stdout(plot.wcs)
+
     plot.outline.fill = True
     plot.outline.stepsize = 2000
-    plot.op = CAIRO_OPERATOR_ADD
+    #plot.op = CAIRO_OPERATOR_ADD
 
     ccds = fits_table()
     c = np.zeros(nccd, np.float32)
@@ -3088,15 +3121,49 @@ if __name__ == '__main__':
     ccds.width  = np.zeros(len(ccds), np.int32) + 2046
     ccds.height = np.zeros(len(ccds), np.int32) + 4094
 
-    depth_iv = 1./(10.**((depth - 22.5) / -2.5))**2
+    depth_iv = 1./(10.**((depthmap - 22.5) / -2.5))**2
+    depth_iv[depthmap < 10] = 0.
 
     from legacypipe.survey import LegacySurveyData
     survey = LegacySurveyData()
+
+    tan_wcses = [survey.get_approx_wcs(ccd) for ccd in ccds]
+
+    k = 1
+
+    class duck(object):
+        pass
+
+    quack = duck()
+
+    tiles = fits_table()
+    tiles.ra = []
+    tiles.dec = []
     
     for xx,yy in xy:
 
-        for dx in range(-10, 10+1):
-            for dy in range(-10, 10+1):
+        #x0 = xx - 200
+        #y0 = yy - 200
+        #subimg = slice(yy - 200, yy + 200), slice(xx - 200, xx + 200)
+        subimg = slice(yy - 150, yy + 150), slice(xx - 150, xx + 150)
+
+        # ok,ra,dec = wcs.pixelxy2radec(xx, yy)
+        # quack.ra = ra
+        # quack.dec = dec
+        # poly = get_polygon(quack, wcs)
+        # print('WCS shape', wcs.shape)
+        print('x,y', xx,yy)
+        
+        DY = range(-25, 25+1)#, 5)
+        DX = range(-25, 25+1)#, 5)
+
+        metric = np.zeros((len(DY), len(DX)))
+        metric99 = np.zeros((len(DY), len(DX)))
+
+        #for dx in range(-10, 10+1):
+        for ix,dx in enumerate(DX):
+            for iy,dy in enumerate(DY):
+                #for dy in range(-10, 10+1):
                 plot.color = 'black'
                 plot.plot('fill')
                 plot.color = 'white'
@@ -3107,33 +3174,139 @@ if __name__ == '__main__':
                 ccds.crval1[:] = ra
                 ccds.crval2[:] = dec
 
-                for ccd in ccds:
-                    mwcs = survey.get_approx_wcs(ccd)
-                    #print('CCD:', ccd)
-                    print('CCD WCS:', mwcs)
-                    plot.outline.wcs = anwcs_new_tan(mwcs)
-                    print('Plot outilne WCS:', plot.outline.wcs)
-                    #plot.apply_settings()
+                for twcs in tan_wcses:
+                    twcs.set_crval(ra, dec)
+                    plot.outline.wcs = anwcs_new_tan(Tan(twcs))
                     plot.plot('outline')
 
                 img = plot.get_image_as_numpy_view()
 
-                iv = img[::-1,:,0] * (1./255. * newiv)
+                #iv = img[::-1,:,0] * (1./255. * newiv)
+                #iv = img[:,:,0] * (1./255. * newiv)
+                #print('iv', iv.dtype, iv.min(), iv.max())
 
+                iv = img[:,:,0][subimg] * (1./255. * newiv)
+
+                #print('Median existing depth iv:', np.median(depth_iv[subimg]))
+                #print('newiv', newiv)
+
+                ivsum = depth_iv[subimg] + iv
                 dsum = -2.5 * (np.log10(1./np.sqrt(
-                    depth_iv + iv
+                    ivsum
                     )) - 9.)
+                dsum[ivsum == 0] = 0.
 
-                plt.clf()
-                plt.subplot(2,1,1)
-                plt.imshow(dsum, interpolation='nearest', origin='lower',
-                           vmin=23, vmax=25, cmap='bone')
-                cbar = plt.colorbar()
-                plt.subplot(2,1,2)
-                plt.hist(dsum.ravel(), range=(0,25), bins=100)
-                plt.savefig('depth-fake-g-%i-%i.png' % (dx,dy))
-                
-        break
+                # min?  1%ile?
+                metric[iy,ix] = dsum.min()
+
+                metric99[iy,ix] = np.percentile(dsum.ravel(), 1)
+
+                # plt.clf()
+                # plt.subplot(2,1,1)
+                # plt.imshow(dsum, interpolation='nearest', origin='lower',
+                #            vmin=23, vmax=25, cmap='bone')
+                # #plt.plot(poly[:,0] - x0, poly[:,1] - y0, 'k-')
+                # cbar = plt.colorbar()
+                # plt.subplot(2,1,2)
+                # plt.hist(dsum.ravel(), range=(0,25), bins=100)
+                # ofn = 'depth-fake-g-%02i.png' % (k)
+                # plt.savefig(ofn)
+                # print('Wrote', ofn)
+                # k += 1
+
+        # plt.clf()
+        # plt.imshow(metric, interpolation='nearest', origin='lower')
+        # plt.colorbar()
+        # plt.title('min depth')
+        # ofn = 'depth-fake-g-%02i.png' % (k)
+        # plt.savefig(ofn)
+        # print('Wrote', ofn)
+        # k += 1
+
+        ibest = np.argmax(metric)
+        iy,ix = np.unravel_index(ibest, metric.shape)
+        dy = DY[iy]
+        dx = DX[ix]
+        print('Best for min:', dx,dy,  metric99[iy,ix], metric[iy,ix])
+
+        ibest = np.argmax(metric99)
+        iy,ix = np.unravel_index(ibest, metric.shape)
+        dy = DY[iy]
+        dx = DX[ix]
+        print('Best for 99%:', dx,dy, metric99[iy,ix], metric[iy,ix])
+
+        ibest = np.argmax(metric99 + metric)
+        iy,ix = np.unravel_index(ibest, metric.shape)
+        dy = DY[iy]
+        dx = DX[ix]
+        print('Best for sum:', dx,dy, metric99[iy,ix], metric[iy,ix])
+
+        plot.color = 'black'
+        plot.plot('fill')
+        plot.color = 'white'
+        plot.alpha = 1.
+
+        ok,ra,dec = wcs.pixelxy2radec(xx+dx, yy+dy)
+
+        ccds.crval1[:] = ra
+        ccds.crval2[:] = dec
+
+        for twcs in tan_wcses:
+            twcs.set_crval(ra, dec)
+            plot.outline.wcs = anwcs_new_tan(Tan(twcs))
+            plot.plot('outline')
+
+        img = plot.get_image_as_numpy_view()
+        iv = img[:,:,0][subimg] * (1./255. * newiv)
+        ivsum = depth_iv[subimg] + iv
+        dsum = -2.5 * (np.log10(1./np.sqrt(
+            ivsum
+            )) - 9.)
+        dsum[ivsum == 0] = 0.
+
+        imin = np.argmin(dsum)
+        iy,ix = np.unravel_index(imin, dsum.shape)
+
+        quack.ra = ra
+        quack.dec = dec
+        poly = get_polygon(quack, wcs)
+
+        dpre = -2.5 * (np.log10(1./np.sqrt(
+            depth_iv[subimg]
+            )) - 9.)
+        dpre[depth_iv[subimg] == 0] = 0.
+
+        tiles.ra.append(ra)
+        tiles.dec.append(dec)
+
+        x0 = xx - 150
+        y0 = yy - 150
+
+        plt.clf()
+        plt.subplot(1,2,1)
+        plt.imshow(dpre, interpolation='nearest', origin='lower',
+                   vmin=23, vmax=25, cmap='bone')
+        plt.title('99%%/100%% coverage: %.2f / %.2f' %
+                  (np.percentile(dpre, 1), dpre.min()))
+        plt.subplot(1,2,2)
+        plt.imshow(dsum, interpolation='nearest', origin='lower',
+                   vmin=23, vmax=25, cmap='bone')
+        #plt.title('99%% coverage: %.2f' % np.percentile(dsum, 99))
+        plt.title('99%%/100%% coverage: %.2f / %.2f' %
+                  (np.percentile(dsum, 1), dsum.min()))
+        #plt.title('min depth: %.2f' % dsum.min())
+        plt.plot(poly[:,0] - x0, poly[:,1] - y0, 'k-')
+        plt.plot(ix, iy, 'o', mec='m', mfc='none')
+        #cbar = plt.colorbar()
+        # plt.subplot(2,1,2)
+        # plt.hist(dsum.ravel(), range=(0,25), bins=100)
+        plt.suptitle('RA,Dec %.3f, %.3f' % (ra, dec))
+        ofn = 'depth-fake-g-%02i.png' % (k)
+        plt.savefig(ofn)
+        print('Wrote', ofn)
+        k += 1
+
+    tiles.writeto('tiles-des-manual.fits')
     
     sys.exit(0)
     
