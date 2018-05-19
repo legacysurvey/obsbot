@@ -2966,9 +2966,181 @@ def des_zooms(tiles_fn='tiles-depths.fits',
     sh.cut(np.argsort(sh.proj_depth_g_98))
     sh.writeto('tiles-des-tiling.fits')
 
+
+def zsee_fig():
+    matplotlib.rc('text', usetex=True)
+    matplotlib.rc('font', family='serif')
+    plt.figure(1, figsize=(13,4))
+    plt.subplots_adjust(left=0.03, right=0.99, bottom=0.08, top=0.95)
+
+    def aitoff_labels(wcs):
+        # image bounds
+        declo = -25
+        ok,x,y = wcs.radec2pixelxy(270., declo)
+        ylo = int(y-1)
+        ok,x,y = wcs.radec2pixelxy(270., +90.)
+        yhi = int(y-1)
+        ok,x,y = wcs.radec2pixelxy([90.001, 89.999], [0.,0.])
+        xlo = min(x)
+        xhi = max(x)
+        print('x range', xlo,xhi)    
+        
+        # RA labels
+        lt,lv = [],[]
+        for ra in [89.99, 60,30,0,330,300,270,240,210,180,150,120,90]:
+            decs = np.linspace(declo-10, declo+10, 25)
+            #ok,x,y = wcs.radec2pixelxy(ra, declo)
+            ok,x,y = wcs.radec2pixelxy(ra, decs)
+            i = np.argmin(np.abs(y - ylo))
+            x = x[i]
+            lt.append('%i' % np.round(ra))
+            lv.append(x)
+        plt.xticks(lv, lt)
+        plt.yticks([])
     
+        for ra in [89.999, 60,30,0,330,300,270,240,210,180,150,120,90.001]:
+            decs = np.linspace(declo-5, +90., 100)
+            ok,x,y = wcs.radec2pixelxy(ra + np.zeros_like(decs), decs)
+            plt.plot(x-1, y-1, 'k-', alpha=0.3)
+    
+        for dec in [-15, 0, 15, 30, 45, 60, 75]:
+            ras = np.append([89.999], np.linspace(89.999, -269.999, 100))
+            ok,x,y = wcs.radec2pixelxy(ras, np.zeros_like(ras)+dec)
+            #print('ras', ras)
+            #print('x', x)
+            plt.plot(x-1, y-1, 'k-', alpha=0.3)
+            
+        plt.axis([xlo-3,xhi+3,ylo-3,yhi+1])
+        plt.xlabel('RA (deg)')
+    
+    #W,H = 2000,1000
+    W,H = 1000,500
+    zoom = 1.0
+    wcs = anwcs_create_hammer_aitoff(270., 0., zoom, W, H, False)
+
+    dr6 = fits_table('/data1/dr6/survey-bricks-dr6.fits.gz',
+                     columns=['ra','dec','galdepth_g','galdepth_r',
+                              'galdepth_z'])
+    print(len(dr6), 'DR6 bricks')
+    dr5 = fits_table('/data1/dr5/survey-bricks-dr5.fits.gz',
+                     columns=['ra','dec','galdepth_g', 'galdepth_r',
+                              'galdepth_z'])
+    print(len(dr5), 'DR5 bricks')
+
+    ok,x,y = wcs.radec2pixelxy(dr6.ra, dr6.dec)
+    dr6.ix = np.round(x-1).astype(int)
+    dr6.iy = np.round(y-1).astype(int)
+    ok,x,y = wcs.radec2pixelxy(dr5.ra, dr5.dec)
+    dr5.ix = np.round(x-1).astype(int)
+    dr5.iy = np.round(y-1).astype(int)
+
+    dr6.cut((dr6.ix >= 0) * (dr6.ix < W) * (dr6.iy >= 0) * (dr6.iy < H))
+    print('Cut to', len(dr6), 'in-bounds')
+    dr5.cut((dr5.ix >= 0) * (dr5.ix < W) * (dr5.iy >= 0) * (dr5.iy < H))
+    print('Cut to', len(dr5), 'in-bounds')
+    
+    gdepth = np.zeros((H,W), np.float32)
+    rdepth = np.zeros((H,W), np.float32)
+    zdepth = np.zeros((H,W), np.float32)
+    for x,y,g,r,z in zip(dr6.ix, dr6.iy, dr6.galdepth_g, dr6.galdepth_r, dr6.galdepth_z):
+        gdepth[y,x] = max(gdepth[y,x], g)
+        rdepth[y,x] = max(rdepth[y,x], r)
+        zdepth[y,x] = max(zdepth[y,x], z)
+    for x,y,g,r,z in zip(dr5.ix, dr5.iy, dr5.galdepth_g, dr5.galdepth_r, dr5.galdepth_z):
+        gdepth[y,x] = max(gdepth[y,x], g)
+        rdepth[y,x] = max(rdepth[y,x], r)
+        zdepth[y,x] = max(zdepth[y,x], z)
+
+    depths = dict(g=gdepth, r=rdepth, z=zdepth)
+
+    dr7 = fits_table('/data1/dr7/ccds-annotated-dr7.fits.gz',
+                     columns=['ra','dec','filter','ccd_cuts','galdepth'])
+    dr7.cut(dr7.ccd_cuts == 0)
+    ok,x,y = wcs.radec2pixelxy(dr7.ra, dr7.dec)
+    dr7.ix = np.round(x-1).astype(int)
+    dr7.iy = np.round(y-1).astype(int)
+    for band in 'grz':
+        depth = depths[band]
+        I = np.flatnonzero(dr7.filter == band)
+        for x,y,d in zip(dr7.ix[I],dr7.iy[I],dr7.galdepth[I]):
+            depth[y,x] = max(depth[y,x], d)
+
+    gdepth[gdepth == 0] = np.nan
+    rdepth[rdepth == 0] = np.nan
+    zdepth[zdepth == 0] = np.nan
+
+    cm = matplotlib.cm.viridis
+    cm.set_bad('0.9')
+    depths = dict(g=gdepth, r=rdepth, z=zdepth)
+    for band in 'grz':
+        plt.clf()
+        nom = dict(g=24, r=23.4, z=22.5)[band]
+        mn,mx = nom-1, nom+1
+        plt.imshow(depths[band], interpolation='nearest', origin='lower',
+                   vmin=mn, vmax=mx, cmap=cm)
+        aitoff_labels(wcs)
+        cb = plt.colorbar()
+        cb.set_label('%s depth (mag)' % band)
+        plt.title('DR6 + DR7')
+        plt.savefig('depth-%s.pdf' % band)
+    return
+
+    dr6 = fits_table('/data1/dr6/survey-ccds-dr6plus.kd.fits',
+                     columns=['filter','ra','dec','fwhm'])
+    print(len(dr6), 'DR6')
+    dr7 = fits_table('/data1/dr7/survey-ccds-dr7.kd.fits',
+                     columns=['filter','ra','dec','fwhm','ccd_cuts'])
+    print(len(dr7), 'DR7')
+
+    dr6.cut(dr6.filter == 'z')
+    print(len(dr6), 'DR6 z')
+    dr7.cut((dr7.ccd_cuts == 0) * (dr7.filter == 'z'))
+    print(len(dr7), 'DR7 z')
+
+    ok,x,y = wcs.radec2pixelxy(dr6.ra, dr6.dec)
+    dr6.ix = np.round(x-1).astype(int)
+    dr6.iy = np.round(y-1).astype(int)
+    ok,x,y = wcs.radec2pixelxy(dr7.ra, dr7.dec)
+    dr7.ix = np.round(x-1).astype(int)
+    dr7.iy = np.round(y-1).astype(int)
+
+    dr6.cut((dr6.ix >= 0) * (dr6.ix < W) * (dr6.iy >= 0) * (dr6.iy < H))
+    print('Cut to', len(dr6), 'in-bounds')
+    dr6.see = dr6.fwhm * 0.262
+
+    dr7.cut((dr7.ix >= 0) * (dr7.ix < W) * (dr7.iy >= 0) * (dr7.iy < H))
+    print('Cut to', len(dr7), 'in-bounds')
+    dr7.see = dr7.fwhm * 0.262
+    
+    bestseeing = np.empty((H,W), np.float32)
+    bestseeing[:,:] = 10.
+    for x,y,see in zip(dr6.ix, dr6.iy, dr6.see):
+        bestseeing[y,x] = min(bestseeing[y,x], see)
+    for x,y,see in zip(dr7.ix, dr7.iy, dr7.see):
+        bestseeing[y,x] = min(bestseeing[y,x], see)
+
+    bestseeing[bestseeing == 10.] = np.nan
+    
+    cm = matplotlib.cm.hot
+    cm.set_bad('0.9')
+    plt.clf()
+    plt.imshow(bestseeing, interpolation='nearest', origin='lower',
+               vmin=0.8, vmax=2.0, cmap=cm)
+    aitoff_labels(wcs)
+
+    cb = plt.colorbar()
+    cb.set_label('Best z-band seeing (arcsec)')
+    plt.title('DR6 + DR7')
+    
+    plt.savefig('zsee4.pdf')
+    
+
+        
 if __name__ == '__main__':
 
+    zsee_fig()
+    sys.exit(0)
+    
     fn ='maps/depth-fake-g.fits.fz'
     if not os.path.exists(fn):
         d1 = fitsio.read('maps/depth-decals-all-g.fits.fz')
