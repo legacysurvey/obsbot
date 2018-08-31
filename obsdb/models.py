@@ -35,7 +35,7 @@ class ComputedExptime(models.Model):
     exptime = models.FloatField(default=0)
 
 class OtherPasses(models.Model):
-    exposure = models.ForeignKey(ComputedExptime)
+    exposure = models.ForeignKey(ComputedExptime, on_delete=models.DO_NOTHING)
 
     tileid = models.IntegerField(default=0)
     passnumber = models.IntegerField(default=0)
