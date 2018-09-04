@@ -65,7 +65,11 @@ def main(cmdlineargs=None, get_decbot=False):
     
     parser.add_option('--no-cut-past', dest='cut_before_now',
                       default=True, action='store_false',
-                      help='Do not cut tiles that were supposed to be observed in the past')
+                      help='Do not cut tiles that were supposed to be observed in the past (except upon startup)')
+
+    parser.add_option('--no-cut-past-at-startup',
+                      default=False, action='store_true',
+                      help='Do not cut tiles that were supposed to be observed in the past upon startup')
 
     parser.add_option('--no-queue', dest='do_queue', default=True,
                       action='store_false',
@@ -114,7 +118,7 @@ def main(cmdlineargs=None, get_decbot=False):
     J2 = json.loads(open(json2fn,'rb').read())
     J3 = json.loads(open(json3fn,'rb').read())
     print('Read', len(J1), 'pass 1 and', len(J2), 'pass 2 and', len(J3), 'pass 3 exposures')
-    if opt.cut_before_now:
+    if not opt.no_cut_past_at_startup:
         # Drop exposures that are before *now*, in all three plans.
         now = ephem.now()
         print('Now:', str(now))
