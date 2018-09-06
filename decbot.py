@@ -150,7 +150,7 @@ def main(cmdlineargs=None, get_decbot=False):
         try:
             from tractor.sfd import SFDMap
             sfd = SFDMap()
-            tiles.ebv_med[I] = sfd.ebv(tiles.ra, tiles.dec)
+            tiles.ebv_med[I] = sfd.ebv(tiles.ra[I], tiles.dec[I])
         except:
             import traceback
             print('Failed to look up SFD extinctions:')
