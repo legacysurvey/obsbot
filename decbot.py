@@ -147,14 +147,7 @@ def main(cmdlineargs=None, get_decbot=False):
     I = np.flatnonzero(tiles.ebv_med == 0)
     if len(I):
         print('Looking up', len(I), 'tile extinctions in SFD maps')
-        try:
-            from tractor.sfd import SFDMap
-            sfd = SFDMap()
-            tiles.ebv_med[I] = sfd.ebv(tiles.ra[I], tiles.dec[I])
-        except:
-            import traceback
-            print('Failed to look up SFD extinctions:')
-            traceback.print_exc()
+        tiles.ebv_med[I] = sfd_lookup_ebv(tiles.ra[I], tiles.dec[I])
 
     if opt.rawdata is None:
         opt.rawdata = os.environ.get('DECAM_DATA', 'rawdata')
@@ -186,6 +179,19 @@ def main(cmdlineargs=None, get_decbot=False):
         return decbot
     decbot.queue_initial_exposures()
     decbot.run()
+
+def sfd_lookup_ebv(ra, dec):
+    try:
+        from tractor.sfd import SFDMap
+        sfd = SFDMap()
+        ebv = sfd.ebv(ra, dec)
+        if np.isscalar(ra) and np.isscalar(dec):
+            return ebv[0]
+        return ebv
+    except:
+        import traceback
+        print('Failed to look up SFD extinctions:')
+        traceback.print_exc()
 
 def is_twilight(obs, twi=-15.):
     '''
@@ -553,7 +559,8 @@ class Decbot(Obsbot):
         skybright = M['skybright']
         
         # eg, nominal = 20, sky = 19, brighter is 1 mag brighter than nom.
-        nomsky = self.nom.sky(M['band'])
+        band = M['band']
+        nomsky = self.nom.sky(band)
         brighter = nomsky - skybright
     
         print('Transparency: %6.02f' % trans)
@@ -562,6 +569,17 @@ class Decbot(Obsbot):
         print('Nominal sky : %6.02f' % nomsky)
         print('Sky over nom: %6.02f   (positive means brighter than nom)' %
               brighter)
+
+        # Just FYI
+        try:
+            fid = self.nom.fiducial_exptime(band)
+            airmass = M['airmass']
+            ebv = sfd_lookup_ebv(M['ra_ccd'], M['dec_ccd'])
+            expfactor = exposure_factor(fid, self.nom, airmass, ebv, seeing,
+                                        skybright, trans)
+            print('Exposure factor: %6.02f' % expfactor)
+        except:
+            pass
 
         if self.copilot_db is not None and (M['band'] in ['g','r']):
             self.recent_gr(M)
