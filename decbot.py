@@ -276,8 +276,8 @@ class Decbot(Obsbot):
 
         # Annotate plans with 'tilepass' field
         # - build map from tileid to tile pass number
-        tileid_to_pass = np.zeros(self.tiles.tileid.max() + 1, dtype=np.uint8)
-        tileid_to_pass[self.tiles.tileid] = self.tiles.get('pass')
+        tileid_to_pass = dict([(t,p) for t,p in zip(self.tiles.tileid,
+                                                    self.tiles.get('pass'))])
         for J in [self.J1,self.J2,self.J3]:
             for j in J:
                 tileid = get_tile_id_from_name(j['object'])
