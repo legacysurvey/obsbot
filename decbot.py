@@ -143,6 +143,19 @@ def main(cmdlineargs=None, get_decbot=False):
     print('Reading tiles table', opt.tiles)
     tiles = fits_table(opt.tiles)
 
+    # Tiles with ebv_med == 0 ? Look up in SFD.
+    I = np.flatnonzero(tiles.ebv_med == 0)
+    if len(I):
+        print('Looking up', len(I), 'tile extinctions in SFD maps')
+        try:
+            from tractor.sfd import SFDMap
+            sfd = SFDMap()
+            tiles.ebv_med[I] = sfd.ebv(tiles.ra, tiles.dec)
+        except:
+            import traceback
+            print('Failed to look up SFD extinctions:')
+            traceback.print_exc()
+
     if opt.rawdata is None:
         opt.rawdata = os.environ.get('DECAM_DATA', 'rawdata')
 
