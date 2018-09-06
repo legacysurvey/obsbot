@@ -578,6 +578,7 @@ class Decbot(Obsbot):
             fid = self.nom.fiducial_exptime(band)
             airmass = M['airmass']
             ebv = sfd_lookup_ebv(M['ra_ccd'], M['dec_ccd'])
+            print('E(B-V)      : %6.02f' % ebv)
             expfactor = exposure_factor(fid, self.nom, airmass, ebv, seeing,
                                         skybright, trans)
             print('Exposure factor: %6.02f' % expfactor)
