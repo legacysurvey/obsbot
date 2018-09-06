@@ -180,11 +180,14 @@ def main(cmdlineargs=None, get_decbot=False):
     decbot.queue_initial_exposures()
     decbot.run()
 
+SFD = None
 def sfd_lookup_ebv(ra, dec):
+    global SFD
     try:
         from tractor.sfd import SFDMap
-        sfd = SFDMap()
-        ebv = sfd.ebv(ra, dec)
+        if SFD is None:
+            SFD = SFDMap()
+        ebv = SFD.ebv(ra, dec)
         if np.isscalar(ra) and np.isscalar(dec):
             return ebv[0]
         return ebv
