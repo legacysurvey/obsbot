@@ -3009,6 +3009,23 @@ def zsee_fig():
             #print('ras', ras)
             #print('x', x)
             plt.plot(x-1, y-1, 'k-', alpha=0.3)
+
+            # i = np.argmin(x)
+            # xl = x[i]-1
+            # yl = y[i]-1
+            # plt.text(xl-10, yl, '%i' % dec, va='center', ha='right')
+
+        for dec in [-15, 0, 15, 30, 45, 60, 75]:
+            ra = 300
+            ok,x,y = wcs.radec2pixelxy(ra, dec)
+            if dec < 30:
+                ha = 'left'
+                dx = +5
+            else:
+                ha = 'right'
+                dx = -5
+            plt.text(x+dx, y-5, '$%+i$' % dec, va='top', ha=ha)
+
             
         plt.axis([xlo-3,xhi+3,ylo-3,yhi+1])
         plt.xlabel('RA (deg)')
@@ -3022,22 +3039,26 @@ def zsee_fig():
                      columns=['ra','dec','galdepth_g','galdepth_r',
                               'galdepth_z'])
     print(len(dr6), 'DR6 bricks')
-    dr5 = fits_table('/data1/dr5/survey-bricks-dr5.fits.gz',
+    # dr5 = fits_table('/data1/dr5/survey-bricks-dr5.fits.gz',
+    #                  columns=['ra','dec','galdepth_g', 'galdepth_r',
+    #                           'galdepth_z'])
+    # print(len(dr5), 'DR5 bricks')
+    dr7 = fits_table('/data1/dr7/survey-bricks-dr7.fits.gz',
                      columns=['ra','dec','galdepth_g', 'galdepth_r',
                               'galdepth_z'])
-    print(len(dr5), 'DR5 bricks')
+    print(len(dr7), 'DR7 bricks')
 
     ok,x,y = wcs.radec2pixelxy(dr6.ra, dr6.dec)
     dr6.ix = np.round(x-1).astype(int)
     dr6.iy = np.round(y-1).astype(int)
-    ok,x,y = wcs.radec2pixelxy(dr5.ra, dr5.dec)
-    dr5.ix = np.round(x-1).astype(int)
-    dr5.iy = np.round(y-1).astype(int)
+    ok,x,y = wcs.radec2pixelxy(dr7.ra, dr7.dec)
+    dr7.ix = np.round(x-1).astype(int)
+    dr7.iy = np.round(y-1).astype(int)
 
     dr6.cut((dr6.ix >= 0) * (dr6.ix < W) * (dr6.iy >= 0) * (dr6.iy < H))
     print('Cut to', len(dr6), 'in-bounds')
-    dr5.cut((dr5.ix >= 0) * (dr5.ix < W) * (dr5.iy >= 0) * (dr5.iy < H))
-    print('Cut to', len(dr5), 'in-bounds')
+    dr7.cut((dr7.ix >= 0) * (dr7.ix < W) * (dr7.iy >= 0) * (dr7.iy < H))
+    print('Cut to', len(dr7), 'in-bounds')
     
     gdepth = np.zeros((H,W), np.float32)
     rdepth = np.zeros((H,W), np.float32)
@@ -3046,7 +3067,7 @@ def zsee_fig():
         gdepth[y,x] = max(gdepth[y,x], g)
         rdepth[y,x] = max(rdepth[y,x], r)
         zdepth[y,x] = max(zdepth[y,x], z)
-    for x,y,g,r,z in zip(dr5.ix, dr5.iy, dr5.galdepth_g, dr5.galdepth_r, dr5.galdepth_z):
+    for x,y,g,r,z in zip(dr7.ix, dr7.iy, dr7.galdepth_g, dr7.galdepth_r, dr7.galdepth_z):
         gdepth[y,x] = max(gdepth[y,x], g)
         rdepth[y,x] = max(rdepth[y,x], r)
         zdepth[y,x] = max(zdepth[y,x], z)
@@ -3083,7 +3104,6 @@ def zsee_fig():
         cb.set_label('%s depth (mag)' % band)
         plt.title('DR6 + DR7')
         plt.savefig('depth-%s.pdf' % band)
-    return
 
     dr6 = fits_table('/data1/dr6/survey-ccds-dr6plus.kd.fits',
                      columns=['filter','ra','dec','fwhm'])
@@ -3137,8 +3157,9 @@ def zsee_fig():
 
         
 if __name__ == '__main__':
-
+    print('zsee_fig')
     zsee_fig()
+    import sys
     sys.exit(0)
     
     fn ='maps/depth-fake-g.fits.fz'
