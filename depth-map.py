@@ -3035,127 +3035,258 @@ def zsee_fig():
     zoom = 1.0
     wcs = anwcs_create_hammer_aitoff(270., 0., zoom, W, H, False)
 
-    dr6 = fits_table('/data1/dr6/survey-bricks-dr6.fits.gz',
-                     columns=['ra','dec','galdepth_g','galdepth_r',
-                              'galdepth_z'])
-    print(len(dr6), 'DR6 bricks')
-    # dr5 = fits_table('/data1/dr5/survey-bricks-dr5.fits.gz',
-    #                  columns=['ra','dec','galdepth_g', 'galdepth_r',
-    #                           'galdepth_z'])
-    # print(len(dr5), 'DR5 bricks')
-    dr7 = fits_table('/data1/dr7/survey-bricks-dr7.fits.gz',
-                     columns=['ra','dec','galdepth_g', 'galdepth_r',
-                              'galdepth_z'])
-    print(len(dr7), 'DR7 bricks')
 
-    ok,x,y = wcs.radec2pixelxy(dr6.ra, dr6.dec)
-    dr6.ix = np.round(x-1).astype(int)
-    dr6.iy = np.round(y-1).astype(int)
-    ok,x,y = wcs.radec2pixelxy(dr7.ra, dr7.dec)
-    dr7.ix = np.round(x-1).astype(int)
-    dr7.iy = np.round(y-1).astype(int)
+    # Aaron's photometric offset plots
+    cm = cmap_discretize(matplotlib.cm.RdBu, 21)
+    #cm.set_bad('0.9')
+    plt.subplots_adjust(left=0.03, right=0.99, bottom=0.11, top=0.94)
 
-    dr6.cut((dr6.ix >= 0) * (dr6.ix < W) * (dr6.iy >= 0) * (dr6.iy < H))
-    print('Cut to', len(dr6), 'in-bounds')
-    dr7.cut((dr7.ix >= 0) * (dr7.ix < W) * (dr7.iy >= 0) * (dr7.iy < H))
-    print('Cut to', len(dr7), 'in-bounds')
+    # background = np.zeros((H,W,4), np.uint8)
+    # xx,yy = np.meshgrid(np.arange(W), np.arange(H))
+    # ok,rr,dd = wcs.pixelxy2radec(xx+1, yy+1)
+    # background[yy[ok], xx[ok], :3] = np.uint8(0.95*255)
+    # background[yy[ok], xx[ok], 3] = 255
+
+    # Astrometry
+    if False:
+        Tra = fits_table('dr7_dr6_qa_combined-dra.table.fits')
+        Tdec = fits_table('dr7_dr6_qa_combined-ddec.table.fits')
+        Tboth = Tra.copy()
+        Tboth.dmag = np.hypot(Tra.dmag, Tdec.dmag)
+        for T,name in [(Tra, 'RA'), (Tdec, 'Dec'), (Tboth, 'Total')]:
+            ok,x,y = wcs.radec2pixelxy(T.ra, T.dec)
+            T.ix = np.round(x-1).astype(int)
+            T.iy = np.round(y-1).astype(int)
+            T.cut((T.ix >= 0) * (T.ix < W) * (T.iy >= 0) * (T.iy < H))
+            print('Cut to', len(T), 'in-bounds')
+            T.dmag[T.dmag == 0] = np.nan
+            plt.clf()
+            mx = 10.
+            if name == 'Total':
+                mn = 0.
+                thiscm = cmap_discretize(matplotlib.cm.Blues, 11)
+            else:
+                mn = -mx
+                thiscm = cm
+            plt.scatter(T.ix, T.iy, c=T.dmag * 1000., s=0.5, vmin=mn, vmax=mx, cmap=thiscm)
+            aitoff_labels(wcs)
+            cb = plt.colorbar()
+            cb.set_label('%s offsets (milli-arcsec)' % name)
+            plt.title('DR6 + DR7 vs Gaia DR1')
+            plt.savefig('astrometric-offset-%s.pdf' % name.lower())
+        return
+
+    # Photometry
+    if False:
+        for band in 'grz':
+            T = fits_table('dr7_dr6_qa_combined-%s.table.fits' % band)
+            ok,x,y = wcs.radec2pixelxy(T.ra, T.dec)
+            T.ix = np.round(x-1).astype(int)
+            T.iy = np.round(y-1).astype(int)
+            T.cut((T.ix >= 0) * (T.ix < W) * (T.iy >= 0) * (T.iy < H))
+            print('Cut to', len(T), 'in-bounds')
     
-    gdepth = np.zeros((H,W), np.float32)
-    rdepth = np.zeros((H,W), np.float32)
-    zdepth = np.zeros((H,W), np.float32)
-    for x,y,g,r,z in zip(dr6.ix, dr6.iy, dr6.galdepth_g, dr6.galdepth_r, dr6.galdepth_z):
-        gdepth[y,x] = max(gdepth[y,x], g)
-        rdepth[y,x] = max(rdepth[y,x], r)
-        zdepth[y,x] = max(zdepth[y,x], z)
-    for x,y,g,r,z in zip(dr7.ix, dr7.iy, dr7.galdepth_g, dr7.galdepth_r, dr7.galdepth_z):
-        gdepth[y,x] = max(gdepth[y,x], g)
-        rdepth[y,x] = max(rdepth[y,x], r)
-        zdepth[y,x] = max(zdepth[y,x], z)
-
-    depths = dict(g=gdepth, r=rdepth, z=zdepth)
-
-    dr7 = fits_table('/data1/dr7/ccds-annotated-dr7.fits.gz',
-                     columns=['ra','dec','filter','ccd_cuts','galdepth'])
-    dr7.cut(dr7.ccd_cuts == 0)
-    ok,x,y = wcs.radec2pixelxy(dr7.ra, dr7.dec)
-    dr7.ix = np.round(x-1).astype(int)
-    dr7.iy = np.round(y-1).astype(int)
-    for band in 'grz':
-        depth = depths[band]
-        I = np.flatnonzero(dr7.filter == band)
-        for x,y,d in zip(dr7.ix[I],dr7.iy[I],dr7.galdepth[I]):
-            depth[y,x] = max(depth[y,x], d)
-
-    gdepth[gdepth == 0] = np.nan
-    rdepth[rdepth == 0] = np.nan
-    zdepth[zdepth == 0] = np.nan
-
-    cm = matplotlib.cm.viridis
-    cm.set_bad('0.9')
-    depths = dict(g=gdepth, r=rdepth, z=zdepth)
-    for band in 'grz':
-        plt.clf()
-        nom = dict(g=24, r=23.4, z=22.5)[band]
-        mn,mx = nom-1, nom+1
-        plt.imshow(depths[band], interpolation='nearest', origin='lower',
-                   vmin=mn, vmax=mx, cmap=cm)
-        aitoff_labels(wcs)
-        cb = plt.colorbar()
-        cb.set_label('%s depth (mag)' % band)
-        plt.title('DR6 + DR7')
-        plt.savefig('depth-%s.pdf' % band)
-
-    dr6 = fits_table('/data1/dr6/survey-ccds-dr6plus.kd.fits',
-                     columns=['filter','ra','dec','fwhm'])
-    print(len(dr6), 'DR6')
-    dr7 = fits_table('/data1/dr7/survey-ccds-dr7.kd.fits',
-                     columns=['filter','ra','dec','fwhm','ccd_cuts'])
-    print(len(dr7), 'DR7')
-
-    dr6.cut(dr6.filter == 'z')
-    print(len(dr6), 'DR6 z')
-    dr7.cut((dr7.ccd_cuts == 0) * (dr7.filter == 'z'))
-    print(len(dr7), 'DR7 z')
-
-    ok,x,y = wcs.radec2pixelxy(dr6.ra, dr6.dec)
-    dr6.ix = np.round(x-1).astype(int)
-    dr6.iy = np.round(y-1).astype(int)
-    ok,x,y = wcs.radec2pixelxy(dr7.ra, dr7.dec)
-    dr7.ix = np.round(x-1).astype(int)
-    dr7.iy = np.round(y-1).astype(int)
-
-    dr6.cut((dr6.ix >= 0) * (dr6.ix < W) * (dr6.iy >= 0) * (dr6.iy < H))
-    print('Cut to', len(dr6), 'in-bounds')
-    dr6.see = dr6.fwhm * 0.262
-
-    dr7.cut((dr7.ix >= 0) * (dr7.ix < W) * (dr7.iy >= 0) * (dr7.iy < H))
-    print('Cut to', len(dr7), 'in-bounds')
-    dr7.see = dr7.fwhm * 0.262
+            T.dmag[T.dmag == 0] = np.nan
+                    
+            plt.clf()
+            #plt.imshow(background, interpolation='nearest', origin='lower')
     
-    bestseeing = np.empty((H,W), np.float32)
-    bestseeing[:,:] = 10.
-    for x,y,see in zip(dr6.ix, dr6.iy, dr6.see):
-        bestseeing[y,x] = min(bestseeing[y,x], see)
-    for x,y,see in zip(dr7.ix, dr7.iy, dr7.see):
-        bestseeing[y,x] = min(bestseeing[y,x], see)
+            mx = 10.
+            if band in 'rz':
+                mx = 8.
+            
+            plt.scatter(T.ix, T.iy, c=T.dmag * 1000., s=0.5, vmin=-mx, vmax=mx, cmap=cm)
+            aitoff_labels(wcs)
+            cb = plt.colorbar()
+            cb.set_label('%s offsets (milli-mag)' % band)
+            plt.title('DR6 + DR7 vs Pan-STARRS PS1')
+            plt.savefig('photometric-offset-%s.pdf' % band)
 
-    bestseeing[bestseeing == 10.] = np.nan
-    
-    cm = matplotlib.cm.hot
-    cm.set_bad('0.9')
-    plt.clf()
-    plt.imshow(bestseeing, interpolation='nearest', origin='lower',
-               vmin=0.8, vmax=2.0, cmap=cm)
-    aitoff_labels(wcs)
 
-    cb = plt.colorbar()
-    cb.set_label('Best z-band seeing (arcsec)')
-    plt.title('DR6 + DR7')
-    
-    plt.savefig('zsee4.pdf')
-    
 
+    plt.subplots_adjust(left=0.03, right=0.99, bottom=0.08, top=0.95)
+
+    # Galdepth
+    if False:
+        dr6 = fits_table('/data1/dr6/survey-bricks-dr6.fits.gz',
+                         columns=['ra','dec','galdepth_g','galdepth_r',
+                                  'galdepth_z'])
+        print(len(dr6), 'DR6 bricks')
+        # dr5 = fits_table('/data1/dr5/survey-bricks-dr5.fits.gz',
+        #                  columns=['ra','dec','galdepth_g', 'galdepth_r',
+        #                           'galdepth_z'])
+        # print(len(dr5), 'DR5 bricks')
+        dr7 = fits_table('/data1/dr7/survey-bricks-dr7.fits.gz',
+                         columns=['ra','dec','galdepth_g', 'galdepth_r',
+                                  'galdepth_z'])
+        print(len(dr7), 'DR7 bricks')
+    
+        ok,x,y = wcs.radec2pixelxy(dr6.ra, dr6.dec)
+        dr6.ix = np.round(x-1).astype(int)
+        dr6.iy = np.round(y-1).astype(int)
+        ok,x,y = wcs.radec2pixelxy(dr7.ra, dr7.dec)
+        dr7.ix = np.round(x-1).astype(int)
+        dr7.iy = np.round(y-1).astype(int)
+    
+        dr6.cut((dr6.ix >= 0) * (dr6.ix < W) * (dr6.iy >= 0) * (dr6.iy < H))
+        print('Cut to', len(dr6), 'in-bounds')
+        dr7.cut((dr7.ix >= 0) * (dr7.ix < W) * (dr7.iy >= 0) * (dr7.iy < H))
+        print('Cut to', len(dr7), 'in-bounds')
         
+        gdepth = np.zeros((H,W), np.float32)
+        rdepth = np.zeros((H,W), np.float32)
+        zdepth = np.zeros((H,W), np.float32)
+        for x,y,g,r,z in zip(dr6.ix, dr6.iy, dr6.galdepth_g, dr6.galdepth_r, dr6.galdepth_z):
+            gdepth[y,x] = max(gdepth[y,x], g)
+            rdepth[y,x] = max(rdepth[y,x], r)
+            zdepth[y,x] = max(zdepth[y,x], z)
+        for x,y,g,r,z in zip(dr7.ix, dr7.iy, dr7.galdepth_g, dr7.galdepth_r, dr7.galdepth_z):
+            gdepth[y,x] = max(gdepth[y,x], g)
+            rdepth[y,x] = max(rdepth[y,x], r)
+            zdepth[y,x] = max(zdepth[y,x], z)
+    
+        depths = dict(g=gdepth, r=rdepth, z=zdepth)
+
+        dr7 = fits_table('/data1/dr7/ccds-annotated-dr7.fits.gz',
+                         columns=['ra','dec','filter','ccd_cuts','galdepth'])
+        dr7.cut(dr7.ccd_cuts == 0)
+        ok,x,y = wcs.radec2pixelxy(dr7.ra, dr7.dec)
+        dr7.ix = np.round(x-1).astype(int)
+        dr7.iy = np.round(y-1).astype(int)
+        for band in 'grz':
+            depth = depths[band]
+            I = np.flatnonzero(dr7.filter == band)
+            for x,y,d in zip(dr7.ix[I],dr7.iy[I],dr7.galdepth[I]):
+                depth[y,x] = max(depth[y,x], d)
+    
+        gdepth[gdepth == 0] = np.nan
+        rdepth[rdepth == 0] = np.nan
+        zdepth[zdepth == 0] = np.nan
+    
+        cm = matplotlib.cm.viridis
+        cm.set_bad('0.9')
+        depths = dict(g=gdepth, r=rdepth, z=zdepth)
+        for band in 'grz':
+    
+            d = depths[band]
+            m = np.median(d[np.isfinite(d)])
+            print('Median galdepth in', band, 'is', m)
+    
+            plt.clf()
+            nom = dict(g=24, r=23.4, z=22.5)[band]
+            mn,mx = nom-1, nom+1
+            plt.imshow(depths[band], interpolation='nearest', origin='lower',
+                       vmin=mn, vmax=mx, cmap=cm)
+            aitoff_labels(wcs)
+            cb = plt.colorbar()
+            cb.set_label('%s depth (mag)' % band)
+            plt.title('DR6 + DR7')
+            plt.savefig('depth-%s.pdf' % band)
+
+    # Best seeing
+    if True:
+
+        # W,H = 1000,500
+        # zoom = 1.0
+        # wcs = anwcs_create_hammer_aitoff(270., 0., zoom, W, H, False)
+
+        from astrometry.util.util import Tan
+        
+        dr6 = fits_table('/data1/dr6/survey-ccds-dr6plus.kd.fits',
+                         columns=['filter','ra','dec','fwhm',
+                                  'width','height','crval1','crval2',
+                                  'crpix1','crpix2','cd1_1','cd1_2',
+                                  'cd2_1','cd2_2'])
+        print(len(dr6), 'DR6')
+        dr7 = fits_table('/data1/dr7/survey-ccds-dr7.kd.fits',
+                         columns=['filter','ra','dec','fwhm','ccd_cuts',
+                                  'width','height','crval1','crval2',
+                                  'crpix1','crpix2','cd1_1','cd1_2',
+                                  'cd2_1','cd2_2'])
+        print(len(dr7), 'DR7')
+
+        dr6_all = dr6.copy()
+        dr7_all = dr7.copy()
+        
+        for band in 'grz':
+            dr6 = dr6_all[(dr6_all.filter == band)]
+            print(len(dr6), 'DR6', band)
+            dr7 = dr7_all[(dr7_all.filter == band)]
+            print(len(dr7), 'DR7', band)
+            dr7.cut((dr7.ccd_cuts == 0))
+            print(len(dr7), 'DR7 good')
+
+            ok,x,y = wcs.radec2pixelxy(dr6.ra, dr6.dec)
+            dr6.ix = np.round(x-1).astype(int)
+            dr6.iy = np.round(y-1).astype(int)
+            ok,x,y = wcs.radec2pixelxy(dr7.ra, dr7.dec)
+            dr7.ix = np.round(x-1).astype(int)
+            dr7.iy = np.round(y-1).astype(int)
+
+            if band == 'z':
+                # MzLS
+                pixscale6 = 0.262
+            else:
+                # BASS
+                pixscale6 = 0.454
+
+            dr6.cut((dr6.ix >= 0) * (dr6.ix < W) * (dr6.iy >= 0) * (dr6.iy < H))
+            print('Cut to', len(dr6), 'in-bounds')
+            dr6.see = dr6.fwhm * pixscale6
+
+            dr7.cut((dr7.ix >= 0) * (dr7.ix < W) * (dr7.iy >= 0) * (dr7.iy < H))
+            print('Cut to', len(dr7), 'in-bounds')
+            dr7.see = dr7.fwhm * 0.262
+
+            dr6.x1 = np.zeros(len(dr6), int)
+            dr6.x2 = np.zeros(len(dr6), int)
+            dr6.y1 = np.zeros(len(dr6), int)
+            dr6.y2 = np.zeros(len(dr6), int)
+            for i,ccd in enumerate(dr6):
+                ccdwcs = Tan(*[float(x) for x in
+                    [ccd.crval1, ccd.crval2, ccd.crpix1, ccd.crpix2,
+                     ccd.cd1_1,  ccd.cd1_2,  ccd.cd2_1, ccd.cd2_2,
+                     ccd.width, ccd.height]])
+                rr,dd = ccdwcs.pixelxy2radec(
+                    [1, 1, ccd.width, ccd.width, 1],
+                    [1, ccd.height, ccd.height, 1, 1])
+                ok,xx,yy = wcs.radec2pixelxy(rr, dd)
+                ix = np.round(xx).astype(int)
+                iy = np.round(yy).astype(int)
+                dr6.x1[i] = min(ix)-1
+                dr6.x2[i] = max(ix)
+                dr6.y1[i] = min(iy)-1
+                dr6.y2[i] = max(iy)
+
+            # Cut small number of wrap-arounds
+            dr6.cut((dr6.x2 - dr6.x1) < 100)
+            print('Cut to', len(dr6), 'non-wrapping')
+
+            
+            bestseeing = np.empty((H,W), np.float32)
+            bestseeing[:,:] = 10.
+            #for x,y,see in zip(dr6.ix, dr6.iy, dr6.see):
+            #    bestseeing[y,x] = min(bestseeing[y,x], see)
+
+            for x1,x2,y1,y2,see in zip(dr6.x1, dr6.x2, dr6.y1, dr6.y2, dr6.see):
+                bestseeing[y1:y2,x1:x2] = np.minimum(bestseeing[y1:y2,x1:x2], see)
+
+            for x,y,see in zip(dr7.ix, dr7.iy, dr7.see):
+                bestseeing[y,x] = min(bestseeing[y,x], see)
+            bestseeing[bestseeing == 10.] = np.nan
+    
+            cm = matplotlib.cm.hot
+            cm.set_bad('0.9')
+            plt.clf()
+            plt.imshow(bestseeing, interpolation='nearest', origin='lower',
+                       vmin=0.8, vmax=2.0, cmap=cm)
+            aitoff_labels(wcs)
+            cb = plt.colorbar()
+            cb.set_label('Best %s-band seeing (arcsec)' % band)
+            plt.title('DR6 + DR7')
+            plt.savefig('best-seeing-%s.pdf' % band)
+
+            
 if __name__ == '__main__':
     print('zsee_fig')
     zsee_fig()
