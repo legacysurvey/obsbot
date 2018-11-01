@@ -123,30 +123,74 @@ def main(cmdlineargs=None, get_decbot=False):
     J2 = json.loads(open(json2fn,'rb').read())
     J3 = json.loads(open(json3fn,'rb').read())
     print('Read', len(J1), 'pass 1 and', len(J2), 'pass 2 and', len(J3), 'pass 3 exposures')
+
+    print('Reading tiles table', opt.tiles)
+    tiles = fits_table(opt.tiles)
+
+    # Annotate plans with 'planpass' field
+    for i,J in enumerate([J1,J2,J3]):
+        for j in J:
+            j['planpass'] = i+1
+    # Annotate plans with 'tilepass' field
+    # - build map from tileid to tile pass number
+    tileid_to_pass = dict([(t,p) for t,p in zip(tiles.tileid,
+                                                tiles.get('pass'))])
+    for J in [J1,J2,J3]:
+        for j in J:
+            tileid = get_tile_id_from_name(j['object'])
+            j['tileid'] = tileid
+            j['tilepass'] = int(tileid_to_pass[tileid])
+
+    if opt.prefer_new_tiles:
+        # Annotate plans with new/repeat for each tile.
+        # - build map from tileid to g/r/z_done
+        tileid_to_done = dict([
+            (t, dict(g=gdone, r=rdone, z=zdone)) for t,gdone,rdone,zdone
+            in zip(tiles.tileid, tiles.g_done, tiles.r_done, tiles.z_done)])
+        for i,J in enumerate([J1,J2,J3]):
+            nnew = 0
+            for j in J:
+                obj = j['object']
+                tileid = get_tile_id_from_name(obj)
+                # Parse objname like 'DECaLS_31759_z'
+                parts = str(obj).split('_')
+                assert(len(parts) == 3)
+                tileband = parts[2]
+                donedict = tileid_to_done[tileid]
+                done = donedict[tileband]
+                j['new_tile'] = not(done)
+                if not done:
+                    nnew += 1
+            print('Pass', i+1, 'plan:', nnew, 'new tiles and',
+                  (len(J)-nnew), 'repeat observations')
+
     if opt.cut_past_at_startup:
         # Drop exposures that are before *now*, in all three plans.
         now = ephem.now()
         print('Now:', str(now))
         print('First pass 1 exposure:', ephem.Date(str(J1[0]['approx_datetime'])))
-        J1 = [j for j in J1 if ephem.Date(str(j['approx_datetime'])) > now]
-        J2 = [j for j in J2 if ephem.Date(str(j['approx_datetime'])) > now]
-        J3 = [j for j in J3 if ephem.Date(str(j['approx_datetime'])) > now]
+
+        if opt.prefer_new_tiles:
+            new_tile_drop_time = now - opt.new_tile_lag * ephem.minute
+            J1 = [j for j in J1 if ephem.Date(str(j['approx_datetime'])) >
+                  (new_tile_drop_time if j['new_tile'] else now)]
+            J2 = [j for j in J2 if ephem.Date(str(j['approx_datetime'])) >
+                  (new_tile_drop_time if j['new_tile'] else now)]
+            J3 = [j for j in J3 if ephem.Date(str(j['approx_datetime'])) >
+                  (new_tile_drop_time if j['new_tile'] else now)]
+        else:
+            J1 = [j for j in J1 if ephem.Date(str(j['approx_datetime'])) > now]
+            J2 = [j for j in J2 if ephem.Date(str(j['approx_datetime'])) > now]
+            J3 = [j for j in J3 if ephem.Date(str(j['approx_datetime'])) > now]
+
         for i,J in enumerate([J1,J2,J3]):
-            print('Pass %i: keeping %i tiles after now' % (i+1, len(J)))
+            print('Pass %i: keeping %i tiles based on time' % (i+1, len(J)))
             if len(J):
                 print('First tile: %s' % J[0]['approx_datetime'])
 
     if len(J1) + len(J2) + len(J3) == 0:
         print('No tiles!')
         return
-
-    # Annotate with 'planpass' field
-    for i,J in enumerate([J1,J2,J3]):
-        for j in J:
-            j['planpass'] = i+1
-
-    print('Reading tiles table', opt.tiles)
-    tiles = fits_table(opt.tiles)
 
     # Tiles with ebv_med == 0 ? Look up in SFD.
     I = np.flatnonzero(tiles.ebv_med == 0)
@@ -287,43 +331,6 @@ class Decbot(Obsbot):
 
         # first exposure only
         self.queue_double = opt.start_double
-
-        # Annotate plans with 'tilepass' field
-        # - build map from tileid to tile pass number
-        tileid_to_pass = dict([(t,p) for t,p in zip(self.tiles.tileid,
-                                                    self.tiles.get('pass'))])
-        for J in [self.J1,self.J2,self.J3]:
-            for j in J:
-                tileid = get_tile_id_from_name(j['object'])
-                j['tileid'] = tileid
-                j['tilepass'] = int(tileid_to_pass[tileid])
-        del tileid_to_pass
-
-        if self.opt.prefer_new_tiles:
-            # Annotate plans with new/repeat for each tile.
-
-            # - build map from tileid to g/r/z_done
-            tileid_to_done = dict([
-                (t, dict(g=gdone, r=rdone, z=zdone)) for t,gdone,rdone,zdone
-                in zip(self.tiles.tileid, self.tiles.g_done, self.tiles.r_done,
-                       self.tiles.z_done)])
-            for i,J in enumerate([self.J1,self.J2,self.J3]):
-                nnew = 0
-                for j in J:
-                    obj = j['object']
-                    tileid = get_tile_id_from_name(obj)
-
-                    # Parse objname like 'DECaLS_31759_z'
-                    parts = str(obj).split('_')
-                    assert(len(parts) == 3)
-                    tileband = parts[2]
-
-                    donedict = tileid_to_done[tileid]
-                    done = donedict[tileband]
-                    j['new_tile'] = not(done)
-                    if not done:
-                        nnew += 1
-                print('Pass', i+1, 'plan:', nnew, 'new tiles and', len(J)-nnew, 'repeat observations')
 
         # Read existing files,recording their tile names as vetoes.
         self.observed_tiles = {}
