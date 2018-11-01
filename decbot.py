@@ -71,6 +71,11 @@ def main(cmdlineargs=None, get_decbot=False):
                       default=True, action='store_false',
                       help='Do not cut tiles that were supposed to be observed in the past upon startup')
 
+    parser.add_option('--prefer-new-tiles', default=False, action='store_true',
+                      help='Allow observing new tiles that were scheduled to be observed up to N minutes ago (--new-tile-lag)')
+    parser.add_option('--new-tile-lag', default=15, type=int,
+                      help='Number of minutes after their scheduled time after which new tiles will be dropped.  (Old tiles get dropped 0 minutes after their scheduled times.)')
+    
     parser.add_option('--no-queue', dest='do_queue', default=True,
                       action='store_false',
                       help='Do not actually queue exposures.')
@@ -293,6 +298,32 @@ class Decbot(Obsbot):
                 j['tileid'] = tileid
                 j['tilepass'] = int(tileid_to_pass[tileid])
         del tileid_to_pass
+
+        if self.opt.prefer_new_tiles:
+            # Annotate plans with new/repeat for each tile.
+
+            # - build map from tileid to g/r/z_done
+            tileid_to_done = dict([
+                (t, dict(g=gdone, r=rdone, z=zdone)) for t,gdone,rdone,zdone
+                in zip(self.tiles.tileid, self.tiles.g_done, self.tiles.r_done,
+                       self.tiles.z_done)])
+            for i,J in enumerate([self.J1,self.J2,self.J3]):
+                nnew = 0
+                for j in J:
+                    obj = j['object']
+                    tileid = get_tile_id_from_name(obj)
+
+                    # Parse objname like 'DECaLS_31759_z'
+                    parts = str(obj).split('_')
+                    assert(len(parts) == 3)
+                    tileband = parts[2]
+
+                    donedict = tileid_to_done[tileid]
+                    done = donedict[tileband]
+                    j['new_tile'] = not(done)
+                    if not done:
+                        nnew += 1
+                print('Pass', i+1, 'plan:', nnew, 'new tiles and', len(J)-nnew, 'repeat observations')
 
         # Read existing files,recording their tile names as vetoes.
         self.observed_tiles = {}
@@ -844,11 +875,22 @@ class Decbot(Obsbot):
     def keep_good_tiles(self, J):
         keep = []
         now = ephem.now()
+
+        if self.opt.prefer_new_tiles:
+            # opt.new_tile_lag in minutes
+            new_tile_drop_time = now - self.opt.new_tile_lag * ephem.minute
+        
         for j in J:
             if self.opt.cut_before_now:
                 tstart = ephem.Date(str(j['approx_datetime']))
-                if tstart < now:
-                    print('Dropping tile with approx_datetime', j['approx_datetime'], ' -- now is', now)
+
+                droptime = now
+                if self.opt.prefer_new_tiles:
+                    if j['new_tile']:
+                        droptime = new_tile_drop_time
+                    
+                if tstart < droptime:
+                    print('Dropping tile with approx_datetime', j['approx_datetime'], ' -- now is', now, 'and drop time is', droptime)
                     continue
             tilename = str(j['object'])
             # Was this tile seen in a file on disk? (not incl. backlog)
