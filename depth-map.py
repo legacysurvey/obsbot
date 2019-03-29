@@ -2968,10 +2968,6 @@ def des_zooms(tiles_fn='tiles-depths.fits',
 
 
 def zsee_fig():
-    matplotlib.rc('text', usetex=True)
-    matplotlib.rc('font', family='serif')
-    plt.figure(1, figsize=(13,4))
-    plt.subplots_adjust(left=0.03, right=0.99, bottom=0.08, top=0.95)
 
     def aitoff_labels(wcs):
         # image bounds
@@ -3009,12 +3005,12 @@ def zsee_fig():
             #print('ras', ras)
             #print('x', x)
             plt.plot(x-1, y-1, 'k-', alpha=0.3)
-
+    
             # i = np.argmin(x)
             # xl = x[i]-1
             # yl = y[i]-1
             # plt.text(xl-10, yl, '%i' % dec, va='center', ha='right')
-
+    
         for dec in [-15, 0, 15, 30, 45, 60, 75]:
             ra = 300
             ok,x,y = wcs.radec2pixelxy(ra, dec)
@@ -3025,10 +3021,20 @@ def zsee_fig():
                 ha = 'right'
                 dx = -5
             plt.text(x+dx, y-5, '$%+i$' % dec, va='top', ha=ha)
-
+    
             
         plt.axis([xlo-3,xhi+3,ylo-3,yhi+1])
         plt.xlabel('RA (deg)')
+
+
+
+
+    matplotlib.rc('text', usetex=True)
+    matplotlib.rc('font', family='serif')
+    plt.figure(1, figsize=(13,4))
+    plt.subplots_adjust(left=0.03, right=0.99, bottom=0.08, top=0.95)
+
+    
     
     #W,H = 2000,1000
     W,H = 1000,500
@@ -3191,20 +3197,211 @@ def zsee_fig():
         # wcs = anwcs_create_hammer_aitoff(270., 0., zoom, W, H, False)
 
         from astrometry.util.util import Tan
-        
-        dr6 = fits_table('/data1/dr6/survey-ccds-dr6plus.kd.fits',
-                         columns=['filter','ra','dec','fwhm',
-                                  'width','height','crval1','crval2',
-                                  'crpix1','crpix2','cd1_1','cd1_2',
-                                  'cd2_1','cd2_2'])
-        print(len(dr6), 'DR6')
-        dr7 = fits_table('/data1/dr7/survey-ccds-dr7.kd.fits',
-                         columns=['filter','ra','dec','fwhm','ccd_cuts',
-                                  'width','height','crval1','crval2',
-                                  'crpix1','crpix2','cd1_1','cd1_2',
-                                  'cd2_1','cd2_2'])
-        print(len(dr7), 'DR7')
 
+        dr6g = fits_table('ccds-annotated-dr6-g_AD.fits.gz')
+        dr6r = fits_table('ccds-annotated-dr6-r_AD.fits.gz')
+        dr6z = fits_table('ccds-annotated-dr6-z_AD.fits.gz')
+        dr7 = fits_table('ccds-annotated-dr7_AD.fits.gz')
+        dr6 = merge_tables([dr6g,dr6r,dr6z])
+
+        dr7.fwhm = dr7.fwhm_cp
+        dr6.fwhm = dr6.fwhm_cp
+
+        print(len(dr7), 'DR7')
+        dr7.cut(dr7.fwhm > 2.0)
+        print('Cut to', len(dr7), 'on FWHM>2')
+
+        print(len(dr6), 'DR6')
+        dr6.cut(dr6.fwhm > 2.0)
+        print('Cut to', len(dr6), 'on FWHM>2')
+        
+        if False:
+            # dr6 = fits_table('/data1/dr6/survey-ccds-dr6plus.kd.fits',
+            #                  columns=['image_filename', 'ccdname',
+            #                           'filter','ra','dec','fwhm',
+            #                           'width','height','crval1','crval2',
+            #                           'crpix1','crpix2','cd1_1','cd1_2',
+            #                           'cd2_1','cd2_2'])
+            # print(len(dr6), 'DR6')
+            dr7 = fits_table('/data1/dr7/survey-ccds-dr7.kd.fits',
+                             columns=['image_filename', 'ccdname',
+                                      'filter','ra','dec','fwhm','ccd_cuts',
+                                      'width','height','crval1','crval2',
+                                      'crpix1','crpix2','cd1_1','cd1_2',
+                                      'cd2_1','cd2_2'])
+    
+            dr7 = dr7[:1000]
+            print(len(dr7), 'DR7')
+            
+            #90prime/CP20160117/ksb_160118_130951_ooi_r_v1.fits.fz
+            
+    
+            bok = fits_table('seeing/DR8_bok_header_info.fits')
+            print(len(bok), 'Bok')
+            bok.cut(bok.cenra1 != 0.0)
+            print(len(bok), 'ok')
+    
+            # Cut on date -- DR6 includes Bok data from before June 25, 2017.
+            # and MzLS data before December 9, 2017.
+    
+            keep = np.array([i for i,fn in enumerate(bok.filename) if (fn.strip().split('/')[-1].split('_')[1] < '170625')])
+            bok.cut(keep)
+            print(len(bok), 'kept based on date')
+            
+            # def fn_norm(fn):
+            #     return '_'.join(fn.strip().split('/')[-1].split('_')[:3])
+            # 
+            # fnmap = dict([((fn_norm(fn), ccdname.strip().upper()), i)
+            #               for i,(fn,ccdname)
+            #               in enumerate(zip(see.filename, see.ccdname))])
+            # 
+            # I = np.array([fnmap.get((fn_norm(fn), ccdname.strip().upper()), -1)
+            #               for fn,ccdname in zip(dr6.image_filename, dr6.ccdname)])
+            # print('Of', len(dr6), 'DR6 CCDs and', len(see), 'Bok, matched', np.sum(I>-1), 'CCDs')
+            # 
+            # return
+    
+    
+            # tablist /data1/dr6/survey-ccds-dr6plus.kd.fits"[expnum==75110186][col expnum;ccdname;crpix1]"
+            wcskeys = {
+                'crpix1': dict(CCD1=4103.19, CCD2=-87.1133, CCD3=4124.77,
+                               CCD4=-68.2412),
+                'crpix2': dict(CCD1=4290.66, CCD2=4283.26, CCD3=-185.110,
+                               CCD4=-198.428),
+                'cd1_1': dict(CCD1=-6.25650E-07, CCD2=-1.16688E-06,
+                              CCD3=-1.06214E-06, CCD4=-8.99536E-07),
+                'cd1_2': dict(CCD1=-0.000125677, CCD2=-0.000125671,
+                              CCD3=-0.000125729, CCD4=-0.000125735),
+                'cd2_1': dict(CCD1=-0.000125699, CCD2=-0.000125717,
+                              CCD3=-0.000125698, CCD4=-0.000125759),
+                'cd2_2': dict(CCD1=1.12564E-06, CCD2=6.04536E-07,
+                              CCD3=5.06435E-07, CCD4=1.37220E-06),
+                              }
+            width=4032
+            height=4096
+    
+            for k in ['crpix1', 'crpix2', 'cd1_1', 'cd1_2', 'cd2_1', 'cd2_2']:
+                bok.set(k, np.zeros(len(bok)))
+                arr = bok.get(k)
+                vals = wcskeys[k]
+                for i,ccdname in enumerate(bok.ccdname):
+                    arr[i] = vals[ccdname.strip().upper()]
+            bok.width  = np.zeros(len(bok)) + 4032
+            bok.height = np.zeros(len(bok)) + 4096
+            bok.ra  = bok.cenra1
+            bok.dec = bok.cendec1
+            bok.rename('cenra1', 'crval1')
+            bok.rename('cendec1', 'crval2')
+            bok.rename('seeingp1', 'fwhm')
+            bok.filter = np.array([fn.strip().split('/')[-1].split('_')[-2]
+                                   for fn in bok.filename])
+            print('Bok filter', Counter(bok.filter))
+    
+            dr6x = fits_table('/data1/dr6/survey-ccds-dr6plus.kd.fits',
+                              columns=['expnum', 'ccdname',
+                                       'filter','ra','dec','fwhm',
+                                       'width','height','crval1','crval2',
+                                       'crpix1','crpix2','cd1_1','cd1_2',
+                                       'cd2_1','cd2_2'])
+            dr6x.cut(dr6x.expnum == 107621)
+            assert(len(dr6x) == 4)
+    
+            wcskeys = {}
+            for k in ['crpix1', 'crpix2', 'cd1_1', 'cd1_2', 'cd2_1', 'cd2_2',
+                      'width', 'height']:        
+                vals = dict()
+                for ccdname,val in zip(dr6x.ccdname, dr6x.get(k)):
+                    vals[ccdname.strip().upper()] = val
+                wcskeys[k] = vals
+            print('WCS keys:', wcskeys)
+    
+            mos = fits_table('seeing/DR8_mosaic_header_info.fits')
+            print(len(mos), 'Mos')
+            mos.cut(mos.cenra1 != 0.0)
+            print(len(mos), 'ok')
+    
+            keep = np.array([i for i,fn in enumerate(mos.filename) if (fn.strip().split('/')[-1].split('_')[1] < '171209')])
+            mos.cut(keep)
+            print(len(mos), 'kept based on date')
+    
+            for k in ['crpix1', 'crpix2', 'cd1_1', 'cd1_2', 'cd2_1', 'cd2_2',
+                      'width', 'height']:
+                mos.set(k, np.zeros(len(mos)))
+                arr = mos.get(k)
+                vals = wcskeys[k]
+                for i,ccdname in enumerate(mos.ccdname):
+                    arr[i] = vals[ccdname.strip().upper()]
+            mos.ra  = mos.cenra1
+            mos.dec = mos.cendec1
+            mos.rename('cenra1', 'crval1')
+            mos.rename('cendec1', 'crval2')
+            mos.rename('seeingp1', 'fwhm')
+            mos.filter = np.array([fn.strip().split('/')[-1].split('_')[-2][0]
+                                   for fn in mos.filename])
+    
+            print('Mos filter:', Counter(mos.filter))
+    
+            dr7x = fits_table('/data1/dr7/survey-ccds-dr7.kd.fits',
+                              columns=['expnum', 'ccdname',
+                                       'filter','ra','dec','fwhm',
+                                       'width','height','crval1','crval2',
+                                       'crpix1','crpix2','cd1_1','cd1_2',
+                                       'cd2_1','cd2_2'])
+            #dr7x.cut(dr7x.expnum == 425090)
+            #dr7x.cut(dr7x.expnum == 508199)
+            dr7x.cut(dr7x.expnum == 663609)
+            wcskeys = {}
+            for k in ['crpix1', 'crpix2', 'cd1_1', 'cd1_2', 'cd2_1', 'cd2_2',
+                      'width', 'height']:        
+                vals = dict()
+                for ccdname,val in zip(dr7x.ccdname, dr7x.get(k)):
+                    vals[ccdname.strip().upper()] = val
+                wcskeys[k] = vals
+            #print('WCS keys:', wcskeys)
+    
+            dec = fits_table('seeing/DR7_header_info.fits')
+            print(len(dec), 'Dec')
+            dec.cut(dec.cenra1 != 0.0)
+            print(len(dec), 'ok')
+            for k in ['crpix1', 'crpix2', 'cd1_1', 'cd1_2', 'cd2_1', 'cd2_2',
+                      'width', 'height']:
+                dec.set(k, np.zeros(len(dec)))
+                arr = dec.get(k)
+                vals = wcskeys[k]
+                for i,ccdname in enumerate(dec.ccdname):
+                    arr[i] = vals[ccdname.strip().upper()]
+            dec.ra  = dec.cenra1
+            dec.dec = dec.cendec1
+            dec.rename('cenra1', 'crval1')
+            dec.rename('cendec1', 'crval2')
+            dec.filter = np.array([fn.strip().split('/')[-1].split('_')[-2][0]
+                                   for fn in dec.filename])
+    
+            dec.ccd_cuts = np.zeros(len(dec), np.int32)
+        
+            print('Dec filter:', Counter(dec.filter))
+
+            for filt in ['g','r']:
+                plt.clf()
+                plt.hist(bok.fwhm[bok.filter == filt] * 0.454, range=(0,5), bins=50)
+                plt.title('Bok %s' % filt)
+                plt.savefig('see-bok-%s.png' % filt)
+    
+            plt.clf()
+            plt.hist(mos.fwhm * 0.262, range=(0,5), bins=50)
+            plt.title('Mos z')
+            plt.savefig('see-mos-z.png')
+    
+            for filt in ['g','r','z']:
+                plt.clf()
+                plt.hist(dec.fwhm[dec.filter == filt] * 0.262, range=(0,5), bins=50)
+                plt.title('DECam %s' % filt)
+                plt.savefig('see-dec-%s.png' % filt)
+    
+            dr6 = merge_tables([bok, mos])
+            dr7 = dec
+
+        
         dr6_all = dr6.copy()
         dr7_all = dr7.copy()
         
@@ -3238,6 +3435,9 @@ def zsee_fig():
             print('Cut to', len(dr7), 'in-bounds')
             dr7.see = dr7.fwhm * 0.262
 
+            print('Median seeing in DR6', band, ':', np.median(dr6.see))
+            print('Median seeing in DR7', band, ':', np.median(dr7.see))
+            
             dr6.x1 = np.zeros(len(dr6), int)
             dr6.x2 = np.zeros(len(dr6), int)
             dr6.y1 = np.zeros(len(dr6), int)
@@ -3274,12 +3474,18 @@ def zsee_fig():
             for x,y,see in zip(dr7.ix, dr7.iy, dr7.see):
                 bestseeing[y,x] = min(bestseeing[y,x], see)
             bestseeing[bestseeing == 10.] = np.nan
-    
+
+            plt.clf()
+            plt.hist(bestseeing[np.isfinite(bestseeing)], range=(0,3), bins=60)
+            plt.title('Best seeing: %s' % band)
+            plt.savefig('see-best-%s.png' % band)
+
+            
             cm = matplotlib.cm.hot
             cm.set_bad('0.9')
             plt.clf()
             plt.imshow(bestseeing, interpolation='nearest', origin='lower',
-                       vmin=0.8, vmax=2.0, cmap=cm)
+                       vmin=0.6, vmax=2.0, cmap=cm)
             aitoff_labels(wcs)
             cb = plt.colorbar()
             cb.set_label('Best %s-band seeing (arcsec)' % band)
@@ -3288,6 +3494,277 @@ def zsee_fig():
 
             
 if __name__ == '__main__':
+
+    print('zsee_fig')
+    zsee_fig()
+    import sys
+    sys.exit(0)
+    
+    def aitoff_labels(wcs):
+        # image bounds
+        declo = -25
+        dechi = +35
+
+        ok,x,y = wcs.radec2pixelxy(0., declo)
+        ylo = int(y-1)
+        ok,x,y = wcs.radec2pixelxy(0., dechi)
+        yhi = int(y-1)
+        ok,x,y = wcs.radec2pixelxy([80, 300.], [0.,0.])
+        xlo = min(x)
+        xhi = max(x)
+        print('x range', xlo,xhi)    
+        
+        # RA labels
+        lt,lv = [],[]
+        for ra in [89.99, 60,30,0,330,300,270]:
+            decs = np.linspace(declo-10, declo+10, 25)
+            ok,x,y = wcs.radec2pixelxy(ra, decs)
+            i = np.argmin(np.abs(y - ylo))
+            x = x[i]
+            lt.append('%i' % np.round(ra))
+            lv.append(x)
+        plt.xticks(lv, lt)
+        plt.yticks([])
+    
+        for ra in [89.999, 60,30,0,330,300,270]:
+            decs = np.linspace(declo-5, +90., 100)
+            ok,x,y = wcs.radec2pixelxy(ra + np.zeros_like(decs), decs)
+            plt.plot(x-1, y-1, 'k-', alpha=0.3)
+    
+        for dec in [-15, 0, 15, 30]:
+            ras = np.append([89.999], np.linspace(89.999, -60, 100))
+            ok,x,y = wcs.radec2pixelxy(ras, np.zeros_like(ras)+dec)
+            plt.plot(x-1, y-1, 'k-', alpha=0.3)
+    
+        for dec in [-15, 0, 15, 30]:
+            ra = 300
+            ok,x,y = wcs.radec2pixelxy(ra, dec)
+            ha = 'left'
+            dx = +5
+            plt.text(x+dx, y-5, '$%+i$' % dec, va='top', ha=ha)
+        plt.axis([xlo-3,xhi+3,ylo-3,yhi+1])
+        plt.xlabel('RA (deg)')
+
+    
+    matplotlib.rc('text', usetex=True)
+    matplotlib.rc('font', family='serif')
+    plt.figure(1, figsize=(13,4))
+    plt.subplots_adjust(left=0.03, right=0.99, bottom=0.08, top=0.95)
+    
+    W,H = 2000,1000
+    zoom = 2.5
+    wcs = anwcs_create_hammer_aitoff(10., 5., zoom, W, H, False)
+    from astrometry.util.util import Tan
+
+
+    bestall = fitsio.read('bestseeing.fits')
+
+    bestall[bestall == 10.] = np.nan
+    cm = matplotlib.cm.jet
+    cm = cmap_discretize(cm, 14)
+    cm.set_bad('0.9')
+    plt.clf()
+    plt.imshow(bestall, interpolation='nearest', origin='lower',
+               vmin=0.8, vmax=1.5, cmap=cm)
+    #ax = plt.axis()
+    aitoff_labels(wcs)
+    #plt.axis(ax)
+    cb = plt.colorbar()
+    cb.set_label('Best seeing (arcsec)')
+    plt.title('DR7 + tile file')
+    plt.savefig('bsee.pdf')
+
+    import sys
+    sys.exit(0)
+
+
+    
+    dr7 = fits_table('/data1/dr7/survey-ccds-dr7.kd.fits',
+                     columns=['filter','ra','dec','fwhm','ccd_cuts',
+                              'width','height','crval1','crval2',
+                              'crpix1','crpix2','cd1_1','cd1_2',
+                              'cd2_1','cd2_2', 'expnum'])
+    print(len(dr7), 'DR7')
+    dr7_all = dr7.copy()
+
+    expnums = set(dr7.expnum)
+    print(len(expnums), 'DR7 expnums')
+    
+    db = fits_table('db.fits')
+    print('Got', len(db), 'copilot database exposures')
+    print('Expnum range', db.expnum.min(), db.expnum.max())
+    db.cut(db.expnum > 0)
+    print(len(db), 'good expnums')
+    E = np.unique(db.expnum)
+    print(len(E), 'unique expnums')
+    print('Expnum range', db.expnum.min(), db.expnum.max())
+    print('Cameras:', Counter(db.camera))
+    print('Obstype:', Counter(db.obstype))
+    db.cut(db.obstype == 'object   ')
+    print(len(db), 'obstype OBJECT')
+    E,I = np.unique(db.expnum, return_index=True)
+    db.cut(I)
+    print(len(db), 'unique expnum')
+
+    I = np.array([e not in expnums for e in db.expnum])
+    db.cut(I)
+    print(Counter(db.band))
+    db.cut(np.array([b.strip() in ['g','r','z'] for b in db.band]))
+    print(Counter(db.band))
+    print(len(db), 'not in DR7')
+
+    db.cut(db.exptime > 30.)
+    print(len(db), 'with exptimes > 30 s')
+    
+    #print('Exposure times:', Counter(db.exptime))
+    print('Exposure times:')
+    c = Counter(db.exptime)
+    for t in sorted(list(c.keys())):
+        print('  ', t, c[t])
+    
+    db_all = db.copy()
+    
+    # plt.clf()
+    # plt.plot(db.mjd_obs, 'b.')
+    # plt.savefig('mjd.png')
+
+    F=fitsio.FITS('decam.wcs.gz')
+    #H,W = 4094,2046
+    nccd = len(F)-1
+    C = fits_table()
+    C.crpix1 = np.zeros(nccd, np.float32)
+    C.crpix2 = np.zeros(nccd, np.float32)
+    C.cd1_1 = np.zeros(nccd, np.float32)
+    C.cd1_2 = np.zeros(nccd, np.float32)
+    C.cd2_1 = np.zeros(nccd, np.float32)
+    C.cd2_2 = np.zeros(nccd, np.float32)
+    for i in range(nccd):
+        hdr = F[i+1].read_header()
+        C.crpix1[i] = hdr['CRPIX1']
+        C.crpix2[i] = hdr['CRPIX2']
+        C.cd1_1[i] = hdr['CD1_1']
+        C.cd1_2[i] = hdr['CD1_2']
+        C.cd2_1[i] = hdr['CD2_1']
+        C.cd2_2[i] = hdr['CD2_2']
+    C.width = np.zeros(len(C), np.int32) + 2046
+    C.height = np.zeros(len(C), np.int32)+ 4094
+
+    print('Assuming', nccd, 'CCDs')
+
+    bestall = np.empty((H,W), np.float32)
+    bestall[:,:] = 10.
+    
+    for band in 'grz':
+        dr7 = dr7_all[(dr7_all.filter == band)]
+        print(len(dr7), 'DR7', band)
+        dr7.cut((dr7.ccd_cuts == 0))
+        print(len(dr7), 'DR7 good')
+        ok,x,y = wcs.radec2pixelxy(dr7.ra, dr7.dec)
+        dr7.ix = np.round(x-1).astype(int)
+        dr7.iy = np.round(y-1).astype(int)
+        dr7.cut((dr7.ix >= 0) * (dr7.ix < W) * (dr7.iy >= 0) * (dr7.iy < H))
+        print('Cut to', len(dr7), 'in-bounds')
+        dr7.see = dr7.fwhm * 0.262
+
+        dr7.x1 = np.zeros(len(dr7), int)
+        dr7.x2 = np.zeros(len(dr7), int)
+        dr7.y1 = np.zeros(len(dr7), int)
+        dr7.y2 = np.zeros(len(dr7), int)
+        for i,ccd in enumerate(dr7):
+            ccdwcs = Tan(*[float(x) for x in
+                [ccd.crval1, ccd.crval2, ccd.crpix1, ccd.crpix2,
+                 ccd.cd1_1,  ccd.cd1_2,  ccd.cd2_1, ccd.cd2_2,
+                 ccd.width, ccd.height]])
+            rr,dd = ccdwcs.pixelxy2radec(
+                [1, 1, ccd.width, ccd.width, 1],
+                [1, ccd.height, ccd.height, 1, 1])
+            ok,xx,yy = wcs.radec2pixelxy(rr, dd)
+            ix = np.round(xx).astype(int)
+            iy = np.round(yy).astype(int)
+            dr7.x1[i] = min(ix)-1
+            dr7.x2[i] = max(ix)
+            dr7.y1[i] = min(iy)-1
+            dr7.y2[i] = max(iy)
+
+        bestseeing = np.empty((H,W), np.float32)
+        bestseeing[:,:] = 10.
+        #for x,y,see in zip(dr7.ix, dr7.iy, dr7.see):
+        #    bestseeing[y,x] = min(bestseeing[y,x], see)
+
+        for x1,x2,y1,y2,see in zip(dr7.x1, dr7.x2, dr7.y1, dr7.y2, dr7.see):
+            bestseeing[y1:y2,x1:x2] = np.minimum(bestseeing[y1:y2,x1:x2], see)
+
+
+        best1 = bestseeing.copy()
+        best1[best1 == 10.] = np.nan
+        cm = matplotlib.cm.hot
+        cm.set_bad('0.9')
+        plt.clf()
+        plt.imshow(best1, interpolation='nearest', origin='lower',
+                   vmin=0.8, vmax=2.0, cmap=cm)
+        #aitoff_labels(wcs)
+        cb = plt.colorbar()
+        cb.set_label('Best %s-band seeing (arcsec)' % band)
+        plt.title('DR7')
+        plt.savefig('bsee1-%s.pdf' % band)
+
+        db = db_all[np.array([b.strip() == band for b in db_all.band])]
+        print(len(db), 'DB', band)
+        ok,x,y = wcs.radec2pixelxy(db.rabore, db.decbore)
+        db.ix = np.round(x-1).astype(int)
+        db.iy = np.round(y-1).astype(int)
+        db.cut((db.ix >= 0) * (db.ix < W) * (db.iy >= 0) * (db.iy < H))
+        print('Cut to', len(db), 'in-bounds')
+
+        for i,dbi in enumerate(db):
+            for j,ccd in enumerate(C):
+                ccdwcs = Tan(*[float(x) for x in
+                               [dbi.rabore, dbi.decbore, ccd.crpix1, ccd.crpix2,
+                                ccd.cd1_1,  ccd.cd1_2,  ccd.cd2_1, ccd.cd2_2,
+                                ccd.width, ccd.height]])
+                rr,dd = ccdwcs.pixelxy2radec(
+                    [1, 1, ccd.width, ccd.width, 1],
+                    [1, ccd.height, ccd.height, 1, 1])
+                ok,xx,yy = wcs.radec2pixelxy(rr, dd)
+                ix = np.round(xx).astype(int)
+                iy = np.round(yy).astype(int)
+                x1 = min(ix)-1
+                x2 = max(ix)
+                y1 = min(iy)-1
+                y2 = max(iy)
+                bestseeing[y1:y2,x1:x2] = np.minimum(bestseeing[y1:y2,x1:x2], dbi.seeing)
+
+        bestseeing[bestseeing == 10.] = np.nan
+
+        cm = matplotlib.cm.hot
+        cm.set_bad('0.9')
+        plt.clf()
+        plt.imshow(bestseeing, interpolation='nearest', origin='lower',
+                   vmin=0.8, vmax=2.0, cmap=cm)
+        #aitoff_labels(wcs)
+        cb = plt.colorbar()
+        cb.set_label('Best %s-band seeing (arcsec)' % band)
+        plt.title('DR7 + tile file')
+        plt.savefig('bsee-%s.pdf' % band)
+
+        bestall = np.minimum(bestall, bestseeing)
+
+    fitsio.write('bestseeing.fits', bestall, clobber=True)
+
+    bestall[bestall == 10.] = np.nan
+    cm = matplotlib.cm.hot
+    cm.set_bad('0.9')
+    plt.clf()
+    plt.imshow(bestall, interpolation='nearest', origin='lower',
+               vmin=0.8, vmax=2.0, cmap=cm)
+    cb = plt.colorbar()
+    cb.set_label('Best seeing (arcsec)')
+    plt.title('DR7 + tile file')
+    plt.savefig('bsee.pdf')
+
+    import sys
+    sys.exit(0)
+
     print('zsee_fig')
     zsee_fig()
     import sys
