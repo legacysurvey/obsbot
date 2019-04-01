@@ -10,7 +10,7 @@ import numpy as np
 
 import fitsio
 
-from legacyanalysis.ps1cat import ps1cat, ps1_to_decam
+from legacyanalysis.ps1cat import ps1cat, ps1_to_decam, ps1_to_90prime
 
 # Color terms -- no MOSAIC specific ones yet:
 ps1_to_mosaic = ps1_to_decam
@@ -1048,8 +1048,10 @@ class BokMeasurer(RawMeasurer):
         pass
 
     def colorterm_ps1_to_observed(self, ps1stars, band):
-        return ps1_to_decam(ps1stars, band)
+        return ps1_to_90prime(ps1stars, band)
 
+    def get_ps1_band(self, band):
+        return ps1cat.ps1band[band]
 
 
 class BokCPMeasurer(BokMeasurer):
