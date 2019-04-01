@@ -146,6 +146,21 @@ class RawMeasurer(object):
             stars.mag = np.zeros(len(stars), np.float32)
         return stars
 
+    def cut_reference_catalog(self, stars):
+        # Now cut to just *stars* with good colors
+        stars.gicolor = stars.median[:,0] - stars.median[:,2]
+        keep = (stars.gicolor > 0.4) * (stars.gicolor < 2.7)
+        return keep
+
+    def get_color_term(self, stars, band):
+        #print('PS1 stars mags:', stars.median)
+        try:
+            colorterm = self.colorterm_ps1_to_observed(stars.median, band)
+        except KeyError:
+            print('Color term not found for band "%s"; assuming zero.' % band)
+            colorterm = 0.
+        return colorterm
+
     def run(self, ps=None, focus=False, momentsize=5,
             n_fwhm=100, verbose=True, get_image=False, flat=None):
         import pylab as plt
@@ -592,10 +607,10 @@ class RawMeasurer(object):
             plt.title('All PS1 stars')
             plt.colorbar()
             ps.savefig()
-            
-        # Now cut to just *stars* with good colors
-        stars.gicolor = stars.median[:,0] - stars.median[:,2]
-        keep = (stars.gicolor > 0.4) * (stars.gicolor < 2.7)
+
+
+        keep = self.cut_reference_catalog(stars)
+
         stars.cut(keep)
         if len(stars) == 0:
             print('No overlap or too few stars in PS1')
@@ -625,12 +640,7 @@ class RawMeasurer(object):
         # Compute photometric offset compared to PS1
         # as the PS1 minus observed mags
 
-        #print('PS1 stars mags:', stars.median)
-        try:
-            colorterm = self.colorterm_ps1_to_observed(stars.median, band)
-        except KeyError:
-            print('Color term not found for band "%s"; assuming zero.' % band)
-            colorterm = 0.
+        colorterm = self.get_color_term(stars, band)
         #print('Color term:', colorterm)
         stars.mag += colorterm
         ps1mag = stars.mag[I]
@@ -1017,6 +1027,22 @@ class PointingCamMeasurer(RawMeasurer):
         hdr = F[ext].read_header()
         img = img.astype(np.float32)
         return img, hdr
+
+    def get_reference_stars(self, wcs, band):
+        # Use a cut version of the Gaia catalog.
+        cat = GaiaCatalog()
+        stars = cat.get_catalog_in_wcs(wcs)
+        print('Got', len(stars), 'Gaia stars')
+        if not 'topring_mag' in stars.get_columns():
+            raise RuntimeError('Need a specially cut Gaia catalog for the pointing cam')
+        stars.mag = stars.topring_mag
+        return stars
+
+    def cut_reference_catalog(self, stars):
+        return np.ones(len(stars), bool)
+
+    def get_color_term(self, stars, band):
+        return 0.
 
 class BokMeasurer(RawMeasurer):
     def __init__(self, *args, **kwargs):
