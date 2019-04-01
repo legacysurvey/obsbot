@@ -114,6 +114,38 @@ class RawMeasurer(object):
             zp0 = None
         return zp0
         
+    def get_reference_stars(self, wcs, band):
+        # Read in the PS1 catalog, and keep those within 0.25 deg of CCD center
+        # and those with main sequence colors
+        pattern = None
+        if 'PS1CAT_DIR' in os.environ:
+            pattern = os.environ['PS1CAT_DIR'] + '/ps1-%(hp)05d.fits'
+        pscat = ps1cat(ccdwcs=wcs, pattern=pattern)
+        try:
+            stars = pscat.get_stars()
+        except:
+            print('Failed to find PS1 stars -- maybe this image is outside the PS1 footprint.')
+            import traceback
+            traceback.print_exc()
+
+            from astrometry.util.starutil_numpy import radectolb
+            rc,dc = wcs.radec_center()
+            print('RA,Dec center:', rc, dc)
+            lc,bc = radectolb(rc, dc)
+            print('Galactic l,b:', lc[0], bc[0])
+            return None
+        #print('Got PS1 stars:', len(stars))
+
+        # we add the color term later
+        try:
+            ps1band = self.get_ps1_band(band)
+            stars.mag = stars.median[:, ps1band]
+        except KeyError:
+            print('Unknown band for PS1 mags:', band)
+            ps1band = None
+            stars.mag = np.zeros(len(stars), np.float32)
+        return stars
+
     def run(self, ps=None, focus=False, momentsize=5,
             n_fwhm=100, verbose=True, get_image=False, flat=None):
         import pylab as plt
@@ -397,37 +429,11 @@ class RawMeasurer(object):
         fx = fx[good]
         fy = fy[good]
 
-        
-        # Read in the PS1 catalog, and keep those within 0.25 deg of CCD center
-        # and those with main sequence colors
-        pattern = None
-        if 'PS1CAT_DIR' in os.environ:
-            pattern = os.environ['PS1CAT_DIR'] + '/ps1-%(hp)05d.fits'
-        pscat = ps1cat(ccdwcs=wcs, pattern=pattern)
-        try:
-            stars = pscat.get_stars()
-        except:
-            from astrometry.util.starutil_numpy import radectolb
-            print('Failed to find PS1 stars -- maybe this image is outside the PS1 footprint.')
-            import traceback
-            traceback.print_exc()
-            
-            rc,dc = wcs.radec_center()
-            print('RA,Dec center:', rc, dc)
-            lc,bc = radectolb(rc, dc)
-            print('Galactic l,b:', lc[0], bc[0])
-            return meas
-        #print('Got PS1 stars:', len(stars))
 
-        # we add the color term later
-        try:
-            ps1band = self.get_ps1_band(band)
-            stars.mag = stars.median[:, ps1band]
-        except KeyError:
-            print('Unknown band for PS1 mags:', band)
-            ps1band = None
-            stars.mag = np.zeros(len(stars), np.float32)
-        
+        stars = self.get_reference_stars(wcs, band)
+        if stars is None:
+            return meas
+
         ok,px,py = wcs.radec2pixelxy(stars.ra, stars.dec)
         px -= 1
         py -= 1
