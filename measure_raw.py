@@ -258,6 +258,8 @@ class RawMeasurer(object):
             print('Unknown band "%s"; no nominal sky available.' % band)
             sky0 = None
 
+        print('Nominal calibration:', self.nom)
+        print('Fid:', self.nom.fiducial_exptime(band))
         try:
             kx = self.nom.fiducial_exptime(band).k_co
         except:
@@ -621,7 +623,7 @@ class RawMeasurer(object):
         # Re-match
         I,J,dx,dy = self.match_ps1_stars(px, py, fullx+sx, fully+sy,
                                          radius2, stars)
-        printmsg('Cut to %i PS1 stars with good colors; matched %i' %
+        printmsg('Keeping %i reference stars; matched %i' %
                  (len(stars), len(I)))
         nmatched = len(I)
 
@@ -1008,25 +1010,34 @@ class Mosaic3Measurer(RawMeasurer):
         return ps1cat.ps1band[band]
 
 class PointingCamMeasurer(RawMeasurer):
+
+    # full image size: 3296 x 2472
+
     def __init__(self, *args, ps=None, verbose=None, **kwargs):
         super(PointingCamMeasurer, self).__init__(*args, **kwargs)
         self.camera = 'pointing'
 
+        self.subW = 3296 // 2
+        self.subH = 2472 // 2
+
     def get_sky_and_sigma(self, img):
-        # Left half amp
-        sky,sig1 = sensible_sigmaclip(img[1000:2000, 500:1500])
+        #sky,sig1 = sensible_sigmaclip(img[1000:2000, 500:1500])
+        # First quadrant
+        sky,sig1 = sensible_sigmaclip(img[100:self.subH-100, 100:self.subW-100])
         print('Sky, sig1:', sky, sig1)
         return sky,sig1
 
     def get_wcs(self, hdr):
         from astrometry.util.util import Tan
         wcs = Tan(hdr)
+        wcs = wcs.get_subimage(0, 0, self.subW, self.subH)
         return wcs
 
     def read_raw(self, F, ext):
         img = F[ext].read()
         hdr = F[ext].read_header()
         img = img.astype(np.float32)
+        img = img[:self.subH, :self.subW]
         return img, hdr
 
     def get_reference_stars(self, wcs, band):
@@ -1037,6 +1048,8 @@ class PointingCamMeasurer(RawMeasurer):
         if not 'topring_mag' in stars.get_columns():
             raise RuntimeError('Need a specially cut Gaia catalog for the pointing cam')
         stars.mag = stars.topring_mag
+        stars.cut(stars.mag < 14)
+        print('Cut at 14th mag:', len(stars))
         return stars
 
     def cut_reference_catalog(self, stars):

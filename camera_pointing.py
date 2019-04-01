@@ -35,7 +35,7 @@ class PointingCamNominalCalibration(NominalCalibration):
         self.pixscale = pointing_nominal_pixscale
         self.saturation_adu = 20000
         self.zp0 = dict(
-            r = 25.0)
+            r = 18.5)
         self.sky0 = dict(
             r = 20.91)
 
@@ -56,6 +56,7 @@ class PointingCamNominalCalibration(NominalCalibration):
                 k_co = 0.109,
                 A_co = 2.165,
                 )
+        return fid
 
 nominal_cal = PointingCamNominalCalibration()
 

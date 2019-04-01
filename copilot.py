@@ -820,7 +820,7 @@ def ephemdate_to_mjd(edate):
     return mjd
 
 def set_tile_fields(ccd, hdr, tiles):
-    obj = hdr['OBJECT']
+    obj = hdr.get('OBJECT', '')
     print('Object name', obj)
     ccd.object = obj
     tile = get_tile_from_name(obj, tiles)
@@ -1083,8 +1083,10 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         m.affine_dy = aff[5]
         m.affine_dyx = aff[6]
         m.affine_dyy = aff[7]
+
+    #print('Meas:', M)
     
-    img = fitsio.read(fn, ext=1)
+    img = fitsio.read(fn, ext=M['extension'])
     cheaphash = np.sum(img)
     # cheaphash becomes an int64.
     m.md5sum = cheaphash
