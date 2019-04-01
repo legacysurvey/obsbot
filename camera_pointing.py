@@ -1,4 +1,5 @@
 from obsbot import NominalCalibration
+from obsbot import NominalExptime
 
 camera_name = 'pointingcam'
 
@@ -50,13 +51,19 @@ class PointingCamNominalCalibration(NominalCalibration):
     def sky(self, band):
         return self.sky0[band]
 
-    def _fiducial_exptime(self, fid, band):
+    def fiducial_exptime(self, band):
         if band == 'w':
+            fid = NominalExptime()
             fid.update(
+                seeing = 1.3,
+                skybright = self.sky(band),
+                exptime = 10.,
+                exptime_min = 1.,
+                exptime_max = 100.,
                 k_co = 0.109,
                 A_co = 2.165,
                 )
-        return fid
+            return fid
 
 nominal_cal = PointingCamNominalCalibration()
 
