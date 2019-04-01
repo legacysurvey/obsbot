@@ -4,9 +4,12 @@ obsdb/migrations/*.pyc
 *.pdf
 *.json
 *.fits
+*.fits.fz
+*.fits.gz
 *.log
 #*
 *~
+*.swp
 *.DS_Store
 *TemporaryItems
 camera.py

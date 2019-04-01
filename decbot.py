@@ -65,8 +65,17 @@ def main(cmdlineargs=None, get_decbot=False):
     
     parser.add_option('--no-cut-past', dest='cut_before_now',
                       default=True, action='store_false',
-                      help='Do not cut tiles that were supposed to be observed in the past')
+                      help='Do not cut tiles that were supposed to be observed in the past (except upon startup)')
 
+    parser.add_option('--no-cut-past-at-startup', dest='cut_past_at_startup',
+                      default=True, action='store_false',
+                      help='Do not cut tiles that were supposed to be observed in the past upon startup')
+
+    parser.add_option('--prefer-new-tiles', default=False, action='store_true',
+                      help='Allow observing new tiles that were scheduled to be observed up to N minutes ago (--new-tile-lag)')
+    parser.add_option('--new-tile-lag', default=15, type=int,
+                      help='Number of minutes after their scheduled time after which new tiles will be dropped.  (Old tiles get dropped 0 minutes after their scheduled times.)')
+    
     parser.add_option('--no-queue', dest='do_queue', default=True,
                       action='store_false',
                       help='Do not actually queue exposures.')
@@ -114,16 +123,68 @@ def main(cmdlineargs=None, get_decbot=False):
     J2 = json.loads(open(json2fn,'rb').read())
     J3 = json.loads(open(json3fn,'rb').read())
     print('Read', len(J1), 'pass 1 and', len(J2), 'pass 2 and', len(J3), 'pass 3 exposures')
-    if opt.cut_before_now:
+
+    print('Reading tiles table', opt.tiles)
+    tiles = fits_table(opt.tiles)
+
+    # Annotate plans with 'planpass' field
+    for i,J in enumerate([J1,J2,J3]):
+        for j in J:
+            j['planpass'] = i+1
+    # Annotate plans with 'tilepass' field
+    # - build map from tileid to tile pass number
+    tileid_to_pass = dict([(t,p) for t,p in zip(tiles.tileid,
+                                                tiles.get('pass'))])
+    for J in [J1,J2,J3]:
+        for j in J:
+            tileid = get_tile_id_from_name(j['object'])
+            j['tileid'] = tileid
+            j['tilepass'] = int(tileid_to_pass[tileid])
+
+    if opt.prefer_new_tiles:
+        # Annotate plans with new/repeat for each tile.
+        # - build map from tileid to g/r/z_done
+        tileid_to_done = dict([
+            (t, dict(g=gdone, r=rdone, z=zdone)) for t,gdone,rdone,zdone
+            in zip(tiles.tileid, tiles.g_done, tiles.r_done, tiles.z_done)])
+        for i,J in enumerate([J1,J2,J3]):
+            nnew = 0
+            for j in J:
+                obj = j['object']
+                tileid = get_tile_id_from_name(obj)
+                # Parse objname like 'DECaLS_31759_z'
+                parts = str(obj).split('_')
+                assert(len(parts) == 3)
+                tileband = parts[2]
+                donedict = tileid_to_done[tileid]
+                done = donedict[tileband]
+                j['new_tile'] = not(done)
+                if not done:
+                    nnew += 1
+            print('Pass', i+1, 'plan:', nnew, 'new tiles and',
+                  (len(J)-nnew), 'repeat observations')
+
+    if opt.cut_past_at_startup:
         # Drop exposures that are before *now*, in all three plans.
         now = ephem.now()
         print('Now:', str(now))
         print('First pass 1 exposure:', ephem.Date(str(J1[0]['approx_datetime'])))
-        J1 = [j for j in J1 if ephem.Date(str(j['approx_datetime'])) > now]
-        J2 = [j for j in J2 if ephem.Date(str(j['approx_datetime'])) > now]
-        J3 = [j for j in J3 if ephem.Date(str(j['approx_datetime'])) > now]
+
+        if opt.prefer_new_tiles:
+            new_tile_drop_time = now - opt.new_tile_lag * ephem.minute
+            J1 = [j for j in J1 if ephem.Date(str(j['approx_datetime'])) >
+                  (new_tile_drop_time if j['new_tile'] else now)]
+            J2 = [j for j in J2 if ephem.Date(str(j['approx_datetime'])) >
+                  (new_tile_drop_time if j['new_tile'] else now)]
+            J3 = [j for j in J3 if ephem.Date(str(j['approx_datetime'])) >
+                  (new_tile_drop_time if j['new_tile'] else now)]
+        else:
+            J1 = [j for j in J1 if ephem.Date(str(j['approx_datetime'])) > now]
+            J2 = [j for j in J2 if ephem.Date(str(j['approx_datetime'])) > now]
+            J3 = [j for j in J3 if ephem.Date(str(j['approx_datetime'])) > now]
+
         for i,J in enumerate([J1,J2,J3]):
-            print('Pass %i: keeping %i tiles after now' % (i+1, len(J)))
+            print('Pass %i: keeping %i tiles based on time' % (i+1, len(J)))
             if len(J):
                 print('First tile: %s' % J[0]['approx_datetime'])
 
@@ -131,13 +192,11 @@ def main(cmdlineargs=None, get_decbot=False):
         print('No tiles!')
         return
 
-    # Annotate with 'planpass' field
-    for i,J in enumerate([J1,J2,J3]):
-        for j in J:
-            j['planpass'] = i+1
-
-    print('Reading tiles table', opt.tiles)
-    tiles = fits_table(opt.tiles)
+    # Tiles with ebv_med == 0 ? Look up in SFD.
+    I = np.flatnonzero(tiles.ebv_med == 0)
+    if len(I):
+        print('Looking up', len(I), 'tile extinctions in SFD maps')
+        tiles.ebv_med[I] = sfd_lookup_ebv(tiles.ra[I], tiles.dec[I])
 
     if opt.rawdata is None:
         opt.rawdata = os.environ.get('DECAM_DATA', 'rawdata')
@@ -169,6 +228,22 @@ def main(cmdlineargs=None, get_decbot=False):
         return decbot
     decbot.queue_initial_exposures()
     decbot.run()
+
+SFD = None
+def sfd_lookup_ebv(ra, dec):
+    global SFD
+    try:
+        from tractor.sfd import SFDMap
+        if SFD is None:
+            SFD = SFDMap()
+        ebv = SFD.ebv(ra, dec)
+        if np.isscalar(ra) and np.isscalar(dec):
+            return ebv[0]
+        return ebv
+    except:
+        import traceback
+        print('Failed to look up SFD extinctions:')
+        traceback.print_exc()
 
 def is_twilight(obs, twi=-15.):
     '''
@@ -256,17 +331,6 @@ class Decbot(Obsbot):
 
         # first exposure only
         self.queue_double = opt.start_double
-
-        # Annotate plans with 'tilepass' field
-        # - build map from tileid to tile pass number
-        tileid_to_pass = np.zeros(self.tiles.tileid.max() + 1, dtype=np.uint8)
-        tileid_to_pass[self.tiles.tileid] = self.tiles.get('pass')
-        for J in [self.J1,self.J2,self.J3]:
-            for j in J:
-                tileid = get_tile_id_from_name(j['object'])
-                j['tileid'] = tileid
-                j['tilepass'] = int(tileid_to_pass[tileid])
-        del tileid_to_pass
 
         # Read existing files,recording their tile names as vetoes.
         self.observed_tiles = {}
@@ -536,7 +600,8 @@ class Decbot(Obsbot):
         skybright = M['skybright']
         
         # eg, nominal = 20, sky = 19, brighter is 1 mag brighter than nom.
-        nomsky = self.nom.sky(M['band'])
+        band = M['band']
+        nomsky = self.nom.sky(band)
         brighter = nomsky - skybright
     
         print('Transparency: %6.02f' % trans)
@@ -545,6 +610,18 @@ class Decbot(Obsbot):
         print('Nominal sky : %6.02f' % nomsky)
         print('Sky over nom: %6.02f   (positive means brighter than nom)' %
               brighter)
+
+        # Just FYI
+        try:
+            fid = self.nom.fiducial_exptime(band)
+            airmass = M['airmass']
+            ebv = sfd_lookup_ebv(M['ra_ccd'], M['dec_ccd'])
+            print('E(B-V)      : %6.02f' % ebv)
+            expfactor = exposure_factor(fid, self.nom, airmass, ebv, seeing,
+                                        skybright, trans)
+            print('Exposure factor: %6.02f' % expfactor)
+        except:
+            pass
 
         if self.copilot_db is not None and (M['band'] in ['g','r']):
             self.recent_gr(M)
@@ -805,11 +882,22 @@ class Decbot(Obsbot):
     def keep_good_tiles(self, J):
         keep = []
         now = ephem.now()
+
+        if self.opt.prefer_new_tiles:
+            # opt.new_tile_lag in minutes
+            new_tile_drop_time = now - self.opt.new_tile_lag * ephem.minute
+        
         for j in J:
             if self.opt.cut_before_now:
                 tstart = ephem.Date(str(j['approx_datetime']))
-                if tstart < now:
-                    print('Dropping tile with approx_datetime', j['approx_datetime'], ' -- now is', now)
+
+                droptime = now
+                if self.opt.prefer_new_tiles:
+                    if j['new_tile']:
+                        droptime = new_tile_drop_time
+                    
+                if tstart < droptime:
+                    print('Dropping tile with approx_datetime', j['approx_datetime'], ' -- now is', now, 'and drop time is', droptime)
                     continue
             tilename = str(j['object'])
             # Was this tile seen in a file on disk? (not incl. backlog)

@@ -1308,7 +1308,7 @@ def skip_existing_files(imgfns, rawext, by_expnum=False):
                 expnum = np.unique([mi.expnum for mi in m])[-1]
                 print('file', fn, 'found in database -- expnum', expnum)
             if expnum == 0:
-                from astromnet import read_primary_header
+                from read_header import read_primary_header
                 #hdr = fitsio.read_header(fn)
                 hdr = read_primary_header(fn)
                 expnum = get_expnum(hdr)

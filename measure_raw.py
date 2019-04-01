@@ -10,7 +10,7 @@ import numpy as np
 
 import fitsio
 
-from legacyanalysis.ps1cat import ps1cat, ps1_to_decam, ps1_to_90prime
+from legacypipe.ps1cat import ps1cat, ps1_to_decam, ps1_to_90prime
 
 # Color terms -- no MOSAIC specific ones yet:
 ps1_to_mosaic = ps1_to_decam
@@ -205,7 +205,7 @@ class RawMeasurer(object):
 
         try:
             sky0 = self.nom.sky(band)
-            printmsg('Nominal zky:', sky0)
+            printmsg('Nominal sky:', sky0)
         except KeyError:
             print('Unknown band "%s"; no nominal sky available.' % band)
             sky0 = None
@@ -409,6 +409,9 @@ class RawMeasurer(object):
         except:
             from astrometry.util.starutil_numpy import radectolb
             print('Failed to find PS1 stars -- maybe this image is outside the PS1 footprint.')
+            import traceback
+            traceback.print_exc()
+            
             rc,dc = wcs.radec_center()
             print('RA,Dec center:', rc, dc)
             lc,bc = radectolb(rc, dc)
@@ -987,6 +990,28 @@ class Mosaic3Measurer(RawMeasurer):
         band = bandmap.get(band, band)
         return ps1cat.ps1band[band]
 
+class PointingCamMeasurer(RawMeasurer):
+    def __init__(self, *args, ps=None, verbose=None, **kwargs):
+        super(PointingCamMeasurer, self).__init__(*args, **kwargs)
+        self.camera = 'pointing'
+
+    def get_sky_and_sigma(self, img):
+        # Left half amp
+        sky,sig1 = sensible_sigmaclip(img[1000:2000, 500:1500])
+        print('Sky, sig1:', sky, sig1)
+        return sky,sig1
+
+    def get_wcs(self, hdr):
+        from astrometry.util.util import Tan
+        wcs = Tan(hdr)
+        return wcs
+
+    def read_raw(self, F, ext):
+        img = F[ext].read()
+        hdr = F[ext].read_header()
+        img = img.astype(np.float32)
+        return img, hdr
+
 class BokMeasurer(RawMeasurer):
     def __init__(self, *args, **kwargs):
         if not 'pixscale' in kwargs:
@@ -1216,6 +1241,17 @@ def measure_raw(fn, **kwargs):
             results = meas.run(**kwargs)
             return results
         return measure_raw_decam(fn, **kwargs)
+
+    elif cam == 'pointing':
+        #return measure_raw_pointing(fn, **kwargs)
+        nom = kwargs.pop('nom', None)
+        if nom is None:
+            import camera_pointing
+            nom = camera_pointing.PointingCamNominalCalibration()
+        ext = kwargs.pop('ext', 0)
+        meas = PointingCamMeasurer(fn, ext, nom, **kwargs)
+        results = meas.run(**kwargs)
+        return results
 
     return None
 
