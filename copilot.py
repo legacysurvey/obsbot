@@ -1,4 +1,4 @@
-#! /usr/bin/env python2.7
+#! /usr/bin/env python3.6
 '''
 
 This script is meant to be run during DECaLS/MzLS observing.  It waits
