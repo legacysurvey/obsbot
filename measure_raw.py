@@ -11,6 +11,7 @@ import numpy as np
 import fitsio
 
 from legacypipe.ps1cat import ps1cat, ps1_to_decam, ps1_to_90prime
+from legacypipe.gaiacat import GaiaCatalog
 
 # Color terms -- no MOSAIC specific ones yet:
 ps1_to_mosaic = ps1_to_decam
