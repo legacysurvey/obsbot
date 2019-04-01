@@ -35,9 +35,9 @@ class PointingCamNominalCalibration(NominalCalibration):
         self.pixscale = pointing_nominal_pixscale
         self.saturation_adu = 20000
         self.zp0 = dict(
-            r = 18.5)
+            w = 18.5)
         self.sky0 = dict(
-            r = 20.91)
+            w = 20.91)
 
     def zeropoint(self, band, ext=None):
         if ext is not None:
@@ -51,7 +51,7 @@ class PointingCamNominalCalibration(NominalCalibration):
         return self.sky0[band]
 
     def _fiducial_exptime(self, fid, band):
-        if band == 'r':
+        if band == 'w':
             fid.update(
                 k_co = 0.109,
                 A_co = 2.165,

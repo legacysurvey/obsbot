@@ -863,6 +863,9 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
     obstype = phdr.get('OBSTYPE','').strip()
     print('obstype:', obstype)
     exptime = phdr.get('EXPTIME', 0)
+    # pointing cam
+    if exptime == 0:
+        exptime = phdr.get('EXPOSURE', 0) / 1000.
 
     expnum = get_expnum(phdr)
 
@@ -875,8 +878,11 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
     print('filter:', filt)
 
     airmass = phdr.get('AIRMASS', 0.)
-    ra  = hmsstring2ra (phdr.get('RA', '0'))
-    dec = dmsstring2dec(phdr.get('DEC', '0'))
+    ra  = phdr.get('RA', '0')
+    dec = phdr.get('DEC', '0')
+    if not (isinstance(ra, float) and isinstance(dec, float)):
+        ra  = hmsstring2ra (ra)
+        dec = dmsstring2dec(dec)
 
     # DECam rawdata/DECam_00521494.fits.fz -- "NaN"
     if isinstance(airmass, str):

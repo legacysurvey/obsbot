@@ -162,6 +162,9 @@ class RawMeasurer(object):
             colorterm = 0.
         return colorterm
 
+    def get_exptime(self, primhdr):
+        return primhdr['EXPTIME']
+
     def run(self, ps=None, focus=False, momentsize=5,
             n_fwhm=100, verbose=True, get_image=False, flat=None):
         import pylab as plt
@@ -239,7 +242,7 @@ class RawMeasurer(object):
             ps.savefig()
             
         band = self.get_band(primhdr)
-        exptime = primhdr['EXPTIME']
+        exptime = self.get_exptime(primhdr)
         airmass = primhdr['AIRMASS']
         printmsg('Band', band, 'Exptime', exptime, 'Airmass', airmass)
         # airmass can be 'NaN'
@@ -1057,6 +1060,12 @@ class PointingCamMeasurer(RawMeasurer):
 
     def get_color_term(self, stars, band):
         return 0.
+
+    def get_exptime(self, primhdr):
+        exptime = primhdr.get('EXPTIME', 0.)
+        if exptime == 0.:
+            exptime = primhdr.get('EXPOSURE', 0.) / 1000.
+        return exptime
 
 class BokMeasurer(RawMeasurer):
     def __init__(self, *args, **kwargs):
