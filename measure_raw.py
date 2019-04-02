@@ -11,6 +11,7 @@ import numpy as np
 import fitsio
 
 from legacypipe.ps1cat import ps1cat, ps1_to_decam, ps1_to_90prime
+from legacypipe.gaiacat import GaiaCatalog
 
 # Color terms -- no MOSAIC specific ones yet:
 ps1_to_mosaic = ps1_to_decam
@@ -114,6 +115,56 @@ class RawMeasurer(object):
             zp0 = None
         return zp0
         
+    def get_reference_stars(self, wcs, band):
+        # Read in the PS1 catalog, and keep those within 0.25 deg of CCD center
+        # and those with main sequence colors
+        pattern = None
+        if 'PS1CAT_DIR' in os.environ:
+            pattern = os.environ['PS1CAT_DIR'] + '/ps1-%(hp)05d.fits'
+        pscat = ps1cat(ccdwcs=wcs, pattern=pattern)
+        try:
+            stars = pscat.get_stars()
+        except:
+            print('Failed to find PS1 stars -- maybe this image is outside the PS1 footprint.')
+            import traceback
+            traceback.print_exc()
+
+            from astrometry.util.starutil_numpy import radectolb
+            rc,dc = wcs.radec_center()
+            print('RA,Dec center:', rc, dc)
+            lc,bc = radectolb(rc, dc)
+            print('Galactic l,b:', lc[0], bc[0])
+            return None
+        #print('Got PS1 stars:', len(stars))
+
+        # we add the color term later
+        try:
+            ps1band = self.get_ps1_band(band)
+            stars.mag = stars.median[:, ps1band]
+        except KeyError:
+            print('Unknown band for PS1 mags:', band)
+            ps1band = None
+            stars.mag = np.zeros(len(stars), np.float32)
+        return stars
+
+    def cut_reference_catalog(self, stars):
+        # Now cut to just *stars* with good colors
+        stars.gicolor = stars.median[:,0] - stars.median[:,2]
+        keep = (stars.gicolor > 0.4) * (stars.gicolor < 2.7)
+        return keep
+
+    def get_color_term(self, stars, band):
+        #print('PS1 stars mags:', stars.median)
+        try:
+            colorterm = self.colorterm_ps1_to_observed(stars.median, band)
+        except KeyError:
+            print('Color term not found for band "%s"; assuming zero.' % band)
+            colorterm = 0.
+        return colorterm
+
+    def get_exptime(self, primhdr):
+        return primhdr['EXPTIME']
+
     def run(self, ps=None, focus=False, momentsize=5,
             n_fwhm=100, verbose=True, get_image=False, flat=None):
         import pylab as plt
@@ -191,7 +242,7 @@ class RawMeasurer(object):
             ps.savefig()
             
         band = self.get_band(primhdr)
-        exptime = primhdr['EXPTIME']
+        exptime = self.get_exptime(primhdr)
         airmass = primhdr['AIRMASS']
         printmsg('Band', band, 'Exptime', exptime, 'Airmass', airmass)
         # airmass can be 'NaN'
@@ -210,6 +261,8 @@ class RawMeasurer(object):
             print('Unknown band "%s"; no nominal sky available.' % band)
             sky0 = None
 
+        print('Nominal calibration:', self.nom)
+        print('Fid:', self.nom.fiducial_exptime(band))
         try:
             kx = self.nom.fiducial_exptime(band).k_co
         except:
@@ -397,37 +450,11 @@ class RawMeasurer(object):
         fx = fx[good]
         fy = fy[good]
 
-        
-        # Read in the PS1 catalog, and keep those within 0.25 deg of CCD center
-        # and those with main sequence colors
-        pattern = None
-        if 'PS1CAT_DIR' in os.environ:
-            pattern = os.environ['PS1CAT_DIR'] + '/ps1-%(hp)05d.fits'
-        pscat = ps1cat(ccdwcs=wcs, pattern=pattern)
-        try:
-            stars = pscat.get_stars()
-        except:
-            from astrometry.util.starutil_numpy import radectolb
-            print('Failed to find PS1 stars -- maybe this image is outside the PS1 footprint.')
-            import traceback
-            traceback.print_exc()
-            
-            rc,dc = wcs.radec_center()
-            print('RA,Dec center:', rc, dc)
-            lc,bc = radectolb(rc, dc)
-            print('Galactic l,b:', lc[0], bc[0])
-            return meas
-        #print('Got PS1 stars:', len(stars))
 
-        # we add the color term later
-        try:
-            ps1band = self.get_ps1_band(band)
-            stars.mag = stars.median[:, ps1band]
-        except KeyError:
-            print('Unknown band for PS1 mags:', band)
-            ps1band = None
-            stars.mag = np.zeros(len(stars), np.float32)
-        
+        stars = self.get_reference_stars(wcs, band)
+        if stars is None:
+            return meas
+
         ok,px,py = wcs.radec2pixelxy(stars.ra, stars.dec)
         px -= 1
         py -= 1
@@ -586,10 +613,10 @@ class RawMeasurer(object):
             plt.title('All PS1 stars')
             plt.colorbar()
             ps.savefig()
-            
-        # Now cut to just *stars* with good colors
-        stars.gicolor = stars.median[:,0] - stars.median[:,2]
-        keep = (stars.gicolor > 0.4) * (stars.gicolor < 2.7)
+
+
+        keep = self.cut_reference_catalog(stars)
+
         stars.cut(keep)
         if len(stars) == 0:
             print('No overlap or too few stars in PS1')
@@ -599,7 +626,7 @@ class RawMeasurer(object):
         # Re-match
         I,J,dx,dy = self.match_ps1_stars(px, py, fullx+sx, fully+sy,
                                          radius2, stars)
-        printmsg('Cut to %i PS1 stars with good colors; matched %i' %
+        printmsg('Keeping %i reference stars; matched %i' %
                  (len(stars), len(I)))
         nmatched = len(I)
 
@@ -619,12 +646,7 @@ class RawMeasurer(object):
         # Compute photometric offset compared to PS1
         # as the PS1 minus observed mags
 
-        #print('PS1 stars mags:', stars.median)
-        try:
-            colorterm = self.colorterm_ps1_to_observed(stars.median, band)
-        except KeyError:
-            print('Color term not found for band "%s"; assuming zero.' % band)
-            colorterm = 0.
+        colorterm = self.get_color_term(stars, band)
         #print('Color term:', colorterm)
         stars.mag += colorterm
         ps1mag = stars.mag[I]
@@ -991,26 +1013,59 @@ class Mosaic3Measurer(RawMeasurer):
         return ps1cat.ps1band[band]
 
 class PointingCamMeasurer(RawMeasurer):
+
+    # full image size: 3296 x 2472
+
     def __init__(self, *args, ps=None, verbose=None, **kwargs):
         super(PointingCamMeasurer, self).__init__(*args, **kwargs)
         self.camera = 'pointing'
 
+        self.subW = 3296 // 2
+        self.subH = 2472 // 2
+
     def get_sky_and_sigma(self, img):
-        # Left half amp
-        sky,sig1 = sensible_sigmaclip(img[1000:2000, 500:1500])
+        #sky,sig1 = sensible_sigmaclip(img[1000:2000, 500:1500])
+        # First quadrant
+        sky,sig1 = sensible_sigmaclip(img[100:self.subH-100, 100:self.subW-100])
         print('Sky, sig1:', sky, sig1)
         return sky,sig1
 
     def get_wcs(self, hdr):
         from astrometry.util.util import Tan
         wcs = Tan(hdr)
+        wcs = wcs.get_subimage(0, 0, self.subW, self.subH)
         return wcs
 
     def read_raw(self, F, ext):
         img = F[ext].read()
         hdr = F[ext].read_header()
         img = img.astype(np.float32)
+        img = img[:self.subH, :self.subW]
         return img, hdr
+
+    def get_reference_stars(self, wcs, band):
+        # Use a cut version of the Gaia catalog.
+        cat = GaiaCatalog()
+        stars = cat.get_catalog_in_wcs(wcs)
+        print('Got', len(stars), 'Gaia stars')
+        if not 'topring_mag' in stars.get_columns():
+            raise RuntimeError('Need a specially cut Gaia catalog for the pointing cam')
+        stars.mag = stars.topring_mag
+        stars.cut(stars.mag < 14)
+        print('Cut at 14th mag:', len(stars))
+        return stars
+
+    def cut_reference_catalog(self, stars):
+        return np.ones(len(stars), bool)
+
+    def get_color_term(self, stars, band):
+        return 0.
+
+    def get_exptime(self, primhdr):
+        exptime = primhdr.get('EXPTIME', 0.)
+        if exptime == 0.:
+            exptime = primhdr.get('EXPOSURE', 0.) / 1000.
+        return exptime
 
 class BokMeasurer(RawMeasurer):
     def __init__(self, *args, **kwargs):

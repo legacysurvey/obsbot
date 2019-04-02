@@ -1,4 +1,4 @@
-#! /usr/bin/env python2.7
+#! /usr/bin/env python3.6
 '''
 
 This script is meant to be run during DECaLS/MzLS observing.  It waits
@@ -820,7 +820,7 @@ def ephemdate_to_mjd(edate):
     return mjd
 
 def set_tile_fields(ccd, hdr, tiles):
-    obj = hdr['OBJECT']
+    obj = hdr.get('OBJECT', '')
     print('Object name', obj)
     ccd.object = obj
     tile = get_tile_from_name(obj, tiles)
@@ -863,6 +863,9 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
     obstype = phdr.get('OBSTYPE','').strip()
     print('obstype:', obstype)
     exptime = phdr.get('EXPTIME', 0)
+    # pointing cam
+    if exptime == 0:
+        exptime = phdr.get('EXPOSURE', 0) / 1000.
 
     expnum = get_expnum(phdr)
 
@@ -875,8 +878,11 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
     print('filter:', filt)
 
     airmass = phdr.get('AIRMASS', 0.)
-    ra  = hmsstring2ra (phdr.get('RA', '0'))
-    dec = dmsstring2dec(phdr.get('DEC', '0'))
+    ra  = phdr.get('RA', '0')
+    dec = phdr.get('DEC', '0')
+    if not (isinstance(ra, float) and isinstance(dec, float)):
+        ra  = hmsstring2ra (ra)
+        dec = dmsstring2dec(dec)
 
     # DECam rawdata/DECam_00521494.fits.fz -- "NaN"
     if isinstance(airmass, str):
@@ -1083,8 +1089,10 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         m.affine_dy = aff[5]
         m.affine_dyx = aff[6]
         m.affine_dyy = aff[7]
+
+    #print('Meas:', M)
     
-    img = fitsio.read(fn, ext=1)
+    img = fitsio.read(fn, ext=M['extension'])
     cheaphash = np.sum(img)
     # cheaphash becomes an int64.
     m.md5sum = cheaphash
