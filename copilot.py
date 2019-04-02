@@ -242,10 +242,12 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
 
     T.mjd_end = T.mjd_obs + T.exptime / 86400.
 
-    Tnonobject = T[T.obstype != 'object']
+    T.isobject = np.logical_or(T.obstype == 'object', T.obstype == 'science')
+    
+    Tnonobject = T[np.logical_not(T.isobject)]
     print(len(Tnonobject), 'exposures are not OBJECTs')
     print('Obs types:', np.unique(T.obstype))
-    T = T[T.obstype == 'object']
+    T = T[T.isobject]
     print(len(T), 'OBJECT exposures')
 
     if len(T) == 0:
@@ -835,9 +837,12 @@ gSFD = None
 
 def get_expnum(phdr):
     expnum = phdr.get('EXPNUM', 0)
-    # Bok
     instrument = phdr.get('INSTRUME')
-    if instrument is not None and instrument.strip() == '90prime':
+    if instrument is None:
+        return expnum
+    instrument = instrument.strip()
+    # Bok
+    if instrument == '90prime':
         date = phdr.get('DATE-OBS').strip()
         #2017-06-15T10:42:01.301'
         yr = date[2:4]
@@ -848,7 +853,25 @@ def get_expnum(phdr):
         sec = date[17:19]
         expnum = int(yr + month + day + hr + minute + sec, 10)
         print('Date', date, '-> faked expnum', expnum)
+    # DESI CI
+    if instrument == 'DESI':
+        expnum = phdr.get('EXPID', 0)
     return expnum
+
+def get_filter(phdr):
+    filt = phdr.get('FILTER', None)
+    if filt is None:
+        instrument = phdr.get('INSTRUME')
+        if instrument is None:
+            return None
+        instrument = instrument.strip()
+        # DESI CI
+        if instrument == 'DESI':
+            filt = 'r'
+    if filt is not None:
+        filt = filt.strip()
+        filt = filt.split()[0]
+    return filt
 
 def process_image(fn, ext, nom, sfd, opt, obs, tiles):
     db = opt.db
@@ -858,9 +881,11 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         sfd = gSFD
 
     # Read primary FITS header
-    phdr = fitsio.read_header(fn)
+    phdr = fitsio.read_header(fn, ext=opt.primext)
 
     obstype = phdr.get('OBSTYPE','').strip()
+    if len(obstype) == 0:
+        obstype = phdr.get('FLAVOR','').strip()
     print('obstype:', obstype)
     exptime = phdr.get('EXPTIME', 0)
     # pointing cam
@@ -869,10 +894,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
 
     expnum = get_expnum(phdr)
 
-    filt = phdr.get('FILTER', None)
-    if filt is not None:
-        filt = filt.strip()
-        filt = filt.split()[0]
+    filt = get_filter(phdr)
     if filt is None:
         filt = ''
     print('filter:', filt)
@@ -988,8 +1010,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         ps = None
 
     # Measure the new image
-    kwa = {}
-    kwa.update(verbose=opt.verbose)
+    kwa = dict(verbose=opt.verbose, primext=opt.primext)
     if ext is not None:
         kwa.update(ext=ext)
     if opt.n_fwhm is not None:
@@ -997,7 +1018,8 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
     if opt.maxshift is not None:
         kwa.update(measargs=dict(maxshift=opt.maxshift))
     M = measure_raw(fn, ps=ps, **kwa)
-
+    print(M)
+    
     if opt.doplots:
         from glob import glob
         # Gather all the QAplots into a single pdf and clean them up.
@@ -1195,10 +1217,12 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart):
     lp,lt = [],[]
 
     plt.clf()
-    I = (tiles.in_desi == 1) * (tiles.z_done == 0)
-    plt.plot(tiles.ra[I], tiles.dec[I], 'k.', alpha=0.05)
-    I = (tiles.in_desi == 1) * (tiles.z_done > 0)
-    plt.plot(tiles.ra[I], tiles.dec[I], 'k.', alpha=0.25)
+
+    if tiles is not None:
+        I = (tiles.in_desi == 1) * (tiles.z_done == 0)
+        plt.plot(tiles.ra[I], tiles.dec[I], 'k.', alpha=0.05)
+        I = (tiles.in_desi == 1) * (tiles.z_done > 0)
+        plt.plot(tiles.ra[I], tiles.dec[I], 'k.', alpha=0.25)
 
     plt.plot([m.rabore for m in msorted], [m.decbore for m in msorted], 'k-',
              lw=2, alpha=0.1)
@@ -1426,7 +1450,9 @@ def main(cmdlineargs=None, get_copilot=False):
     obs = ephem_observer()
     
     plotfn_default = 'recent.png'
-    
+
+    parser.add_option('--primext', default=0, type=int,
+                      help='Extension to read for "primary" header')
     parser.add_option('--ext', default=default_extension,
                       help='Extension to read for computing observing conditions: default %default')
     parser.add_option('--extnum', type=int, help='Integer extension to read')
@@ -1510,7 +1536,10 @@ def main(cmdlineargs=None, get_copilot=False):
     assert(rawext is not None)
         
     from astrometry.util.fits import fits_table
-    tiles = fits_table(opt.tiles)
+    if opt.tiles is None:
+        tiles = None
+    else:
+        tiles = fits_table(opt.tiles)
 
     from django.conf import settings
     import obsdb
@@ -1706,7 +1735,7 @@ class Copilot(NewFileWatcher):
         if dt > self.longtime:
             edate = self.lastNewFile + datetime.timedelta(0, self.longtime)
             markmjds.append((datetomjd(edate), 'r', 'MISSING IMAGE!'))
-        
+
         plot_recent(self.opt, self.obs, self.nom, tiles=self.tiles,
                     markmjds=markmjds, show_plot=self.opt.show,
                     botplanfn=self.botplanfn)

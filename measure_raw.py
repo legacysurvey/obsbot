@@ -165,7 +165,7 @@ class RawMeasurer(object):
     def get_exptime(self, primhdr):
         return primhdr['EXPTIME']
 
-    def run(self, ps=None, focus=False, momentsize=5,
+    def run(self, ps=None, primext=0, focus=False, momentsize=5,
             n_fwhm=100, verbose=True, get_image=False, flat=None):
         import pylab as plt
         from astrometry.util.plotutils import dimshow, plothist
@@ -183,7 +183,7 @@ class RawMeasurer(object):
         pixsc = self.pixscale
 
         F = fitsio.FITS(fn)
-        primhdr = F[0].read_header()
+        primhdr = F[primext].read_header()
         self.primhdr = primhdr
         img,hdr = self.read_raw(F, ext)
         self.hdr = hdr
@@ -540,10 +540,10 @@ class RawMeasurer(object):
         A[:,1] = (fullx[J] + sx) - cx
         A[:,2] = (fully[J] + sy) - cy
 
-        R = np.linalg.lstsq(A, px[I] - cx)
+        R = np.linalg.lstsq(A, px[I] - cx, rcond=None)
         resx = R[0]
         #print('Affine transformation for X:', resx)
-        R = np.linalg.lstsq(A, py[I] - cy)
+        R = np.linalg.lstsq(A, py[I] - cy, rcond=None)
         resy = R[0]
         #print('Affine transformation for Y:', resy)
 
@@ -1067,6 +1067,38 @@ class PointingCamMeasurer(RawMeasurer):
             exptime = primhdr.get('EXPOSURE', 0.) / 1000.
         return exptime
 
+class DesiCiMeasurer(RawMeasurer):
+    def __init__(self, *args, ps=None, verbose=None, **kwargs):
+        super(DesiCiMeasurer, self).__init__(*args, **kwargs)
+        self.camera = 'desici'
+
+    def get_band(self, primhdr):
+        # HACK
+        return 'r'
+
+    def get_sky_and_sigma(self, img):
+        sky,sig1 = sensible_sigmaclip(img[100:-100, 100:-100])
+        print('Sky, sig1:', sky, sig1)
+        return sky,sig1
+
+    def get_wcs(self, hdr):
+        from astrometry.util.util import Tan
+        # Needs extremely recent Astrometry.net
+        wcs = Tan(hdr)
+        return wcs
+    
+    def read_raw(self, F, ext):
+        img = F[ext].read()
+        hdr = F[ext].read_header()
+        img = img.astype(np.float32)
+        return img, hdr
+
+    def get_ps1_band(self, band):
+        return ps1cat.ps1band[band]
+
+    def colorterm_ps1_to_observed(self, ps1stars, band):
+        return 0.
+
 class BokMeasurer(RawMeasurer):
     def __init__(self, *args, **kwargs):
         if not 'pixscale' in kwargs:
@@ -1262,8 +1294,8 @@ def get_measurer_class_for_file(fn):
             return DECamCPMeasurer
         return DECamMeasurer
 
-def measure_raw(fn, **kwargs):
-    primhdr = fitsio.read_header(fn)
+def measure_raw(fn, primext=0, **kwargs):
+    primhdr = fitsio.read_header(fn, ext=primext)
     cam = camera_name(primhdr)
 
     if cam == 'mosaic3':
@@ -1308,6 +1340,17 @@ def measure_raw(fn, **kwargs):
         results = meas.run(**kwargs)
         return results
 
+    elif cam == 'desi':
+        nom = kwargs.pop('nom', None)
+        if nom is None:
+            import camera_desici
+            nom = camera_desici.DesiCiNominalCalibration()
+        ext = kwargs.pop('ext', 0)
+        meas = DesiCiMeasurer(fn, ext, nom, **kwargs)
+        kwargs.update(primext=primext)
+        results = meas.run(**kwargs)
+        return results
+    
     return None
 
 def get_default_extension(fn):
