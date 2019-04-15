@@ -1136,7 +1136,9 @@ class DesiCiMeasurer(RawMeasurer):
 
         configfn = configfile.name
         f = open(configfn, 'w')
-        f.write('add_path /global/project/projectdirs/cosmo/work/users/dstn/index-5000\n' +
+        index_dir = os.environ.get('AN_INDEX_DIR', 'index-files')
+        # export AN_INDEX_DIR=/global/project/projectdirs/cosmo/work/users/dstn/index-5000
+        f.write('add_path %s\n' % index_dir +
                 'inparallel\n' +
                 '\n'.join(['index index-5001-%02i' % hp for hp in healpixes]) + '\n' +
                 '\n'.join(['index index-5002-%02i' % hp for hp in healpixes]) + '\n')
