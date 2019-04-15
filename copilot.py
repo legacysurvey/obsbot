@@ -1018,7 +1018,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
     if opt.maxshift is not None:
         kwa.update(measargs=dict(maxshift=opt.maxshift))
     M = measure_raw(fn, ps=ps, **kwa)
-    print(M)
+    #print(M)
     
     if opt.doplots:
         from glob import glob
@@ -1446,12 +1446,17 @@ def main(cmdlineargs=None, get_copilot=False):
     from camera import (nominal_cal, ephem_observer, default_extension,
                         tile_path, camera_name, data_env_var, bot_name,
                         nice_camera_name)
+    try:
+        from camera import default_primary_extension
+    except:
+        default_primary_extension = 0
+
     nom = nominal_cal
     obs = ephem_observer()
     
     plotfn_default = 'recent.png'
 
-    parser.add_option('--primext', default=0, type=int,
+    parser.add_option('--primext', default=default_primary_extension, type=int,
                       help='Extension to read for "primary" header')
     parser.add_option('--ext', default=default_extension,
                       help='Extension to read for computing observing conditions: default %default')

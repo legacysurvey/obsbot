@@ -7,6 +7,7 @@ nice_camera_name = 'DESI-CI'
 # minimum number of extensions in a valid raw FITS file from this cam
 min_n_exts = 1
 default_extension = 'CIC'
+default_primary_extension = 1
 
 database_filename = camera_name + '.sqlite3'
 
@@ -63,6 +64,16 @@ class DesiCiNominalCalibration(NominalCalibration):
                 A_co = 2.165,
                 )
             return fid
+
+    def cdmatrix(self, ext):
+        # listhead DECam_00488199.fits.fz | grep 'EXTNAME\|CD._.'
+        cds = dict(CIS = (-3.555E-05, 0., 0., 3.285E-05),
+                   CIE = (0., -3.285E-05, -3.555E-05, 0.),
+                   CIN = (3.555E-05, 0., 0., -3.285E-05),
+                   CIW = (0., 3.285E-05, 3.555E-05, 0.),
+                   CIC = (3.69E-05, 0., 0., -3.69E-05))
+        return cds[ext]
+
 
 nominal_cal = DesiCiNominalCalibration()
 

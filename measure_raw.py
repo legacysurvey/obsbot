@@ -118,10 +118,7 @@ class RawMeasurer(object):
     def get_reference_stars(self, wcs, band):
         # Read in the PS1 catalog, and keep those within 0.25 deg of CCD center
         # and those with main sequence colors
-        pattern = None
-        if 'PS1CAT_DIR' in os.environ:
-            pattern = os.environ['PS1CAT_DIR'] + '/ps1-%(hp)05d.fits'
-        pscat = ps1cat(ccdwcs=wcs, pattern=pattern)
+        pscat = ps1cat(ccdwcs=wcs)
         try:
             stars = pscat.get_stars()
         except:
@@ -189,7 +186,7 @@ class RawMeasurer(object):
         self.hdr = hdr
 
         # pre sky-sub
-        mn,mx = np.percentile(img.ravel(), [25,98])
+        mn,mx = np.percentile(img.ravel(), [25,99])
         self.imgkwa = dict(vmin=mn, vmax=mx, cmap='gray')
         
         if self.debug and ps is not None:
