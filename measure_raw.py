@@ -452,8 +452,8 @@ class RawMeasurer(object):
         if stars is None:
             return meas
 
-        wcs2,measargs = self.histogram_astrometric_shift(stars, wcs, fx, fy, trim_x0, trim_y0,
-                                                         pixsc, img, fullW, fullH, ps, printmsg)
+        wcs2,measargs = self.update_astrometry(stars, wcs, fx, fy, trim_x0, trim_y0,
+                                               pixsc, img, hdr, fullW, fullH, ps, printmsg)
         meas.update(measargs)
 
         keep = self.cut_reference_catalog(stars)
@@ -730,7 +730,10 @@ class RawMeasurer(object):
 
         return meas
 
-    def histogram_astrometric_shift(self, stars, wcs, fx, fy, trim_x0, trim_y0, pixsc, img,
+    def update_astrometry(self, *args):
+        return self.histogram_astrometric_shift(*args)
+
+    def histogram_astrometric_shift(self, stars, wcs, fx, fy, trim_x0, trim_y0, pixsc, img, hdr,
                                     fullW, fullH, ps, printmsg):
         '''
         stars: reference stars
@@ -1115,58 +1118,68 @@ class DesiCiMeasurer(RawMeasurer):
         print('Sky, sig1:', sky, sig1)
         return sky,sig1
 
-    def get_wcs(self, hdr):
-        if False:
-            import tempfile
-            from astrometry.util.util import healpix_rangesearch_radec
-            # Run Astrometry.net on cleaned-up image.
-            img,h2 = self.read_raw(fitsio.FITS(self.fn), self.ext)
-            tempimg = tempfile.NamedTemporaryFile(suffix='.fits')
-            configfile = tempfile.NamedTemporaryFile(suffix='.cfg')
-            fn = tempimg.name
-            fitsio.write(fn, img, header=h2, clobber=True)
+    def update_astrometry(self, stars, wcs, fx, fy, trim_x0, trim_y0,
+                          pixsc, img, hdr, fullW, fullH, ps, printmsg):
+        import tempfile
+        from astrometry.util.util import healpix_rangesearch_radec
+        # Run Astrometry.net on cleaned-up image.
+        tempimg = tempfile.NamedTemporaryFile(suffix='.fits')
+        configfile = tempfile.NamedTemporaryFile(suffix='.cfg')
+        fn = tempimg.name
+        fitsio.write(fn, img, header=hdr, clobber=True)
 
-            ra = hdr['CRVAL1']
-            dec = hdr['CRVAL2']
-            radius = 5.
-            nside = 2
-            healpixes = healpix_rangesearch_radec(ra, dec, radius, nside)
+        ra = hdr['CRVAL1']
+        dec = hdr['CRVAL2']
+        radius = 5.
+        nside = 2
+        healpixes = healpix_rangesearch_radec(ra, dec, radius, nside)
 
-            configfn = configfile.name
-            f = open(configfn, 'w')
-            f.write('add_path /global/project/projectdirs/cosmo/work/users/dstn/index-5000\n' +
-                    'inparallel\n' +
-                    '\n'.join(['index index-5001-%02i' % hp for hp in healpixes]) + '\n' +
-                    '\n'.join(['index index-5002-%02i' % hp for hp in healpixes]) + '\n')
-            f.close()
+        configfn = configfile.name
+        f = open(configfn, 'w')
+        f.write('add_path /global/project/projectdirs/cosmo/work/users/dstn/index-5000\n' +
+                'inparallel\n' +
+                '\n'.join(['index index-5001-%02i' % hp for hp in healpixes]) + '\n' +
+                '\n'.join(['index index-5002-%02i' % hp for hp in healpixes]) + '\n')
+        f.close()
 
-            cmd = 'solve-field --config %s --scale-low 6 --scale-high 7 --scale-units amw --continue' % configfn
-            cmd += ' --ra %f --dec %f --radius 5' % (ra, dec)
-            if self.ext != 'CIC':
-                cmd += ' --xscale 1.1'
-            cmd += ' --objs 50 --crpix-center'
-            cmd += ' --no-verify --new-fits none --solved none --match none --rdls none --corr none'
-            #cmd += ' --plot-scale 0.25'
-            cmd += ' --no-plots'
-            cmd += ' --downsample 4'
-            #cmd += ' -v'
-            cmd += ' ' + fn
-            print(cmd)
-            os.system(cmd)
-
-            from astrometry.util.util import Sip, Tan
-            wcsfn = fn.replace('.fits', '.wcs')
-            if os.path.exists(wcsfn):
-                return Sip(wcsfn)
-            print('Solving failed.  Returning header WCS')
-            return Tan(hdr)
-
+        cmd = 'solve-field --config %s --continue' % configfn
+        cmd += ' --ra %f --dec %f --radius 5' % (ra, dec)
+        if self.ext == 'CIC':
+            pixsc = 0.133
         else:
-            from astrometry.util.util import Tan
-            # Needs extremely recent Astrometry.net
-            wcs = Tan(hdr)
-            return wcs
-    
+            pixsc = 0.123
+            cmd += ' --xscale 1.09'
+        cmd += ' --scale-low %f --scale-high %f --scale-units app' % (pixsc * 0.95, pixsc * 1.05)
+        cmd += ' --objs 50 --crpix-center'
+        cmd += ' --no-verify --new-fits none --solved none --match none --rdls none --corr none'
+        #cmd += ' --plot-scale 0.25'
+        cmd += ' --no-plots'
+        cmd += ' --downsample 4'
+        #cmd += ' -v'
+        cmd += ' ' + fn
+        print(cmd)
+        os.system(cmd)
+
+        from astrometry.util.util import Sip, Tan
+        wcsfn = fn.replace('.fits', '.wcs')
+        if os.path.exists(wcsfn):
+            wcs2 = Sip(wcsfn)
+            imh,imw = img.shape
+            cx,cy = (imw + 1.) / 2., (imh + 1.) / 2.
+            r,d = wcs2.pixelxy2radec(imw, imh)
+            ok,x1,y1 = wcs.radec2pixelxy(r, d)
+            measargs = dict(dx=x1-cx, dy=y1-cy)
+            return wcs2, measargs
+        print('Solving failed!  Trying histogram...')
+        return self.histogram_astrometric_shift(stars, wcs, fx, fy, trim_x0, trim_y0, pixsc,
+                                                img, hdr, fullW, fullH, ps, printmsg)
+
+    def get_wcs(self, hdr):
+        from astrometry.util.util import Tan
+        # Needs extremely recent Astrometry.net
+        wcs = Tan(hdr)
+        return wcs
+
     def read_raw(self, F, ext):
         img = F[ext].read()
         hdr = F[ext].read_header()
