@@ -9,6 +9,8 @@ min_n_exts = 1
 default_extension = 'CIC'
 default_primary_extension = 1
 
+copilot_plot_args = dict(label_nmatched=False, max_seeing=4., target_exptime=False)
+
 database_filename = camera_name + '.sqlite3'
 
 tile_path = None

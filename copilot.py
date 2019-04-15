@@ -229,7 +229,8 @@ def get_twilight(obs, date):
     return t
 
 def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
-                      markmjds=[], show_plot=True, nightly=False):
+                      markmjds=[], show_plot=True, nightly=False,
+                      label_nmatched=True, max_seeing=2.5, target_exptime=True):
     '''
     Plots our measurements of the conditions, as in the recent.png and
     night.png plots.
@@ -279,10 +280,11 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         bads.append((i, 'pixcnt'))
 
     # low nmatched
-    I = np.flatnonzero((T.nmatched >= 0) * (T.nmatched < 10))
-    for i in I:
-        print('Exposure', T.expnum[i], ': nmatched', T.nmatched[i])
-        bads.append((i, 'nmatched'))
+    if label_nmatched:
+        I = np.flatnonzero((T.nmatched >= 0) * (T.nmatched < 10))
+        for i in I:
+            print('Exposure', T.expnum[i], ': nmatched', T.nmatched[i])
+            bads.append((i, 'nmatched'))
 
     if allobs is not None:
 
@@ -321,7 +323,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         mn,mx = T.seeing[I].min(), T.seeing[I].max()
     else:
         mn,mx = 0.7, 2.5
-    mx = min(mx, 2.5)
+    mx = min(mx, max_seeing)
     yl,yh = mn - 0.15*(mx-mn), mx + 0.05*(mx-mn)
     #print('mn,mx', mn,mx, 'yl,yh', yl,yh)
     
@@ -518,11 +520,12 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         #Tb.depth_factor = Tb.exptime / clipped
         Tb.depth_factor = Tb.exptime / exptime
 
-        I = np.flatnonzero((exptime < clipped) * (exptime > 0))
-        if len(I):
-            plt.plot(Tb.mjd_obs[I], exptime[I], '^', **limitstyle(band))
-
-        plt.plot(Tb.mjd_obs, clipped, 'o', mec='k', mfc='none', ms=9)
+        if target_exptime:
+            I = np.flatnonzero((exptime < clipped) * (exptime > 0))
+            if len(I):
+                plt.plot(Tb.mjd_obs[I], exptime[I], '^', **limitstyle(band))
+    
+            plt.plot(Tb.mjd_obs, clipped, 'o', mec='k', mfc='none', ms=9)
 
         # Actual exposure times taken, marked with filled colored circles.
         I = np.flatnonzero(Tb.exptime > 30)
@@ -534,6 +537,8 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     mx = yh
 
     for band,Tb in zip(bands, TT):
+        if not target_exptime:
+            break
         fid = nom.fiducial_exptime(band)
         if fid is None:
             continue
@@ -595,7 +600,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     yl,yh = -mx,mx
 
     refdra,refddec = None,None
-    print('Camera', Tx.camera[0])
+    #print('Camera', Tx.camera[0])
     if Tx.camera[0].strip() == 'mosaic3':
         # Convert into offsets that match Mosstat ie, offsets in im16,
         # plus magical offset of mosstat-copilot on im16.
@@ -679,7 +684,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
                  '(%.1f, %.1f)' % (dra[-1], ddec[-1]), ha='center', bbox=bbox)
 
     plt.ylim(yl, yh)
-    plt.ylabel('dRA (blu), dDec (grn)')
+    plt.ylabel('dRA (blu), dDec (grn) (arcsec)')
     
     plt.xlabel('MJD')
     
@@ -1451,6 +1456,11 @@ def main(cmdlineargs=None, get_copilot=False):
     except:
         default_primary_extension = 0
 
+    try:
+        from camera import copilot_plot_args
+    except:
+        copilot_plot_args = {}
+
     nom = nominal_cal
     obs = ephem_observer()
     
@@ -1639,7 +1649,7 @@ def main(cmdlineargs=None, get_copilot=False):
     if opt.plot:
         plot_recent(opt, obs, nom,
                     tiles=tiles, markmjds=markmjds, show_plot=False,
-                    nightly=opt.nightplot, botplanfn=botplanfn)
+                    nightly=opt.nightplot, botplanfn=botplanfn, **copilot_plot_args)
         return 0
         
     print('Loading SFD maps...')
