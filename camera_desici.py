@@ -9,7 +9,8 @@ min_n_exts = 1
 default_extension = 'CIC'
 default_primary_extension = 1
 
-copilot_plot_args = dict(label_nmatched=False, max_seeing=4., target_exptime=False)
+copilot_plot_args = dict(label_nmatched=False, max_seeing=4., target_exptime=False,
+                         nominal_sky=False)
 
 database_filename = camera_name + '.sqlite3'
 
@@ -38,7 +39,7 @@ class DesiCiNominalCalibration(NominalCalibration):
         self.pixscale = desici_nominal_pixscale
         self.saturation_adu = 20000
         self.zp0 = dict(
-            r = 25.0)
+            r = 26.0)
         self.sky0 = dict(
             r = 20.0)
 

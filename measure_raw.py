@@ -1151,6 +1151,7 @@ class DesiCiMeasurer(RawMeasurer):
             cmd += ' --xscale 1.09'
         cmd += ' --scale-low %f --scale-high %f --scale-units app' % (pixsc * 0.95, pixsc * 1.05)
         cmd += ' --objs 50 --crpix-center'
+        cmd += ' --parity pos'
         cmd += ' --no-verify --new-fits none --solved none --match none --rdls none --corr none'
         #cmd += ' --plot-scale 0.25'
         cmd += ' --no-plots'

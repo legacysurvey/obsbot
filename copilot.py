@@ -230,7 +230,8 @@ def get_twilight(obs, date):
 
 def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
                       markmjds=[], show_plot=True, nightly=False,
-                      label_nmatched=True, max_seeing=2.5, target_exptime=True):
+                      label_nmatched=True, max_seeing=2.5, target_exptime=True,
+                      nominal_sky=False):
     '''
     Plots our measurements of the conditions, as in the recent.png and
     night.png plots.
@@ -379,12 +380,15 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     keepbands = []
     keepTT = []
     for band,Tb in zip(bands, TT):
-        try:
-            sky0 = nom.sky(band)
-        except KeyError:
-            # unknown filter
-            print('Unknown filter for sky:', band)
-            continue
+        if nominal_sky:
+            try:
+                sky0 = nom.sky(band)
+            except KeyError:
+                # unknown filter
+                print('Unknown filter for sky:', band)
+                continue
+        else:
+            sky0 = 0.
         T.dsky[T.band == band] = Tb.sky - sky0
         keepbands.append(band)
         keepTT.append(Tb)
@@ -402,7 +406,10 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     yl,yh = mn - 0.15*(mx-mn), mx + 0.05*(mx-mn)
 
     for band,Tb in zip(bands, TT):
-        sky0 = nom.sky(band)
+        if nominal_sky:
+            sky0 = nom.sky(band)
+        else:
+            sky0 = 0.
         I = np.flatnonzero(Tb.sky > 0)
         if len(I):
             plt.plot(Tb.mjd_obs[I], Tb.sky[I] - sky0, 'o', mec='k',
@@ -462,7 +469,10 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     plt.axhline(-0.25, color='k', alpha=0.25)
 
     plt.ylim(yl,yh)
-    plt.ylabel('Sky - nominal (mag)')
+    if nominal_sky:
+        plt.ylabel('Sky - nominal (mag)')
+    else:
+        plt.ylabel('Sky (mag/sq.arcsec)')
 
     ## Transparency
     plt.subplot(SP,1,3)
@@ -879,6 +889,9 @@ def get_filter(phdr):
     return filt
 
 def process_image(fn, ext, nom, sfd, opt, obs, tiles):
+    if obs is None:
+        from camera import ephem_observer
+        obs = ephem_observer()
     db = opt.db
     print('Reading', fn)
 
@@ -1674,8 +1687,11 @@ def main(cmdlineargs=None, get_copilot=False):
                 process_image(fn, rawext, nom, sfd, opt, obs, tiles)
         else:
             sfd = None
+            realobs = obs
+            obs = None
             mp.map(bounce_process_image,
                    [(fn, rawext, nom, sfd, opt, obs, tiles) for fn in fns])
+            obs = realobs
         plot_recent(opt, obs, nom, tiles=tiles, markmjds=markmjds,
                     show_plot=False, botplanfn=botplanfn)
         return 0
