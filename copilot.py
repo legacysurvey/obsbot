@@ -1342,7 +1342,7 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart):
     plt.savefig(fn)
     print('Wrote', fn)
     
-def skip_existing_files(imgfns, rawext, by_expnum=False):
+def skip_existing_files(imgfns, rawext, by_expnum=False, primext=0):
     import obsdb
     fns = []
     for fn in imgfns:
@@ -1359,9 +1359,10 @@ def skip_existing_files(imgfns, rawext, by_expnum=False):
                 print('file', fn, 'found in database -- expnum', expnum)
             if expnum == 0:
                 from read_header import read_primary_header
-                #hdr = fitsio.read_header(fn)
-                hdr = read_primary_header(fn)
+                hdr = fitsio.read_header(fn, ext=primext)
                 expnum = get_expnum(hdr)
+                #hdr = read_primary_header(fn)
+                #expnum = get_expnum(hdr)
                 print('file', fn, '-> expnum', expnum)
             mm = obsdb.MeasuredCCD.objects.filter(expnum=expnum, extension=skipext)
         else:
@@ -1676,9 +1677,9 @@ def main(cmdlineargs=None, get_copilot=False):
             mp = multiproc(opt.threads)
 
         if opt.skip:
-            fns = skip_existing_files(args, rawext)
+            fns = skip_existing_files(args, rawext, primext=opt.primext)
         elif opt.skip_expnum:
-            fns = skip_existing_files(args, rawext, by_expnum=True)
+            fns = skip_existing_files(args, rawext, by_expnum=True, primext=opt.primext)
         else:
             fns = args
             
