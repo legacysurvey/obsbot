@@ -312,9 +312,9 @@ class Logger(object):
         log message.
         kwargs: passed to print().
         '''
-        import StringIO
+        from io import StringIO
         uniq = kwargs.pop('uniq', False)
-        f = StringIO.StringIO()
+        f = StringIO()
         print(*args, file=f, **kwargs)
         s = f.getvalue()
         if uniq and s == self.last_printed:
