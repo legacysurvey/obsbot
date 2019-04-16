@@ -388,9 +388,15 @@ class NewFileWatcher(Logger):
             self.log('Directory', self.dir, 'does not exist -- waiting for it',
                      uniq=True)
             return []
-        files = set(os.listdir(self.dir))
-        return [os.path.join(self.dir, fn) for fn in files]
-            
+        files = set()
+        # Note: does not follow directory symlinks.
+        for (dirpath, dirnames, filenames) in os.walk(self.dir):
+            for fn in filenames:
+                files.add(os.path.join(dirpath, fn))
+        #files = set(os.listdir(self.dir))
+        #return [os.path.join(self.dir, fn) for fn in files]
+        return list(files)
+
     def get_new_files(self):
         files = set(self.get_file_list())
         newfiles = list(files - self.oldfiles)

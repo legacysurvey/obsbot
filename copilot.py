@@ -1733,6 +1733,7 @@ class Copilot(NewFileWatcher):
         return skip_existing_files(backlog, self.rawext)
 
     def filter_new_files(self, fns):
+        #print('Filter_new_files:', fns)
         return [fn for fn in fns if
                 fn.endswith('.fits.fz') or fn.endswith('.fits')]
 
