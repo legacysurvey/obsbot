@@ -1183,10 +1183,23 @@ class DesiCiMeasurer(RawMeasurer):
         wcs = Tan(hdr)
         return wcs
 
+    def get_bias(self, ext):
+        # From Aaron:
+        # https://github.com/ameisner/ci_reduce/blob/master/py/ci_reduce/common.py#L315
+        # result in in ADU
+        bias_med_dict = {'CIE' : 991.0, 
+                         'CIN' : 1013.0, 
+                         'CIC' : 1020.0, 
+                         'CIS' : 984.0, 
+                         'CIW' : 990.0}
+        return bias_med_dict.get(ext, 0.)
+
     def read_raw(self, F, ext):
         img = F[ext].read()
         hdr = F[ext].read_header()
         img = img.astype(np.float32)
+
+        img -= self.get_bias(ext)
 
         # Estimate per-pixel noise via Blanton's 5-pixel MAD
         from scipy.ndimage.measurements import label, find_objects
