@@ -538,7 +538,8 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
             plt.plot(Tb.mjd_obs, clipped, 'o', mec='k', mfc='none', ms=9)
 
         # Actual exposure times taken, marked with filled colored circles.
-        I = np.flatnonzero(Tb.exptime > 30)
+        #I = np.flatnonzero(Tb.exptime > 30)
+        I = np.flatnonzero(Tb.exptime > 0)
         if len(I):
             plt.plot(Tb.mjd_obs[I], Tb.exptime[I], 'o', mec='k',
                      color=ccmap.get(band, xcolor))
@@ -556,27 +557,29 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         lo,hi = fid.exptime_min, fid.exptime_max
 
         dt = dict(g=-0.5,r=+0.5).get(band, 0.)
-        
-        exptime = basetime * Tb.expfactor
-        clipped = np.clip(exptime, lo, hi)
-        I = np.flatnonzero(exptime > clipped)
-        if len(I):
-            plt.plot(Tb.mjd_obs[I], exptime[I], 'v', **limitstyle(band))
+
+        if target_exptime:
+            exptime = basetime * Tb.expfactor
+            clipped = np.clip(exptime, lo, hi)
+            I = np.flatnonzero(exptime > clipped)
+            if len(I):
+                plt.plot(Tb.mjd_obs[I], exptime[I], 'v', **limitstyle(band))
 
         I = np.flatnonzero(exptime > mx)
         if len(I):
             plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
 
-        plt.axhline(basetime+dt, color=ccmap.get(band, xcolor), alpha=0.2)
-        plt.axhline(lo+dt, color=ccmap.get(band, xcolor), ls='--', alpha=0.5)
-        plt.axhline(hi+dt, color=ccmap.get(band, xcolor), ls='--', alpha=0.5)
+        if target_exptime:
+            plt.axhline(basetime+dt, color=ccmap.get(band, xcolor), alpha=0.2)
+            plt.axhline(lo+dt, color=ccmap.get(band, xcolor), ls='--', alpha=0.5)
+            plt.axhline(hi+dt, color=ccmap.get(band, xcolor), ls='--', alpha=0.5)
         if band == 'z':
             I = np.flatnonzero(Tb.sky > 0)
             if len(I):
                 plt.plot(Tb.mjd_obs[I], t_sat[I], color=ccmap.get(band, xcolor),
                          ls='-', alpha=0.5)
 
-        if not nightly:
+        if (not nightly) and target_exptime:
             I = np.flatnonzero(Tb.exptime > 0)
             if len(I):
                 for i in I:
@@ -584,11 +587,11 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
                              '%.2f' % (Tb.depth_factor[i]),
                              rotation=90, ha='center', va='bottom')
                 yh = max(yh, max(Tb.exptime[I] + 0.3*(yh-yl)))
-                
+
     if not nightly:
         plt.text(latest.mjd_obs, yl+0.03*(yh-yl),
                  '%i s' % int(latest.exptime), ha='center', bbox=bbox)
-                
+
     #plt.ylim(yl,min(mx, yh))
     plt.ylim(yl,yh)
     plt.ylabel('Exposure time (s)')
@@ -1080,8 +1083,10 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
     print('E(B-V):          %.3f' % ebv)
     print('Airmass:         %.3f' % airmass)
     print('Sky brightness: %.3f' % skybright)
-    print('Zeropoint:      %.3f' % M.get('zp', 0.))
-    print('Transparency:    %.3f' % trans)
+    zp = M.get('zp',0.)
+    if zp and zp > 0:
+        print('Zeropoint:      %.3f' % M.get('zp', 0.))
+        print('Transparency:    %.3f' % trans)
     print('Seeing:          %.2f' % M.get('seeing', 0.))
     print('Astrometric offset: (%.2f, %.2f) arcsec' % (dra, ddec))
 
