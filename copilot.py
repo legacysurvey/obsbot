@@ -838,14 +838,14 @@ def ephemdate_to_mjd(edate):
 
 def set_tile_fields(ccd, hdr, tiles):
     obj = hdr.get('OBJECT', '')
-    print('Object name', obj)
+    #print('Object name', obj)
     ccd.object = obj
     tile = get_tile_from_name(obj, tiles)
     if tile is not None:
         ccd.tileid = tile.tileid
         ccd.passnumber = tile.get('pass')
         ccd.tileebv = tile.ebv_med
-    print('Tile id', ccd.tileid, 'pass', ccd.passnumber)
+    #print('Tile id', ccd.tileid, 'pass', ccd.passnumber)
 
 # SFD map isn't picklable, use global instead
 gSFD = None
@@ -1070,7 +1070,20 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
     band = M['band']
     # Look up E(B-V) in SFD map
     ebv = sfd.ebv(ra, dec)[0]
-    print('E(B-V): %.3f' % ebv)
+
+    dx = M.get('dx',0.)
+    dy = M.get('dy',0.)
+    CD = nom.cdmatrix(ext)
+    dra  = (CD[0] * dx + CD[1] * dy) * 3600.
+    ddec = (CD[2] * dx + CD[3] * dy) * 3600.
+
+    print('E(B-V):          %.3f' % ebv)
+    print('Airmass:         %.3f' % airmass)
+    print('Sky brightness: %.3f' % skybright)
+    print('Zeropoint:      %.3f' % M.get('zp', 0.))
+    print('Transparency:    %.3f' % trans)
+    print('Seeing:          %.2f' % M.get('seeing', 0.))
+    print('Astrometric offset: (%.2f, %.2f) arcsec' % (dra, ddec))
 
     if trans > 0:
 
@@ -1079,12 +1092,12 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         expfactor = exposure_factor(fid, nom,
                                     airmass, ebv, M['seeing'], skybright,
                                     trans)
-        print('Exposure factor:              %6.3f' % expfactor)
+        #print('Exposure factor:              %6.3f' % expfactor)
         t_exptime = expfactor * fid.exptime
-        print('Target exposure time:         %6.1f' % t_exptime)
+        #print('Target exposure time:         %6.1f' % t_exptime)
         t_unclipped = t_exptime
         t_exptime = np.clip(t_exptime, fid.exptime_min, fid.exptime_max)
-        print('Clipped exposure time:        %6.1f' % t_exptime)
+        #print('Clipped exposure time:        %6.1f' % t_exptime)
 
         if band == 'z':
             t_sat = nom.saturation_time(band, skybright)
@@ -1092,11 +1105,10 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
                 t_exptime = t_sat
                 print('Reduced exposure time to avoid z-band saturation: %.1f' % t_exptime)
 
-        print
-
-        print('Actual exposure time taken:   %6.1f' % exptime)
-        print('Depth (exposure time) factor: %6.3f' % (exptime / t_exptime))
-        print('Depth factor (on un-clipped exposure time): %6.3f' % (exptime / t_unclipped))
+        #print
+        #print('Actual exposure time taken:   %6.1f' % exptime)
+        #print('Depth (exposure time) factor: %6.3f' % (exptime / t_exptime))
+        #print('Depth factor (on un-clipped exposure time): %6.3f' % (exptime / t_unclipped))
     else:
         expfactor = 0.
 
