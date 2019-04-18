@@ -1602,14 +1602,13 @@ def main(cmdlineargs=None, get_copilot=False):
     from django.conf import settings
     import obsdb
 
-    import pylab as plt
-
-    # Mosaic focus plot
-    # figure 3
-    # RA,Dec plot
-    plt.figure(num=2, figsize=(10,6))
-    # Copilot plot
-    plt.figure(num=1, figsize=(8,10))
+    if opt.show:
+        # Mosaic focus plot
+        # figure 3
+        # RA,Dec plot
+        plt.figure(num=2, figsize=(10,6))
+        # Copilot plot
+        plt.figure(num=1, figsize=(8,10))
 
     if opt.datestart is not None:
         opt.mjdstart = ephemdate_to_mjd(ephem.Date(opt.datestart))

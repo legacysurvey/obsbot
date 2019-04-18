@@ -4,8 +4,10 @@ import os
 import datetime
 from collections import Counter
 import time
-
+import sys
 import numpy as np
+
+py2 = (sys.version_info[0] == 2)
 
 def choose_pass(trans, seeing, skybright, nomsky,
                 forcedir=''):
@@ -312,10 +314,16 @@ class Logger(object):
         log message.
         kwargs: passed to print().
         '''
-        from io import StringIO
+        from io import StringIO, BytesIO
         uniq = kwargs.pop('uniq', False)
-        f = StringIO()
-        print(*args, file=f, **kwargs)
+        if py2:
+            f = BytesIO()
+        else:
+            f = StringIO()
+        pkw = kwargs.copy()
+        pkw.update(file=f)
+        print(*args, **pkw)
+        #print(*args, file=f, **kwargs)
         s = f.getvalue()
         if uniq and s == self.last_printed:
             return

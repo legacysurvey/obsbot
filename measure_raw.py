@@ -166,8 +166,9 @@ class RawMeasurer(object):
 
     def run(self, ps=None, primext=0, focus=False, momentsize=5,
             n_fwhm=100, verbose=True, get_image=False, flat=None):
-        import pylab as plt
-        from astrometry.util.plotutils import dimshow, plothist
+        if ps is not None:
+            import pylab as plt
+            from astrometry.util.plotutils import dimshow, plothist
         import photutils
         import tractor
 
@@ -1053,7 +1054,9 @@ class PointingCamMeasurer(RawMeasurer):
 
     # full image size: 3296 x 2472
 
-    def __init__(self, *args, ps=None, verbose=None, **kwargs):
+    def __init__(self, *args, **kwargs):
+        ps = kwargs.pop('ps', None)
+        verbose = kwargs.pop('verbose', None)
         super(PointingCamMeasurer, self).__init__(*args, **kwargs)
         self.camera = 'pointing'
 
@@ -1105,7 +1108,9 @@ class PointingCamMeasurer(RawMeasurer):
         return exptime
 
 class DesiCiMeasurer(RawMeasurer):
-    def __init__(self, *args, ps=None, verbose=None, **kwargs):
+    def __init__(self, *args, **kwargs):
+        ps = kwargs.pop('ps', None)
+        verbose = kwargs.pop('verbose', None)
         super(DesiCiMeasurer, self).__init__(*args, **kwargs)
         self.camera = 'desici'
         self.pixscale = 0.130
