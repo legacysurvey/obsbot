@@ -960,13 +960,17 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         #m,created = obsdb.MeasuredCCD.objects.get_or_create(
         #    filename=fn, extension=ext)
 
-        mlist = obsdb.MeasuredCCD.objects.filter(
-            filename=fn, extension=ext)
+        if opt.by_expnum:
+            mlist = obsdb.MeasuredCCD.objects.filter(
+                expnum=expnum, extension=ext)
+        else:
+            mlist = obsdb.MeasuredCCD.objects.filter(
+                filename=fn, extension=ext)
         # Arbitrarily take first object if more than one found
         if mlist.count() > 0:
             m = mlist[0]
         else:
-            m = obsdb.MeasuredCCD(filename=fn, extension=ext)
+            m = obsdb.MeasuredCCD(filename=fn, expnum=expnum, extension=ext)
             m.save()
 
         if skip:
@@ -1156,6 +1160,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
 
     set_tile_fields(m, phdr, tiles)
 
+    #print('Saving db entry: dx,dy %.1f,%.1f' % (m.dx, m.dy))
     m.save()
     return M
 
@@ -1548,6 +1553,9 @@ def main(cmdlineargs=None, get_copilot=False):
                       help='Skip image filenames that already exist in the database')
     parser.add_option('--skip-expnum', action='store_true',
                       help='Skip images (by exposure number) that already exist in the database')
+
+    parser.add_option('--by-expnum', action='store_true',
+                      help='Update database entry based on expnum and extension, not filename')
 
     parser.add_option('--threads', type=int, default=None,
                       help='Run multi-threaded when processing list of files on command-line')

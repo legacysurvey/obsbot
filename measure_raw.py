@@ -1190,6 +1190,7 @@ class DesiCiMeasurer(RawMeasurer):
             dd = d2 - d1
             dr = (r2 - r1)*np.cos(np.deg2rad(d2))
             #print('dr,dd', dr*3600, dd*3600, 'arcsec')
+            print('dx,dy (%.1f, %.1f), dr,dd (%.1f, %.1f)' % (dx, dy, dr*3600., dd*3600.))
 
             measargs = dict(dx=dx, dy=dy, dra=dr, ddec=dd)
             return wcs2, measargs
