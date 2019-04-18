@@ -1577,7 +1577,7 @@ def main(cmdlineargs=None, get_copilot=False):
         opt,args = parser.parse_args(cmdlineargs)
 
     try:
-        import pylab
+        import pylab as plt
     except:
         opt.show = False
     if not opt.show:
