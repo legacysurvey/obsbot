@@ -1040,7 +1040,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         kwa.update(measargs=dict(maxshift=opt.maxshift))
     M = measure_raw(fn, ps=ps, **kwa)
     #print(M)
-    
+
     if opt.doplots:
         from glob import glob
         # Gather all the QAplots into a single pdf and clean them up.
@@ -1053,6 +1053,8 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         if not opt.keep_plots:
             [os.remove(png) for png in pnglist]
 
+    if M is None:
+        return None
     skybright = M['skybright']
     if skybright is None:
         skybright = 0.
