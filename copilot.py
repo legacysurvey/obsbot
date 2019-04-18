@@ -238,6 +238,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     '''
     import pylab as plt
     T = db_to_fits(mm)
+    print('plot_measurements, nightly', nightly, 'target_exptime', target_exptime)
     print(len(T), 'exposures')
     # Replace filter "zd" -> "z", "rd" -> "r".
     T.band = np.array([dict(zd='z', rd='r').get(b, b) for b in T.band])
@@ -510,7 +511,6 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
 
     ## Exposure time plot
     plt.subplot(SP,1,4)
-    mx = 300
     for band,Tb in zip(bands, TT):
         fid = nom.fiducial_exptime(band)
         if fid is None:
@@ -545,11 +545,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
                      color=ccmap.get(band, xcolor))
 
     yl,yh = plt.ylim()
-    mx = yh
-
     for band,Tb in zip(bands, TT):
-        if not target_exptime:
-            break
         fid = nom.fiducial_exptime(band)
         if fid is None:
             continue
@@ -565,9 +561,10 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
             if len(I):
                 plt.plot(Tb.mjd_obs[I], exptime[I], 'v', **limitstyle(band))
 
-        I = np.flatnonzero(exptime > mx)
-        if len(I):
-            plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
+        if False:
+            I = np.flatnonzero(exptime > mx)
+            if len(I):
+                plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
 
         if target_exptime:
             plt.axhline(basetime+dt, color=ccmap.get(band, xcolor), alpha=0.2)
@@ -592,7 +589,6 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         plt.text(latest.mjd_obs, yl+0.03*(yh-yl),
                  '%i s' % int(latest.exptime), ha='center', bbox=bbox)
 
-    #plt.ylim(yl,min(mx, yh))
     plt.ylim(yl,yh)
     plt.ylabel('Exposure time (s)')
 
@@ -1567,7 +1563,11 @@ def main(cmdlineargs=None, get_copilot=False):
         opt,args = parser.parse_args()
     else:
         opt,args = parser.parse_args(cmdlineargs)
-        
+
+    try:
+        import pylab
+    except:
+        opt.show = False
     if not opt.show:
         import matplotlib
         matplotlib.use('Agg')
@@ -1714,7 +1714,8 @@ def main(cmdlineargs=None, get_copilot=False):
                     show_plot=False, botplanfn=botplanfn)
         return 0
 
-    copilot = Copilot(imagedir, rawext, opt, nom, sfd, obs, tiles, botplanfn)
+    copilot = Copilot(imagedir, rawext, opt, nom, sfd, obs, tiles, botplanfn,
+                      copilot_plot_args)
 
     # for testability
     if get_copilot:
@@ -1726,8 +1727,9 @@ def main(cmdlineargs=None, get_copilot=False):
 
 class Copilot(NewFileWatcher):
     def __init__(self, imagedir, rawext,
-                 opt, nom, sfd, obs, tiles, botplanfn):
+                 opt, nom, sfd, obs, tiles, botplanfn, plot_kwargs):
         self.rawext = rawext
+        self.plot_kwargs = plot_kwargs
         super(Copilot, self).__init__(imagedir, backlog=True)
 
         # How long before we mark a line on the plot because we
@@ -1788,7 +1790,7 @@ class Copilot(NewFileWatcher):
 
         plot_recent(self.opt, self.obs, self.nom, tiles=self.tiles,
                     markmjds=markmjds, show_plot=self.opt.show,
-                    botplanfn=self.botplanfn)
+                    botplanfn=self.botplanfn, **self.plot_kwargs)
 
 if __name__ == '__main__':
     import obsdb
