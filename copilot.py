@@ -1070,11 +1070,15 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
     # Look up E(B-V) in SFD map
     ebv = sfd.ebv(ra, dec)[0]
 
-    dx = M.get('dx',0.)
-    dy = M.get('dy',0.)
-    CD = nom.cdmatrix(ext)
-    dra  = (CD[0] * dx + CD[1] * dy) * 3600.
-    ddec = (CD[2] * dx + CD[3] * dy) * 3600.
+    if 'dra' in M and 'ddec' in M:
+        dra  = M['dra']  * 3600.
+        ddec = M['ddec'] * 3600.
+    else:
+        dx = M.get('dx',0.)
+        dy = M.get('dy',0.)
+        CD = nom.cdmatrix(ext)
+        dra  = (CD[0] * dx + CD[1] * dy) * 3600.
+        ddec = (CD[2] * dx + CD[3] * dy) * 3600.
 
     print('E(B-V):          %.3f' % ebv)
     print('Airmass:         %.3f' % airmass)
