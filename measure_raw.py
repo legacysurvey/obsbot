@@ -1191,7 +1191,7 @@ class DesiCiMeasurer(RawMeasurer):
             dr = (r2 - r1)*np.cos(np.deg2rad(d2))
             #print('dr,dd', dr*3600, dd*3600, 'arcsec')
 
-            measargs = dict(dx=x1-cx, dy=y1-cy, dra=dr, ddec=dd)
+            measargs = dict(dx=dx, dy=dy, dra=dr, ddec=dd)
             return wcs2, measargs
         print('Solving failed!  Trying histogram...')
         return self.histogram_astrometric_shift(stars, wcs, fx, fy, trim_x0, trim_y0, pixsc,
