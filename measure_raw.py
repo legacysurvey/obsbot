@@ -64,6 +64,8 @@ class RawMeasurer(object):
         # Trim off some extra pixels -- image edges are often bright...
         # central part of the image
         trim = self.edge_trim
+        if trim == 0:
+            return img,trim,trim
         cimg = img[trim:-trim, trim:-trim]
         return cimg, trim, trim
 
@@ -1107,7 +1109,7 @@ class DesiCiMeasurer(RawMeasurer):
         super(DesiCiMeasurer, self).__init__(*args, **kwargs)
         self.camera = 'desici'
         self.pixscale = 0.130
-        self.edge_trim = 20
+        self.edge_trim = 0
 
     def get_band(self, primhdr):
         # HACK
@@ -1167,11 +1169,29 @@ class DesiCiMeasurer(RawMeasurer):
         wcsfn = fn.replace('.fits', '.wcs')
         if os.path.exists(wcsfn):
             wcs2 = Sip(wcsfn)
+
             imh,imw = img.shape
             cx,cy = (imw + 1.) / 2., (imh + 1.) / 2.
-            r,d = wcs2.pixelxy2radec(imw, imh)
+            r,d = wcs2.pixelxy2radec(cx, cy)
             ok,x1,y1 = wcs.radec2pixelxy(r, d)
-            measargs = dict(dx=x1-cx, dy=y1-cy)
+            dx = x1 - cx - trim_x0
+            dy = y1 - cy - trim_y0
+            # print('Computing dx,dy from initial WCS:')
+            # print(wcs)
+            # print('to')
+            # print(wcs2)
+            # print('Final WCS image center:', cx,cy)
+            # print('-> RA,Dec', r,d)
+            # print('-> initial WCS coords', x1,y1)
+            # print('-> dx,dy', dx, dy)
+
+            r1,d1 = wcs.radec_center()
+            r2,d2 = wcs2.radec_center()
+            dd = d2 - d1
+            dr = (r2 - r1)*np.cos(np.deg2rad(d2))
+            #print('dr,dd', dr*3600, dd*3600, 'arcsec')
+
+            measargs = dict(dx=x1-cx, dy=y1-cy, dra=dr, ddec=dd)
             return wcs2, measargs
         print('Solving failed!  Trying histogram...')
         return self.histogram_astrometric_shift(stars, wcs, fx, fy, trim_x0, trim_y0, pixsc,
