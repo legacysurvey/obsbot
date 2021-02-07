@@ -16,12 +16,18 @@ class DecamNominalCalibration(NominalCalibration):
             g = 26.610,
             r = 26.818,
             z = 26.484,
+            ##
+            N501 = 26.610,
+            N673 = 26.818,
             )
 
         self.sky0 = dict(
             g = 22.04,
             r = 20.91,
             z = 18.46,
+            ##
+            N501 = 22.04,
+            N673 = 20.91,
             )
         
     def zeropoint(self, band, ext=None):
@@ -39,7 +45,6 @@ class DecamNominalCalibration(NominalCalibration):
         return science
 
     def _fiducial_exptime(self, fid, band):
-
         if band == 'g':
             fid.update(
                 k_co = 0.17,
@@ -57,6 +62,19 @@ class DecamNominalCalibration(NominalCalibration):
                 k_co = 0.060,
                 A_co = 1.592,
                 )
+
+        elif band == 'N501':
+            fid.update(
+                k_co = 0.17,
+                A_co = 3.214,
+                )
+
+        elif band == 'N673':
+            fid.update(
+                k_co = 0.10,
+                A_co = 2.165,
+                )
+
         else:
             raise ValueError('Unknown band "%s"' % band)
 

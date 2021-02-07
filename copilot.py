@@ -1578,13 +1578,13 @@ def main(cmdlineargs=None, get_copilot=False):
     else:
         opt,args = parser.parse_args(cmdlineargs)
 
+    if not opt.show:
+        import matplotlib
+        matplotlib.use('Agg')
     try:
         import pylab as plt
     except:
         opt.show = False
-    if not opt.show:
-        import matplotlib
-        matplotlib.use('Agg')
 
     imagedir = opt.rawdata
     if imagedir is None:

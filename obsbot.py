@@ -115,14 +115,18 @@ class NominalCalibration(object):
 
         
         '''
-        if not band in ['g','r','z','zd','D51']:
+        if not band in ['g','r','z','zd','D51',
+                        'N501', 'N673']:
             return None
         fid = NominalExptime()
 
         # 2-coverage targets (90% fill), 5-sigma extinction-corrected
         # canonical galaxy detection.
         target_depths = dict(g=24.0, r=23.4, z=22.5,
-                             zd=22.5, D51=24.0)
+                             zd=22.5, D51=24.0,
+                             N501=24.0,
+                             N673=23.4,
+                             )
 
         target_depth = target_depths[band]
         # -> 1-coverage depth (- ~0.37 mag)
@@ -159,6 +163,20 @@ class NominalCalibration(object):
                 exptime_min = 200.,
                 )
 
+        elif band == 'N501':
+            # we're not updating exposure times, but hey
+            fid.update(
+                exptime     = 900.,
+                exptime_max = 900.,
+                exptime_min = 300.,
+                )
+        elif band == 'N673':
+            # we're not updating exposure times, but hey
+            fid.update(
+                exptime     = 900.,
+                exptime_max = 900.,
+                exptime_min = 300.,
+                )
         else:
             raise ValueError('Unknown band "%s"' % band)
 
