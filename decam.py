@@ -16,9 +16,9 @@ class DecamNominalCalibration(NominalCalibration):
             g = 26.610,
             r = 26.818,
             z = 26.484,
-            ##
-            N501 = 26.610,
-            N673 = 26.818,
+            ## arbitrary set from exp 961101,102
+            N501 = 23.812,
+            N673 = 24.151,
             )
 
         self.sky0 = dict(
@@ -26,8 +26,8 @@ class DecamNominalCalibration(NominalCalibration):
             r = 20.91,
             z = 18.46,
             ##
-            N501 = 22.04,
-            N673 = 20.91,
+            N501 = 19.128,
+            N673 = 19.614,
             )
         
     def zeropoint(self, band, ext=None):
