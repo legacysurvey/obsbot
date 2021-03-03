@@ -116,7 +116,7 @@ class NominalCalibration(object):
         
         '''
         if not band in ['g','r','z','zd','D51',
-                        'N501', 'N673']:
+                        'N501', 'N673', 'N708']:
             return None
         fid = NominalExptime()
 
@@ -126,6 +126,7 @@ class NominalCalibration(object):
                              zd=22.5, D51=24.0,
                              N501=24.0,
                              N673=23.4,
+                             N708=23.4,
                              )
 
         target_depth = target_depths[band]
@@ -163,15 +164,8 @@ class NominalCalibration(object):
                 exptime_min = 200.,
                 )
 
-        elif band == 'N501':
-            # we're not updating exposure times, but hey
-            fid.update(
-                exptime     = 900.,
-                exptime_max = 900.,
-                exptime_min = 300.,
-                )
-        elif band == 'N673':
-            # we're not updating exposure times, but hey
+        elif band in ['N501', 'N673', 'N708']:
+            # we're not updating exposure times in ODIN, but hey
             fid.update(
                 exptime     = 900.,
                 exptime_max = 900.,

@@ -257,7 +257,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         return
     
     ccmap = dict(g='g', r='r', z='m',
-                 N673='r', N501='g')
+                 N673='r', N501='g', N708='m')
     xcolor = '0.5'
 
     bands = np.unique(T.band)
