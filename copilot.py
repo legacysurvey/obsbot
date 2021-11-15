@@ -257,7 +257,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         return
     
     ccmap = dict(g='g', r='r', z='m',
-                 N673='r', N501='g')
+                 N419='g', N673='r', N501='g', N708='m')
     xcolor = '0.5'
 
     bands = np.unique(T.band)
@@ -266,6 +266,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     TT = []
     for band in bands:
         TT.append(T[T.band == band])
+        print('Band', band, ':', len(TT[-1]), 'images')
 
     plt.clf()
     plt.subplots_adjust(hspace=0.1, top=0.98, right=0.95, left=0.1,
@@ -279,12 +280,14 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
 
     # bad_pixcnt
     I = np.flatnonzero(T.bad_pixcnt)
+    print(len(I), 'images have bad_pixcnt')
     for i in I:
         bads.append((i, 'pixcnt'))
 
     # low nmatched
     if label_nmatched:
         I = np.flatnonzero((T.nmatched >= 0) * (T.nmatched < 10))
+        print(len(I), 'images have bad nmatched')
         for i in I:
             print('Exposure', T.expnum[i], ': nmatched', T.nmatched[i])
             bads.append((i, 'nmatched'))
@@ -335,6 +338,8 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     ## Seeing
     plt.subplot(SP,1,1)
     for band,Tb in zip(bands, TT):
+        # print('Band', band, 'with', len(Tb), 'images.  Seeing:', Tb.seeing, 'exptime', Tb.exptime)
+        # print('Expnum', Tb.expnum)
         I = np.flatnonzero((Tb.seeing > 0) * (Tb.exptime > 30))
         if len(I):
             plt.plot(Tb.mjd_obs[I], Tb.seeing[I], 'o',
@@ -485,6 +490,8 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     for band,Tb in zip(bands, TT):
         I = np.flatnonzero(Tb.transparency > 0)
         if len(I):
+            print('Transparency:', Tb.transparency[I])
+            print('Zeropoint:', Tb.zeropoint[I])
             plt.plot(Tb.mjd_obs[I], Tb.transparency[I], 'o', mec='k',
                      color=ccmap.get(band, xcolor))
         I = np.flatnonzero(Tb.transparency > mx)
