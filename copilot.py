@@ -259,6 +259,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     ccmap = dict(g='g', r='r', z='m',
                  N419='g',
                  N501='g',
+                 N540='g',
                  N673='r',
                  N708='m',
                 )

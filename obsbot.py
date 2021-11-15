@@ -118,6 +118,7 @@ class NominalCalibration(object):
         if not band in ['g','r','z','zd','D51',
                         'N419',
                         'N501',
+                        'N540',
                         'N673',
                         'N708',
                 ]:
@@ -130,6 +131,7 @@ class NominalCalibration(object):
                              zd=22.5, D51=24.0,
                              N419=24.5,
                              N501=24.0,
+                             N540=23.4,
                              N673=23.4,
                              N708=23.4,
                              )
@@ -169,7 +171,7 @@ class NominalCalibration(object):
                 exptime_min = 200.,
                 )
 
-        elif band in ['N419','N501', 'N673', 'N708']:
+        elif band in ['N419', 'N501', 'N540', 'N673', 'N708']:
             # we're not updating exposure times in ODIN, but hey
             fid.update(
                 exptime     = 900.,

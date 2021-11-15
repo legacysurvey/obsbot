@@ -20,6 +20,7 @@ class DecamNominalCalibration(NominalCalibration):
             N419 = 22.68,
             ## arbitrary set from exp 961101,102
             N501 = 23.812,
+            N540 = 24.92,
             N673 = 24.151,
             N708 = 24.92,
             )
@@ -31,6 +32,7 @@ class DecamNominalCalibration(NominalCalibration):
             ##
             N419 = 19.128,
             N501 = 19.128,
+            N540 = 19.614,
             N673 = 19.614,
             N708 = 19.614,
             )
@@ -75,6 +77,12 @@ class DecamNominalCalibration(NominalCalibration):
                 )
                
         elif band == 'N501':
+            fid.update(
+                k_co = 0.17,
+                A_co = 3.214,
+                )
+
+        elif band == 'N540':
             fid.update(
                 k_co = 0.17,
                 A_co = 3.214,
