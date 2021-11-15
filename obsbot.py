@@ -116,7 +116,11 @@ class NominalCalibration(object):
         
         '''
         if not band in ['g','r','z','zd','D51',
-                        'N419','N501', 'N673', 'N708']:
+                        'N419',
+                        'N501',
+                        'N673',
+                        'N708',
+                ]:
             return None
         fid = NominalExptime()
 
