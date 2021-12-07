@@ -13,21 +13,27 @@ class DecamNominalCalibration(NominalCalibration):
         self.saturation_adu = 30000
 
         self.zp0 = dict(
+            u = 22.46,
             g = 26.610,
             r = 26.818,
+            i = 26.86,
             z = 26.484,
             #N419 = 23.259,
             N419 = 22.68,
             ## arbitrary set from exp 961101,102
             N501 = 23.812,
-            N540 = 24.92,
+            N540 = 25.32,
+            #            N540 = 24.92,
             N673 = 24.151,
             N708 = 24.92,
             )
 
         self.sky0 = dict(
+            u = 22.04,
             g = 22.04,
             r = 20.91,
+            # i just set as the average of r,z
+            i = 19.69,
             z = 18.46,
             ##
             N419 = 19.128,
@@ -36,7 +42,7 @@ class DecamNominalCalibration(NominalCalibration):
             N673 = 19.614,
             N708 = 19.614,
             )
-        
+
     def zeropoint(self, band, ext=None):
         return self.zp0[band]
 
@@ -52,7 +58,13 @@ class DecamNominalCalibration(NominalCalibration):
         return science
 
     def _fiducial_exptime(self, fid, band):
-        if band == 'g':
+        if band == 'u':
+            fid.update(
+                # COPIED FROM 'g'!
+                k_co = 0.17,
+                A_co = 3.214,
+                )
+        elif band == 'g':
             fid.update(
                 k_co = 0.17,
                 A_co = 3.214,
@@ -62,6 +74,13 @@ class DecamNominalCalibration(NominalCalibration):
             fid.update(
                 k_co = 0.10,
                 A_co = 2.165,
+                )
+
+        elif band == 'i':
+            # just set to the average of r,z
+            fid.update(
+                k_co = 0.080,
+                A_co = 1.878,
                 )
 
         elif band == 'z':
@@ -75,7 +94,7 @@ class DecamNominalCalibration(NominalCalibration):
                 k_co = 0.17,
                 A_co = 3.214,
                 )
-               
+
         elif band == 'N501':
             fid.update(
                 k_co = 0.17,
@@ -104,4 +123,3 @@ class DecamNominalCalibration(NominalCalibration):
             raise ValueError('Unknown band "%s"' % band)
 
         return fid
-

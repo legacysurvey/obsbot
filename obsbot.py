@@ -112,10 +112,13 @@ class NominalCalibration(object):
         - A_co
         - seeing
         - exptime, exptime_min, exptime_max
-
-        
         '''
-        if not band in ['g','r','z','zd','D51',
+        if not band in ['u',
+                        'g',
+                        'r',
+                        'i',
+                        'z','zd',
+                        'D51',
                         'N419',
                         'N501',
                         'N540',
@@ -127,7 +130,7 @@ class NominalCalibration(object):
 
         # 2-coverage targets (90% fill), 5-sigma extinction-corrected
         # canonical galaxy detection.
-        target_depths = dict(g=24.0, r=23.4, z=22.5,
+        target_depths = dict(u=24.0, g=24.0, r=23.4, i=23.0, z=22.5,
                              zd=22.5, D51=24.0,
                              N419=24.5,
                              N501=24.0,
@@ -141,8 +144,15 @@ class NominalCalibration(object):
         target_depth -= 2.5*np.log10(np.sqrt(2.))
 
         fid.update(single_exposure_depth = target_depth)
-        
-        if band == 'g':
+
+        if band == 'u':
+            fid.update(
+                exptime     =  70.,
+                exptime_max = 200.,
+                exptime_min =  56.,
+                )
+
+        elif band == 'g':
             fid.update(
                 exptime     =  70.,
                 exptime_max = 200.,
@@ -150,6 +160,13 @@ class NominalCalibration(object):
                 )
 
         elif band == 'r':
+            fid.update(
+                exptime     =  50.,
+                exptime_max = 175.,
+                exptime_min =  40.,
+                )
+
+        elif band == 'i':
             fid.update(
                 exptime     =  50.,
                 exptime_max = 175.,
@@ -188,7 +205,7 @@ class NominalCalibration(object):
 
         # Camera-specific update:
         fid = self._fiducial_exptime(fid, band)
-        
+
         return fid
 
     def _fiducial_exptime(self, fid, band):
@@ -204,9 +221,6 @@ class NominalCalibration(object):
         t_sat = self.saturation_adu / skyflux
         return t_sat
 
-            
-    
-    
 # From Anna Patej's nightlystrategy / mosaicstrategy
 def exposure_factor(fid, cal,
                     airmass, ebv, seeing, skybright, transparency):
