@@ -134,8 +134,10 @@ class RawMeasurer(object):
             lc,bc = radectolb(rc, dc)
             print('Galactic l,b:', lc[0], bc[0])
             return None
-        #print('Got PS1 stars:', len(stars))
-
+        print('Got PS1 stars:', len(stars))
+        if len(stars) == 0:
+            print('Did not find any PS1 stars (maybe outside footprint?)')
+            return None
         # we add the color term later
         try:
             ps1band = self.get_ps1_band(band)
@@ -468,11 +470,27 @@ class RawMeasurer(object):
         px -= 1
         py -= 1
 
+        ## DEBUG
+        if ps is not None:
+            radius2=200.
+            I,J,dx,dy = self.match_ps1_stars(px, py, fx, fy,
+                                             radius2, stars)
+            plt.clf()
+            plothist(dx, dy, range=((-radius2,radius2),(-radius2,radius2)))
+            plt.xlabel('dx (pixels)')
+            plt.ylabel('dy (pixels)')
+            plt.title('Offsets to PS1 stars (with new WCS)')
+            ax = plt.axis()
+            plt.axhline(0, color='b')
+            plt.axvline(0, color='b')
+            plt.axis(ax)
+            ps.savefig()
+
         # Re-match with smaller search radius
         radius2 = 3. / pixsc
         I,J,dx,dy = self.match_ps1_stars(px, py, fx, fy,
                                          radius2, stars)
-        printmsg('Keeping %i reference stars; matched %i' %
+        printmsg('Keeping %i reference stars; matched %i with smaller search radius' %
                  (len(stars), len(I)))
         nmatched = len(I)
         meas.update(nmatched=nmatched)
@@ -573,6 +591,8 @@ class RawMeasurer(object):
         zp_mean = zp0 + dmag
 
         zp_obs = zp0 + dmagmedsky
+        print('zp_obs', zp_obs, 'kx', kx, 'airmass', airmass)
+        print('zp0 for this exposure would be', zp_obs + kx * (airmass-1.))
         transparency = 10.**(-0.4 * (zp0 - zp_obs - kx * (airmass - 1.)))
         meas.update(zp=zp_obs, transparency=transparency)
 
@@ -828,10 +848,12 @@ class RawMeasurer(object):
         A[:,1] = (fullx[J] + sx) - cx
         A[:,2] = (fully[J] + sy) - cy
 
-        R = np.linalg.lstsq(A, px[I] - cx, rcond=None)
+        #R = np.linalg.lstsq(A, px[I] - cx, rcond=None)
+        R = np.linalg.lstsq(A, px[I] - cx)
         resx = R[0]
         #print('Affine transformation for X:', resx)
-        R = np.linalg.lstsq(A, py[I] - cy, rcond=None)
+        #R = np.linalg.lstsq(A, py[I] - cy, rcond=None)
+        R = np.linalg.lstsq(A, py[I] - cy)
         resy = R[0]
         #print('Affine transformation for Y:', resy)
 
@@ -840,10 +862,18 @@ class RawMeasurer(object):
                         dx=sx, dy=sy)
 
         subh,subw = img.shape
-        wcs2 = wcs.get_subimage(sx, sy, subw, subh)
-
+        from astrometry.util.util import Sip
+        #print('WCS:', wcs)
+        #print('sx,sy,subw,subh', sx, sy, subw, subh)
+        wcs2 = Sip(wcs)
+        x,y = wcs2.get_crpix()
+        wcs2.set_crpix((x - trim_x0 - sx, y - trim_y0 - sy))
+        wcs2.set_width(subw)
+        wcs2.set_height(subh)
+        #print('WCS2:', wcs2)
+        #wcs2 = wcs.get_subimage(sx, sy, subw, subh)
         #wcs2 = wcs.get_subimage(-trim_x0 - sx, -trim_y0 - sy, fullW, fullH)
-
+        #print('Trim', trim_x0, trim_y0)
 
         if True:
             r0,d0 = stars.ra[I[0]], stars.dec[I[0]]
@@ -916,7 +946,9 @@ class RawMeasurer(object):
             ok,px2,py2 = wcs2.radec2pixelxy(stars.ra, stars.dec)
             px2 -= 1
             py2 -= 1
-            plt.plot(fx, fy, 'go', mec='g', mfc='none', ms=10, mew=2)
+            #plt.plot(fx, fy, 'go', mec='g', mfc='none', ms=10, mew=2)
+            plt.plot(fx[J], fy[J], 'go', mec='g', mfc='none', ms=10, mew=2)
+
             plt.plot(px2, py2, 'mo', mec='m', mfc='none', ms=8, mew=2)
             plt.axis(ax)
             plt.title('All PS1 stars (with New WCS')
