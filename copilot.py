@@ -359,7 +359,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     mx = min(mx, max_seeing)
     yl,yh = mn - 0.15*(mx-mn), mx + 0.05*(mx-mn)
     #print('mn,mx', mn,mx, 'yl,yh', yl,yh)
-    
+
     ## Seeing
     plt.subplot(SP,1,1)
     for band,Tb in zip(bands, TT):
@@ -367,41 +367,13 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         # print('Expnum', Tb.expnum)
         I = np.flatnonzero((Tb.seeing > 0) * (Tb.exptime > 30))
         if len(I):
-
-            # # Multiple entries per MJD_OBS: plot individual point in
-            # # hollow gray circles, plot the average over EXTENSION
-            # # normally
-            # mjds = np.unique(Tb.mjd_obs[I])
-            # mjd_avg = []
-            # seeing_avg = []
-            # if len(mjds) < len(I):
-            #     Iindiv = []
-            #     for mjd in mjds:
-            #         II = I[np.flatnonzero(Tb.mjd_obs[I] == mjd)]
-            #         if len(II) > 1:
-            #             Iindiv.extend(II)
-            #         mjd_avg.append(mjd)
-            #         seeing_avg.append(np.mean(Tb.seeing[II]))
-            # else:
-            #     mjd_avg = Tb.mjd_obs[I]
-            #     seeing_avg = Tb.seeing[I]
-            #     Iindiv = []
-            # 
-            # if len(Iindiv):
-            #     plt.plot(Tb.mjd_obs[Iindiv], Tb.seeing[Iindiv], 'o',
-            #              mec='k', mfc='none', alpha=0.5)
-            # 
-            # plt.plot(mjd_avg, seeing_avg, 'o',
-            #          color=filter_plot_color(band), mec='k')
-
             Tavg,Tind = average_by_mjd(Tb[I])
             if Tind is not None:
                 plt.plot(Tind.mjd_obs, Tind.seeing, 'o',
                          mec='k', mfc='none', alpha=0.5)
             plt.plot(Tavg.mjd_obs, Tavg.seeing, 'o',
                      color=filter_plot_color(band), mec='k')
-            
-            
+
         I = np.flatnonzero(Tb.seeing > mx)
         if len(I):
             plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
@@ -479,7 +451,6 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
             sky0 = 0.
         I = np.flatnonzero(Tb.sky > 0)
         if len(I):
-
             Tavg,Tind = average_by_mjd(Tb[I])
             if Tind is not None:
                 plt.plot(Tind.mjd_obs, Tind.sky - sky0, 'o',
@@ -487,29 +458,6 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
             plt.plot(Tavg.mjd_obs, Tavg.sky - sky0, 'o',
                      color=filter_plot_color(band), mec='k')
 
-            # # Average entries by MJD_OBS
-            # mjds = np.unique(Tb.mjd_obs[I])
-            # mjd_avg = []
-            # sky_avg = []
-            # if len(mjds) < len(I):
-            #     Iindiv = []
-            #     for mjd in mjds:
-            #         II = I[np.flatnonzero(Tb.mjd_obs[I] == mjd)]
-            #         if len(II) > 1:
-            #             Iindiv.extend(II)
-            #         mjd_avg.append(mjd)
-            #         sky_avg.append(np.mean(Tb.sky[II]))
-            # else:
-            #     mjd_avg = Tb.mjd_obs[I]
-            #     sky_avg = Tb.sky[I]
-            #     Iindiv = []
-            # 
-            # if len(Iindiv):
-            #     plt.plot(Tb.mjd_obs[Iindiv], Tb.sky[Iindiv]-sky0, 'o',
-            #              mec='k', mfc='none', alpha=0.5)
-            # 
-            # plt.plot(mjd_avg, np.array(sky_avg) - sky0, 'o', mec='k',
-            #          color=filter_plot_color(band))
             minsky = min(minsky, min(Tb.sky[I] - sky0))
             nomskies.append((band, sky0))
             medskies.append((band, np.median(Tb.sky[I])))
@@ -524,7 +472,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     xl,xh = plt.xlim()
     plt.text((xl+xh)/2., min(0., (yl + 0.95*(yh-yl))), txt,
              va='bottom', bbox=bbox)
-    
+
     plt.axhline(0, color='k', alpha=0.5)
 
     if nightly:
@@ -536,7 +484,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         plt.text(latest.mjd_obs, latest.dsky - 0.05*(yh-yl),
                  '%.2f' % latest.sky, ha='center', va='top',
                  bbox=bbox)
-    
+
     # Plot strings of pass 1,2,3
     I = np.argsort(T.mjd_obs)
     TJ = T[I]
@@ -550,7 +498,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
             j += 1
         # print('Exposures from [%i,%i) have pass %i' % (i, j, p0))
         tend = TJ[j-1]
-        
+
         y = yl + 0.1 * (yh-yl)
         if j > i+1:
             plt.plot([t.mjd_obs, tend.mjd_obs], [y, y], 'b-', lw=2, alpha=0.5)
@@ -561,7 +509,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         plt.text((t.mjd_obs + tend.mjd_obs)/2., y, '%i' % p0,
                  ha='center', va='top')
         i = j
-        
+
     plt.axhline(-0.25, color='k', alpha=0.25)
 
     plt.ylim(yl,yh)
@@ -586,8 +534,6 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
                          mec='k', mfc='none', alpha=0.5)
             plt.plot(Tavg.mjd_obs, Tavg.transparency, 'o',
                      color=filter_plot_color(band), mec='k')
-            # plt.plot(Tb.mjd_obs[I], Tb.transparency[I], 'o', mec='k',
-            #          color=filter_plot_color(band))
         I = np.flatnonzero(Tb.transparency > mx)
         if len(I):
             plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
@@ -638,7 +584,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
             I = np.flatnonzero((exptime < clipped) * (exptime > 0))
             if len(I):
                 plt.plot(Tb.mjd_obs[I], exptime[I], '^', **limitstyle(band))
-    
+
             plt.plot(Tb.mjd_obs, clipped, 'o', mec='k', mfc='none', ms=9)
 
         # Actual exposure times taken, marked with filled colored circles.
@@ -700,7 +646,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
 
     I = np.argsort(T.mjd_obs)
     Tx = T[I]
-    
+
     CDs = dict([(ext, nom.cdmatrix(ext)) for ext in np.unique(Tx.extension)])
     CD = np.array([CDs[ext] for ext in Tx.extension])
     dra  = (CD[:,0] * Tx.dx + CD[:,1] * Tx.dy) * 3600.
@@ -741,7 +687,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
 
             plt.text(mjd, yl+0.03*(yh-yl), '(%.1f, %.1f)' % (r,d),
                      ha='center', bbox=bbox)
-        
+
     else:
         plt.plot(Tx.mjd_obs, dra,  'bo')
         plt.plot(Tx.mjd_obs, ddec, 'go')
@@ -756,7 +702,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     # i = np.argmax(T.mjd_obs)
     # plt.text(T.mjd_obs[i], dra[i], '  RA', ha='left', va='center')
     # plt.text(T.mjd_obs[i], ddec[i], '  Dec', ha='left', va='center')
-    
+
     F = Tnonobject[Tnonobject.obstype == 'focus']
     Z = Tnonobject[Tnonobject.obstype == 'zero']
     print(len(F), 'focus frames,', len(Z), 'zero frames')
@@ -798,9 +744,8 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
 
     plt.ylim(yl, yh)
     plt.ylabel('dRA (blu), dDec (grn) (arcsec)')
-    
     plt.xlabel('MJD')
-    
+
     if mjdrange is not None:
         for sp in range(SP):
             plt.subplot(SP,1,sp+1)
@@ -881,9 +826,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     #           (T.nmatched > 10)]
 
     #number of images with depth factor < 0.3 + number of images with seeing > 2"
-    
     #for band in np.unique(Tcount.band):
-    
     depth_thresh = 0.3
     seeing_thresh = 2.0
     Tbad = []
@@ -928,7 +871,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         plt.draw()
         plt.show(block=False)
         plt.pause(0.001)
-    
+
 def ephemdate_to_mjd(edate):
     # pyephem.Date is days since noon UT on the last day of 1899.
     # MJD is days since midnight UT on 1858/11/17
@@ -1030,7 +973,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
     # DECam rawdata/DECam_00521494.fits.fz -- "NaN"
     if isinstance(airmass, str):
         airmass = 0.
-    
+
     # Write QA plots to files named by the exposure number
     print('Exposure number:', expnum)
 
@@ -1084,7 +1027,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
             if m2.count() > 0:
                 print('Expnum and extension already exists in db.')
                 return None
-        
+
         m.obstype = obstype
         m.camera  = camera_name(phdr)
         m.expnum  = expnum
@@ -1121,7 +1064,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
                 plt.show(block=False)
                 plt.pause(0.001)
         skip = True
-        
+
     if skip:
         if db:
             m.save()
@@ -1258,7 +1201,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         m.affine_dyy = aff[7]
 
     #print('Meas:', M)
-    
+
     img = fitsio.read(fn, ext=M['extension'])
     cheaphash = np.sum(img)
     # cheaphash becomes an int64.
@@ -1277,7 +1220,7 @@ def bounce_process_image(X):
         print('Failed to process image:', X)
         import traceback
         traceback.print_exc()
-    
+
 def mark_twilight(obs, date):
     twi = get_twilight(obs, date)
     mark = []
@@ -1295,7 +1238,7 @@ def mark_twilight(obs, date):
     mark.append((ephemdate_to_mjd(twi.eve10), 'g', '10', [1]))
     mark.append((ephemdate_to_mjd(twi.morn10),'g', '10', [1]))
     return mark
-    
+
 def plot_recent(opt, obs, nom, tiles=None, markmjds=[],
                 botplanfn=None, nightly=False, **kwargs):
     ''' Creates the recent.png plot of recent measurements of the conditions.
@@ -1307,13 +1250,13 @@ def plot_recent(opt, obs, nom, tiles=None, markmjds=[],
         mjd_end = mjdnow()
     else:
         mjd_end = opt.mjdend
-    
+
     if opt.mjdstart is None:
         # an hour ago
         mjd_start = mjd_end - 3600. / (24*3600.)
     else:
         mjd_start = opt.mjdstart
-        
+
     # mjd_start <= mjd_obs <= mjd_end
     mm = obsdb.MeasuredCCD.objects.filter(mjd_obs__gte=mjd_start,
                                           mjd_obs__lte=mjd_end)
@@ -1354,7 +1297,7 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart):
         P = fits_table(botplanfn)
         if len(P) == 0:
             P = None
-        
+
     msorted = list(mm.order_by('mjd_obs'))
     mlast   = msorted[-1]
     mrecent = msorted[-10:]
@@ -1393,7 +1336,7 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart):
         plt.plot(P.ra[I], P.dec[I], 'k-', alpha=0.1)
         lp.append(p1)
         lt.append('Upcoming P1')
-        
+
         I = np.flatnonzero(P.type == '2')
         I = I[:10]
         p2 = plt.scatter(P.ra[I], P.dec[I], c=P.color[I], marker='s', alpha=0.5,
@@ -1402,7 +1345,7 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart):
         plt.plot(P.ra[I], P.dec[I], 'k-', alpha=0.1)
         lp.append(p2)
         lt.append('Upcoming P2')
-    
+
         I = np.flatnonzero(P.type == '3')
         I = I[:10]
         p3 = plt.scatter(P.ra[I], P.dec[I], c=P.color[I], marker='p', alpha=0.5,
@@ -1440,7 +1383,7 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart):
         if len(I) > 0:
             p = P[I[0]]
             plt.plot([mlast.rabore, p.ra], [mlast.decbore, p.dec], '-', lw=3, alpha=0.5, color=filter_plot_color(p.filter,'k'))
-    
+
     plt.xlabel('RA (deg)')
     plt.ylabel('Dec (deg)')
 
@@ -1449,7 +1392,7 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart):
 
     rr = np.hstack([r for r,d in rd])
     dd = np.hstack([d for r,d in rd])
-    
+
     ralo  = rr.min()
     rahi  = rr.max()
     declo = dd.min()
@@ -1457,18 +1400,18 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart):
 
     dr = rahi - ralo
     dd = dechi - declo
-    
+
     plt.axis([rahi+0.1*dr, ralo-0.1*dr, declo-0.1*dd, dechi+0.1*dd])
 
     if nightly:
         ## HACK -- subtract 0.5 for UTC to local calendar date at start of night.
         date = mjdtodate(mjdstart - 0.5)
         plt.title('%i-%02i-%02i' % (date.year, date.month, date.day))
-    
+
     fn = 'radec.png'
     plt.savefig(fn)
     print('Wrote', fn)
-    
+
 def skip_existing_files(imgfns, exts, by_expnum=False, primext=0):
     import obsdb
     assert(exts is not None)
@@ -1505,10 +1448,10 @@ def skip_existing_files(imgfns, exts, by_expnum=False, primext=0):
 def coverage_plots(opt, camera_name, nice_camera_name):
     import pylab as plt
     import matplotlib as mpl
-    
+
     plt.figure(figsize=(12,4))
     plt.subplots_adjust(left=0.05, right=0.99, bottom=0.05, top=0.98)
-    
+
     ccds = obsdb.MeasuredCCD.objects.all()
     print(ccds.count(), 'measured CCDs')
     T = db_to_fits(ccds)
@@ -1548,7 +1491,7 @@ def coverage_plots(opt, camera_name, nice_camera_name):
     d = mjdtodate(opt.mjdstart - 0.5)
     tt = '%04i-%02i-%02i' % (d.year, d.month, d.day)
     nn = '%04i%02i%02i' % (d.year, d.month, d.day)
-    print('Found', len(Ti), 'for night of', tt)    
+    print('Found', len(Ti), 'for night of', tt)
     sets.append((Ti, nn, tt))
 
     for T,shortname,name in sets:
@@ -1560,15 +1503,14 @@ def coverage_plots(opt, camera_name, nice_camera_name):
             for p in passes:
                 Tp = Tb[Tb.passnumber == p]
                 print(len(Tp), 'in band', band, 'and pass', p)
-    
                 print('RA', Tp.rabore.min(), Tp.rabore.max())
                 print('Dec', Tp.decbore.min(), Tp.decbore.max())
-    
+
                 # Select one entry per exposure number.
                 expnums,I = np.unique(Tp.expnum, return_index=True)
                 print(len(expnums), 'unique exposure numbers')
                 Tp.cut(I)
-    
+
                 plt.clf()
                 plt.hist2d(Tp.rabore, Tp.decbore, bins=(ras, decs),
                             weights=Tp.exptime,
@@ -1584,7 +1526,7 @@ def coverage_plots(opt, camera_name, nice_camera_name):
                           (name, nice_camera_name, band, p))
                 plt.savefig(fn)
                 print('Wrote', fn)
-    
+
 def main(cmdlineargs=None, get_copilot=False):
     global gSFD
     import optparse
@@ -1606,7 +1548,7 @@ def main(cmdlineargs=None, get_copilot=False):
 
     nom = nominal_cal
     obs = ephem_observer()
-    
+
     plotfn_default = 'recent.png'
 
     parser.add_option('--primext', default=default_primary_extension, type=int,
@@ -1618,13 +1560,13 @@ def main(cmdlineargs=None, get_copilot=False):
 
     parser.add_option('--n-fwhm', default=None, type=int, help='Number of stars on which to measure FWHM')
     parser.add_option('--maxshift', default=None, type=int, help='Maximum search radius for astrometric offset vs Pan-STARRS, in arcsec, default 240.')
-    
+
     parser.add_option('--no-db', dest='db', default=True, action='store_false',
                       help='Do not append results to database')
 
     parser.add_option('--no-focus', dest='focus', default=True,
                       action='store_false', help='Do not analyze focus frames')
-    
+
     parser.add_option('--fits', help='Write database to given FITS table')
     parser.add_option('--plot', action='store_true',
                       help='Plot recent data and quit')
@@ -1634,7 +1576,7 @@ def main(cmdlineargs=None, get_copilot=False):
     parser.add_option('--nightplot', '--night', action='store_true',
                       help="Plot tonight's data and quit", default=False)
     parser.add_option('--ago', type=int, help='Plot N nights ago; with --night')
-    
+
     parser.add_option('--qa-plots', dest='doplots', default=False,
                       action='store_true', help='Create QA plots')
 
@@ -1643,7 +1585,7 @@ def main(cmdlineargs=None, get_copilot=False):
 
     parser.add_option('--keep-plots', action='store_true',
                       help='Do not remove PNG-format plots (normally merged into PDF)')
-    
+
     parser.add_option('--mjdstart', type=float, default=None,
                       help='MJD (UTC) at which to start plot')
 
@@ -1655,7 +1597,7 @@ def main(cmdlineargs=None, get_copilot=False):
                       help='UTC date at which to start plot; eg "2016/02/03 12:35"')
     parser.add_option('--dateend', default=None,
                       help='UTC date at which to end plot')
-    
+
     parser.add_option('--skip', action='store_true',
                       help='Skip image filenames that already exist in the database')
     parser.add_option('--skip-expnum', action='store_true',
@@ -1699,7 +1641,7 @@ def main(cmdlineargs=None, get_copilot=False):
     if opt.extnum is not None:
         rawext = opt.extnum
     assert(rawext is not None)
-        
+
     from astrometry.util.fits import fits_table
     if opt.tiles is None:
         tiles = None
@@ -1721,7 +1663,7 @@ def main(cmdlineargs=None, get_copilot=False):
         opt.mjdstart = ephemdate_to_mjd(ephem.Date(opt.datestart))
     if opt.dateend is not None:
         opt.mjdend = ephemdate_to_mjd(ephem.Date(opt.dateend))
-    
+
     markmjds = []
 
     if opt.nightplot or opt.covplots:
@@ -1737,7 +1679,7 @@ def main(cmdlineargs=None, get_copilot=False):
 
         if opt.ago:
             sdate -= opt.ago
-            
+
         twi = get_twilight(obs, sdate)
         if opt.mjdstart is None:
             opt.mjdstart = ephemdate_to_mjd(
@@ -1752,7 +1694,7 @@ def main(cmdlineargs=None, get_copilot=False):
     if opt.covplots:
         coverage_plots(opt, camera_name, nice_camera_name)
         return 0
-        
+
     if opt.plot_filename is None:
         opt.plot_filename = plotfn_default
 
@@ -1770,11 +1712,11 @@ def main(cmdlineargs=None, get_copilot=False):
         tiles = fits_table('obstatus/mosaic-tiles_obstatus.fits')
 
         now = mjdnow()
-        
+
         ccds = obsdb.MeasuredCCD.objects.all()
         #ccds = obsdb.MeasuredCCD.objects.all().filter(mjd_obs__gt=now - 0.25)
         #ccds = obsdb.MeasuredCCD.objects.all().filter(mjd_obs__gt=57434)
-        
+
         print(ccds.count(), 'measured CCDs')
         for ccd in ccds:
             try:
@@ -1794,13 +1736,13 @@ def main(cmdlineargs=None, get_copilot=False):
         return 0
 
     botplanfn = '%s-plan.fits' % bot_name
-    
+
     if opt.plot:
         plot_recent(opt, obs, nom,
                     tiles=tiles, markmjds=markmjds, show_plot=False,
                     nightly=opt.nightplot, botplanfn=botplanfn, **copilot_plot_args)
         return 0
-        
+
     print('Loading SFD maps...')
     sfd = SFDMap()
 
@@ -1822,7 +1764,7 @@ def main(cmdlineargs=None, get_copilot=False):
             for fn in args:
                 for ext in exts:
                     fns_exts.append((fn,ext))
-            
+
         if mp is None:
             for fn,ext in fns_exts:
                 process_image(fn, ext, nom, sfd, opt, obs, tiles)
@@ -1858,7 +1800,7 @@ class Copilot(NewFileWatcher):
         # How long before we mark a line on the plot because we
         # haven't seen an image.
         self.longtime = 300.
-        
+
         # Objects passed through to process_file, plot_recent.
         self.opt = opt
         self.nom = nom
@@ -1866,10 +1808,10 @@ class Copilot(NewFileWatcher):
         self.obs = obs
         self.tiles = tiles
         self.botplanfn = botplanfn
-        
+
         # Record of exposure times we've seen
         self.exptimes = []
-        
+
     def filter_backlog(self, backlog):
         backlog = self.filter_new_files(backlog)
         ## HACK -- we keep a file if *any* of the exts need to re-run
