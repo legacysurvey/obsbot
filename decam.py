@@ -16,7 +16,8 @@ class DecamNominalCalibration(NominalCalibration):
             u = 22.46,
             g = 26.610,
             r = 26.818,
-            i = 26.86,
+            #i = 26.86, adjusted based on kentool clouds measure
+            i = 26.95,
             z = 26.484,
             #N419 = 23.259,
             N419 = 22.68,
