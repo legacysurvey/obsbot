@@ -327,9 +327,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
 
     bbox = dict(facecolor='white', alpha=0.8, edgecolor='none')
     
-    # ODIN - omit exposure time subplot
-    #SP = 5
-    SP = 4
+    SP = 5
     # which ones will we use to set the scale?
     I = np.flatnonzero((T.seeing > 0) * (T.exptime > 30))
     if len(I):
@@ -374,7 +372,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
              solid_joinstyle='bevel')
 
     plt.ylim(yl,yh)
-    plt.ylabel('Seeing \n(arcsec)')
+    plt.ylabel('Seeing (arcsec)')
 
     ax = plt.axis()
     for i,reason in bads:
@@ -486,7 +484,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     if nominal_sky:
         plt.ylabel('Sky - nominal (mag)')
     else:
-        plt.ylabel('Sky \n (mag/sq.")')
+        plt.ylabel('Sky (mag/sq.arcsec)')
 
     ## Transparency
     plt.subplot(SP,1,3)
@@ -525,90 +523,89 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     plt.ylim(yl, yh)
 
     ## Exposure time plot
-    if False:
-        plt.subplot(SP,1,4)
-        for band,Tb in zip(bands, TT):
-            fid = nom.fiducial_exptime(band)
-            if fid is None:
-                # Band not 'g','r', or 'z'
-                print('Unknown band', band)
-                continue
-            basetime = fid.exptime
-            lo,hi = fid.exptime_min, fid.exptime_max
-            # Exposure time we should have taken
+    plt.subplot(SP,1,4)
+    for band,Tb in zip(bands, TT):
+        fid = nom.fiducial_exptime(band)
+        if fid is None:
+            # Band not 'g','r', or 'z'
+            print('Unknown band', band)
+            continue
+        basetime = fid.exptime
+        lo,hi = fid.exptime_min, fid.exptime_max
+        # Exposure time we should have taken
+        exptime = basetime * Tb.expfactor
+        clipped = np.clip(exptime, lo, hi)
+        if band == 'z':
+            t_sat = nom.saturation_time(band, Tb.sky)
+            bad = (Tb.sky == 0)
+            clipped = np.minimum(clipped, t_sat + bad*1000000)
+        Tb.clipped_exptime = clipped
+        #Tb.depth_factor = Tb.exptime / clipped
+        Tb.depth_factor = Tb.exptime / exptime
+
+        if target_exptime:
+            I = np.flatnonzero((exptime < clipped) * (exptime > 0))
+            if len(I):
+                plt.plot(Tb.mjd_obs[I], exptime[I], '^', **limitstyle(band))
+    
+            plt.plot(Tb.mjd_obs, clipped, 'o', mec='k', mfc='none', ms=9)
+
+        # Actual exposure times taken, marked with filled colored circles.
+        #I = np.flatnonzero(Tb.exptime > 30)
+        I = np.flatnonzero(Tb.exptime > 0)
+        if len(I):
+            plt.plot(Tb.mjd_obs[I], Tb.exptime[I], 'o', mec='k',
+                     color=ccmap.get(band, xcolor))
+
+    yl,yh = plt.ylim()
+    for band,Tb in zip(bands, TT):
+        fid = nom.fiducial_exptime(band)
+        if fid is None:
+            continue
+        basetime = fid.exptime
+        lo,hi = fid.exptime_min, fid.exptime_max
+
+        dt = dict(g=-0.5,r=+0.5).get(band, 0.)
+
+        if target_exptime:
             exptime = basetime * Tb.expfactor
             clipped = np.clip(exptime, lo, hi)
-            if band == 'z':
-                t_sat = nom.saturation_time(band, Tb.sky)
-                bad = (Tb.sky == 0)
-                clipped = np.minimum(clipped, t_sat + bad*1000000)
-            Tb.clipped_exptime = clipped
-            #Tb.depth_factor = Tb.exptime / clipped
-            Tb.depth_factor = Tb.exptime / exptime
-    
-            if target_exptime:
-                I = np.flatnonzero((exptime < clipped) * (exptime > 0))
-                if len(I):
-                    plt.plot(Tb.mjd_obs[I], exptime[I], '^', **limitstyle(band))
-        
-                plt.plot(Tb.mjd_obs, clipped, 'o', mec='k', mfc='none', ms=9)
-    
-            # Actual exposure times taken, marked with filled colored circles.
-            #I = np.flatnonzero(Tb.exptime > 30)
+            I = np.flatnonzero(exptime > clipped)
+            if len(I):
+                plt.plot(Tb.mjd_obs[I], exptime[I], 'v', **limitstyle(band))
+
+        if False:
+            I = np.flatnonzero(exptime > mx)
+            if len(I):
+                plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
+
+        if target_exptime:
+            plt.axhline(basetime+dt, color=ccmap.get(band, xcolor), alpha=0.2)
+            plt.axhline(lo+dt, color=ccmap.get(band, xcolor), ls='--', alpha=0.5)
+            plt.axhline(hi+dt, color=ccmap.get(band, xcolor), ls='--', alpha=0.5)
+        if band == 'z':
+            I = np.flatnonzero(Tb.sky > 0)
+            if len(I):
+                plt.plot(Tb.mjd_obs[I], t_sat[I], color=ccmap.get(band, xcolor),
+                         ls='-', alpha=0.5)
+
+        if (not nightly) and target_exptime:
             I = np.flatnonzero(Tb.exptime > 0)
             if len(I):
-                plt.plot(Tb.mjd_obs[I], Tb.exptime[I], 'o', mec='k',
-                         color=ccmap.get(band, xcolor))
-    
-        yl,yh = plt.ylim()
-        for band,Tb in zip(bands, TT):
-            fid = nom.fiducial_exptime(band)
-            if fid is None:
-                continue
-            basetime = fid.exptime
-            lo,hi = fid.exptime_min, fid.exptime_max
-    
-            dt = dict(g=-0.5,r=+0.5).get(band, 0.)
-    
-            if target_exptime:
-                exptime = basetime * Tb.expfactor
-                clipped = np.clip(exptime, lo, hi)
-                I = np.flatnonzero(exptime > clipped)
-                if len(I):
-                    plt.plot(Tb.mjd_obs[I], exptime[I], 'v', **limitstyle(band))
-    
-            if False:
-                I = np.flatnonzero(exptime > mx)
-                if len(I):
-                    plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
-    
-            if target_exptime:
-                plt.axhline(basetime+dt, color=ccmap.get(band, xcolor), alpha=0.2)
-                plt.axhline(lo+dt, color=ccmap.get(band, xcolor), ls='--', alpha=0.5)
-                plt.axhline(hi+dt, color=ccmap.get(band, xcolor), ls='--', alpha=0.5)
-            if band == 'z':
-                I = np.flatnonzero(Tb.sky > 0)
-                if len(I):
-                    plt.plot(Tb.mjd_obs[I], t_sat[I], color=ccmap.get(band, xcolor),
-                             ls='-', alpha=0.5)
-    
-            if (not nightly) and target_exptime:
-                I = np.flatnonzero(Tb.exptime > 0)
-                if len(I):
-                    for i in I:
-                        plt.text(Tb.mjd_obs[i], Tb.exptime[i] + 0.04*(yh-yl),
-                                 '%.2f' % (Tb.depth_factor[i]),
-                                 rotation=90, ha='center', va='bottom')
-                    yh = max(yh, max(Tb.exptime[I] + 0.3*(yh-yl)))
-    
-        if not nightly:
-            plt.text(latest.mjd_obs, yl+0.03*(yh-yl),
-                     '%i s' % int(latest.exptime), ha='center', bbox=bbox)
-    
-        plt.ylim(yl,yh)
-        plt.ylabel('Exposure time (s)')
+                for i in I:
+                    plt.text(Tb.mjd_obs[i], Tb.exptime[i] + 0.04*(yh-yl),
+                             '%.2f' % (Tb.depth_factor[i]),
+                             rotation=90, ha='center', va='bottom')
+                yh = max(yh, max(Tb.exptime[I] + 0.3*(yh-yl)))
 
-    plt.subplot(SP,1,SP)
+    if not nightly:
+        plt.text(latest.mjd_obs, yl+0.03*(yh-yl),
+                 '%i s' % int(latest.exptime), ha='center', bbox=bbox)
+
+    plt.ylim(yl,yh)
+    plt.ylabel('Exposure time (s)')
+
+    plt.subplot(SP,1,5)
 
     I = np.argsort(T.mjd_obs)
     Tx = T[I]
@@ -709,8 +706,8 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
                  '(%.1f, %.1f)' % (dra[-1], ddec[-1]), ha='center', bbox=bbox)
 
     plt.ylim(yl, yh)
-    plt.ylabel('dRA (blu)\ndDec (grn) (")')
-
+    plt.ylabel('dRA (blu), dDec (grn) (arcsec)')
+    
     plt.xlabel('MJD')
     
     if mjdrange is not None:
@@ -1222,9 +1219,7 @@ def plot_recent(opt, obs, nom, tiles=None, markmjds=[],
     
     if opt.mjdstart is None:
         # an hour ago
-        #mjd_start = mjd_end - 3600. / (24*3600.)
-        # three hours ago
-        mjd_start = mjd_end - 3*3600. / (24*3600.)
+        mjd_start = mjd_end - 3600. / (24*3600.)
     else:
         mjd_start = opt.mjdstart
         
