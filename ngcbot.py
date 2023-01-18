@@ -1030,9 +1030,9 @@ class NgcBot(NewFileWatcher):
 def send_tweet(txt, imgfn):
     from twython import Twython
     try:
-        import secrets as s
+        import appsecrets as s
     except:
-        print('You need a "secrets.py" file with Twitter credentials')
+        print('You need an "appsecrets.py" file with Twitter credentials')
         return
 
     twitter = Twython(s.APP_KEY, s.APP_SECRET,
