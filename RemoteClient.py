@@ -21,6 +21,9 @@ class RemoteClient():
         if parameter == None:
             return self.cs.execute('command=%s' % command)
         else:
+            cmd = 'command=%s, params = %s' % (command, parameter)
+            print('Sending execute("%s")' % cmd)
+
             return self.cs.execute('command=%s, params = %s' % (command, parameter))
 
     # Added by Dustin -- expose specific functions Klaus has provided for us
@@ -38,33 +41,38 @@ class RemoteClient():
         return self.execute('clear_queue')
 
     def addexposure(self, exptime=10., exptype='object', filter='r',
-                    object=None, ra=0., dec=0., verbose=False):
+                    object=None, ra=0., dec=0., verbose=False, propid=None):
         import json
+        kw = dict(expType=exptype, object=object)
+        if propid is not None:
+            kw.update(propid=propid)
         if exptype == 'object':
             if object is None:
                 object = 'Object'
-            paramstr = json.dumps(dict(expTime=exptime, expType=exptype,
-                                       filter=filter, object=object,
-                                       RA=ra, dec=dec))
+            kw.update(expTime=exptime, filter=filter, RA=ra, dec=dec)
+            paramstr = json.dumps(kw)
+                                       
         elif exptype == 'dark':
             if object is None:
                 object = 'dark'
-            paramstr = json.dumps(dict(expTime=exptime, expType=exptype,
-                                       object=object))
+            kw.update(expTime=exptime)
+            paramstr = json.dumps(kw)
+
         elif exptype == 'dome flat':
             if object is None:
                 object = 'flat'
-            paramstr = json.dumps(dict(expTime=exptime, expType=exptype,
-                                       object=object, filter=filter))
+            kw.update(expTime=exptime, filter=filter)
+            paramstr = json.dumps(kw)
+
         elif exptype == 'zero':
             if object is None:
                 object = 'zero'
-            paramstr = json.dumps(dict(expType=exptype, object=object))
+            paramstr = json.dumps(kw)
             #paramstr = 'exptype=%s' % exptype
 
         if verbose:
             print("Calling addexposure, parameter='%s'" % paramstr)
-            
+
         return self.execute('addexposure', parameter=paramstr)
 
 
@@ -86,3 +94,8 @@ if __name__ == '__main__':
     res = rc.get_n_queued()
     print('Got N queued:', res)
 
+    res = rc.addexposure(ra=80., dec=-10., verbose=True,
+                         propid='2014B-0404',
+                         #propid='2023A-140687',
+                         object='DECaLS_5774_z')
+    print('Addexposure: got', res)
