@@ -10,7 +10,8 @@ import numpy as np
 
 import fitsio
 
-from legacyanalysis.ps1cat import ps1cat, ps1_to_decam
+from legacypipe.ps1cat import ps1cat, ps1_to_decam, ps1_to_90prime
+from legacypipe.gaiacat import GaiaCatalog
 
 # Color terms -- no MOSAIC specific ones yet:
 ps1_to_mosaic = ps1_to_decam
@@ -63,6 +64,8 @@ class RawMeasurer(object):
         # Trim off some extra pixels -- image edges are often bright...
         # central part of the image
         trim = self.edge_trim
+        if trim == 0:
+            return img,trim,trim
         cimg = img[trim:-trim, trim:-trim]
         return cimg, trim, trim
 
@@ -114,10 +117,60 @@ class RawMeasurer(object):
             zp0 = None
         return zp0
         
-    def run(self, ps=None, focus=False, momentsize=5,
+    def get_reference_stars(self, wcs, band):
+        # Read in the PS1 catalog, and keep those within 0.25 deg of CCD center
+        # and those with main sequence colors
+        pscat = ps1cat(ccdwcs=wcs)
+        try:
+            stars = pscat.get_stars()
+        except:
+            print('Failed to find PS1 stars -- maybe this image is outside the PS1 footprint.')
+            import traceback
+            traceback.print_exc()
+
+            from astrometry.util.starutil_numpy import radectolb
+            rc,dc = wcs.radec_center()
+            print('RA,Dec center:', rc, dc)
+            lc,bc = radectolb(rc, dc)
+            print('Galactic l,b:', lc[0], bc[0])
+            return None
+        print('Got PS1 stars:', len(stars))
+        if len(stars) == 0:
+            print('Did not find any PS1 stars (maybe outside footprint?)')
+            return None
+        # we add the color term later
+        try:
+            ps1band = self.get_ps1_band(band)
+            stars.mag = stars.median[:, ps1band]
+        except KeyError:
+            print('Unknown band for PS1 mags:', band)
+            ps1band = None
+            stars.mag = np.zeros(len(stars), np.float32)
+        return stars
+
+    def cut_reference_catalog(self, stars):
+        # Now cut to just *stars* with good colors
+        stars.gicolor = stars.median[:,0] - stars.median[:,2]
+        keep = (stars.gicolor > 0.4) * (stars.gicolor < 2.7)
+        return keep
+
+    def get_color_term(self, stars, band):
+        #print('PS1 stars mags:', stars.median)
+        try:
+            colorterm = self.colorterm_ps1_to_observed(stars.median, band)
+        except KeyError:
+            print('Color term not found for band "%s"; assuming zero.' % band)
+            colorterm = 0.
+        return colorterm
+
+    def get_exptime(self, primhdr):
+        return primhdr['EXPTIME']
+
+    def run(self, ps=None, primext=0, focus=False, momentsize=5,
             n_fwhm=100, verbose=True, get_image=False, flat=None):
-        import pylab as plt
-        from astrometry.util.plotutils import dimshow, plothist
+        if ps is not None:
+            import pylab as plt
+            from astrometry.util.plotutils import dimshow, plothist
         import photutils
         import tractor
 
@@ -132,13 +185,13 @@ class RawMeasurer(object):
         pixsc = self.pixscale
 
         F = fitsio.FITS(fn)
-        primhdr = F[0].read_header()
+        primhdr = F[primext].read_header()
         self.primhdr = primhdr
         img,hdr = self.read_raw(F, ext)
         self.hdr = hdr
 
         # pre sky-sub
-        mn,mx = np.percentile(img.ravel(), [25,98])
+        mn,mx = np.percentile(img.ravel(), [25,99])
         self.imgkwa = dict(vmin=mn, vmax=mx, cmap='gray')
         
         if self.debug and ps is not None:
@@ -191,7 +244,7 @@ class RawMeasurer(object):
             ps.savefig()
             
         band = self.get_band(primhdr)
-        exptime = primhdr['EXPTIME']
+        exptime = self.get_exptime(primhdr)
         airmass = primhdr['AIRMASS']
         printmsg('Band', band, 'Exptime', exptime, 'Airmass', airmass)
         # airmass can be 'NaN'
@@ -205,11 +258,13 @@ class RawMeasurer(object):
 
         try:
             sky0 = self.nom.sky(band)
-            printmsg('Nominal zky:', sky0)
+            printmsg('Nominal sky:', sky0)
         except KeyError:
             print('Unknown band "%s"; no nominal sky available.' % band)
             sky0 = None
 
+        #print('Nominal calibration:', self.nom)
+        #print('Fid:', self.nom.fiducial_exptime(band))
         try:
             kx = self.nom.fiducial_exptime(band).k_co
         except:
@@ -397,214 +452,52 @@ class RawMeasurer(object):
         fx = fx[good]
         fy = fy[good]
 
-        
-        # Read in the PS1 catalog, and keep those within 0.25 deg of CCD center
-        # and those with main sequence colors
-        pattern = None
-        if 'PS1CAT_DIR' in os.environ:
-            pattern = os.environ['PS1CAT_DIR'] + '/ps1-%(hp)05d.fits'
-        pscat = ps1cat(ccdwcs=wcs, pattern=pattern)
-        try:
-            stars = pscat.get_stars()
-        except:
-            from astrometry.util.starutil_numpy import radectolb
-            print('Failed to find PS1 stars -- maybe this image is outside the PS1 footprint.')
-            rc,dc = wcs.radec_center()
-            print('RA,Dec center:', rc, dc)
-            lc,bc = radectolb(rc, dc)
-            print('Galactic l,b:', lc[0], bc[0])
+
+        stars = self.get_reference_stars(wcs, band)
+        if stars is None:
             return meas
-        #print('Got PS1 stars:', len(stars))
 
-        # we add the color term later
-        try:
-            ps1band = self.get_ps1_band(band)
-            stars.mag = stars.median[:, ps1band]
-        except KeyError:
-            print('Unknown band for PS1 mags:', band)
-            ps1band = None
-            stars.mag = np.zeros(len(stars), np.float32)
-        
-        ok,px,py = wcs.radec2pixelxy(stars.ra, stars.dec)
-        px -= 1
-        py -= 1
-        
-        if ps is not None:
-            #kwa = dict(vmin=-3*sig1, vmax=50*sig1, cmap='gray')
-            # Add to the 'detected sources' plot
-            # mn,mx = np.percentile(img.ravel(), [50,99])
-            # kwa = dict(vmin=mn, vmax=mx, cmap='gray')
-            # plt.clf()
-            # dimshow(img, **kwa)
-            ax = plt.axis()
-            #plt.plot(fx, fy, 'go', mec='g', mfc='none', ms=10)
-            K = np.argsort(stars.mag)
-            plt.plot(px[K[:10]]-trim_x0, py[K[:10]]-trim_y0, 'o', mec='m', mfc='none',ms=12,mew=2)
-            plt.plot(px[K[10:]]-trim_x0, py[K[10:]]-trim_y0, 'o', mec='m', mfc='none', ms=8)
-            plt.axis(ax)
-            plt.title('PS1 stars')
-            #plt.colorbar()
-            ps.savefig()
+        wcs2,measargs = self.update_astrometry(stars, wcs, fx, fy, trim_x0, trim_y0,
+                                               pixsc, img, hdr, fullW, fullH, ps, printmsg)
+        meas.update(measargs)
 
-        # we trimmed the image before running detection; re-add that margin
-        fullx = fx + trim_x0
-        fully = fy + trim_y0
-
-        # Match PS1 to our detections, find offset
-        radius = self.maxshift / pixsc
-
-        I,J,dx,dy = self.match_ps1_stars(px, py, fullx, fully, radius, stars)
-        #print(len(I), 'spatial matches with large radius', self.maxshift,
-        #      'arcsec,', radius, 'pix')
-
-        # Broad (5-pixel) bins are okay because we're going to refine them later... right?
-        bins = 2*int(np.ceil(radius / 5.))
-        print('Histogramming with', bins, 'bins')
-        histo,xe,ye = np.histogram2d(dx, dy, bins=bins,
-                                     range=((-radius,radius),(-radius,radius)))
-        # smooth histogram before finding peak -- fuzzy matching
-        from scipy.ndimage.filters import gaussian_filter
-        histo = gaussian_filter(histo, 1.)
-        histo = histo.T
-        mx = np.argmax(histo)
-        my,mx = np.unravel_index(mx, histo.shape)
-        shiftx = (xe[mx] + xe[mx+1])/2.
-        shifty = (ye[my] + ye[my+1])/2.
-        
-        if ps is not None:
-            plt.clf()
-            #plothist(dx, dy, range=((-radius,radius),(-radius,radius)), nbins=bins)
-            plt.imshow(histo, interpolation='nearest', origin='lower', extent=[-radius, radius, -radius, radius],
-                       cmap='hot')
-            plt.xlabel('dx (pixels)')
-            plt.ylabel('dy (pixels)')
-            plt.title('Offsets to PS1 stars')
-            ax = plt.axis()
-            plt.axhline(0, color='b')
-            plt.axvline(0, color='b')
-            plt.plot(shiftx, shifty, 'o', mec='m', mfc='none', ms=15, mew=3)
-            plt.axis(ax)
-            ps.savefig()
-    
-        # Refine with smaller search radius
-        radius2 = 3. / pixsc
-        I,J,dx,dy = self.match_ps1_stars(px, py, fullx+shiftx, fully+shifty,
-                                         radius2, stars)
-        #print(len(J), 'matches to PS1 with small radius', 3, 'arcsec')
-        shiftx2 = np.median(dx)
-        shifty2 = np.median(dy)
-        #print('Stage-1 shift', shiftx, shifty)
-        #print('Stage-2 shift', shiftx2, shifty2)
-        sx = shiftx + shiftx2
-        sy = shifty + shifty2
-        printmsg('Astrometric shift (%.0f, %.0f) pixels' % (sx,sy))
-
-        #from astromalign.astrom_common import Alignment
-
-        # Find affine transformation
-        cx = fullW/2
-        cy = fullH/2
-
-        A = np.zeros((len(J), 3))
-        A[:,0] = 1.
-        A[:,1] = (fullx[J] + sx) - cx
-        A[:,2] = (fully[J] + sy) - cy
-
-        R = np.linalg.lstsq(A, px[I] - cx)
-        resx = R[0]
-        #print('Affine transformation for X:', resx)
-        R = np.linalg.lstsq(A, py[I] - cy)
-        resy = R[0]
-        #print('Affine transformation for Y:', resy)
-
-        meas.update(affine = [cx, cy] + list(resx) + list(resy))
-        
-        if True:
-            r0,d0 = stars.ra[I[0]], stars.dec[I[0]]
-            #print('Pan-STARRS RA,Dec:', r0,d0)
-            ok,px0,py0 = wcs.radec2pixelxy(r0, d0)
-            #print('Header WCS -> x,y:', px0-1, py0-1)
-            mx0,my0 = fullx[J[0]], fully[J[0]]
-            #print('VS Matched star x,y:', mx0, my0)
-        
-        if self.debug and ps is not None:
-            plt.clf()
-            plothist(dx, dy, range=((-radius2,radius2),(-radius2,radius2)))
-            plt.xlabel('dx (pixels)')
-            plt.ylabel('dy (pixels)')
-            plt.title('Offsets to PS1 stars')
-            ax = plt.axis()
-            plt.axhline(0, color='b')
-            plt.axvline(0, color='b')
-            plt.plot(shiftx2, shifty2, 'o', mec='m', mfc='none', ms=15, mew=3)
-            plt.axis(ax)
-            ps.savefig()
-
-        if ps is not None:
-            afx = (fullx[J] + sx) - cx
-            afy = (fully[J] + sy) - cy
-            affx = cx + (resx[0] + resx[1] * afx + resx[2] * afy)
-            affy = cy + (resy[0] + resy[1] * afx + resy[2] * afy)
-            affdx = px[I] - affx
-            affdy = py[I] - affy
-            plt.clf()
-            plothist(affdx, affdy, range=((-radius2,radius2),(-radius2,radius2)))
-            plt.xlabel('dx (pixels)')
-            plt.ylabel('dy (pixels)')
-            plt.title('Offsets to PS1 stars after Affine correction')
-            ax = plt.axis()
-            plt.axhline(0, color='b')
-            plt.axvline(0, color='b')
-            #plt.plot(shiftx, shifty, 'o', mec='m', mfc='none', ms=15, mew=3)
-            plt.axis(ax)
-            ps.savefig()
-        
-        if ps is not None:
-            mn,mx = np.percentile(img.ravel(), [50,99])
-            kwa2 = dict(vmin=mn, vmax=mx, cmap='gray')
-            plt.clf()
-            dimshow(img, **kwa2)
-            ax = plt.axis()
-            plt.plot(fx[J], fy[J], 'go', mec='g', mfc='none', ms=10, mew=2)
-            plt.plot(px[I]-sx-trim_x0, py[I]-sy-trim_y0, 'm+', ms=10, mew=2)
-            plt.axis(ax)
-            plt.title('Matched PS1 stars')
-            plt.colorbar()
-            ps.savefig()
-
-            plt.clf()
-            dimshow(img, **kwa2)
-            ax = plt.axis()
-            plt.plot(fx[J], fy[J], 'go', mec='g', mfc='none', ms=10, mew=2)
-            K = np.argsort(stars.mag)
-            plt.plot(px[K[:10]]-sx-trim_x0, py[K[:10]]-sy-trim_y0, 'o', mec='m', mfc='none',ms=12,mew=2)
-            plt.plot(px[K[10:]]-sx-trim_x0, py[K[10:]]-sy-trim_y0, 'o', mec='m', mfc='none', ms=8,mew=2)
-            plt.axis(ax)
-            plt.title('All PS1 stars')
-            plt.colorbar()
-            ps.savefig()
-            
-        # Now cut to just *stars* with good colors
-        stars.gicolor = stars.median[:,0] - stars.median[:,2]
-        keep = (stars.gicolor > 0.4) * (stars.gicolor < 2.7)
+        keep = self.cut_reference_catalog(stars)
         stars.cut(keep)
         if len(stars) == 0:
             print('No overlap or too few stars in PS1')
             return meas
-        px = px[keep]
-        py = py[keep]
-        # Re-match
-        I,J,dx,dy = self.match_ps1_stars(px, py, fullx+sx, fully+sy,
+        ok,px,py = wcs2.radec2pixelxy(stars.ra, stars.dec)
+        px -= 1
+        py -= 1
+
+        ## DEBUG
+        if ps is not None:
+            radius2=200.
+            I,J,dx,dy = self.match_ps1_stars(px, py, fx, fy,
+                                             radius2, stars)
+            plt.clf()
+            plothist(dx, dy, range=((-radius2,radius2),(-radius2,radius2)))
+            plt.xlabel('dx (pixels)')
+            plt.ylabel('dy (pixels)')
+            plt.title('Offsets to PS1 stars (with new WCS)')
+            ax = plt.axis()
+            plt.axhline(0, color='b')
+            plt.axvline(0, color='b')
+            plt.axis(ax)
+            ps.savefig()
+
+        # Re-match with smaller search radius
+        radius2 = 3. / pixsc
+        I,J,dx,dy = self.match_ps1_stars(px, py, fx, fy,
                                          radius2, stars)
-        printmsg('Cut to %i PS1 stars with good colors; matched %i' %
+        printmsg('Keeping %i reference stars; matched %i with smaller search radius' %
                  (len(stars), len(I)))
         nmatched = len(I)
-
-        meas.update(dx=sx, dy=sy, nmatched=nmatched)
+        meas.update(nmatched=nmatched)
 
         if focus or zp0 is None:
             meas.update(img=img, hdr=hdr, primhdr=primhdr,
-                        fx=fx, fy=fy, px=px-trim_x0-sx, py=py-trim_y0-sy,
+                        fx=fx, fy=fy,
                         sig1=sig1, stars=stars,
                         moments=(mx2,my2,mxy,theta,a,b,ell),
                         wmoments=(wmx2,wmy2,wmxy,wtheta,wa,wb,well),
@@ -616,12 +509,7 @@ class RawMeasurer(object):
         # Compute photometric offset compared to PS1
         # as the PS1 minus observed mags
 
-        #print('PS1 stars mags:', stars.median)
-        try:
-            colorterm = self.colorterm_ps1_to_observed(stars.median, band)
-        except KeyError:
-            print('Color term not found for band "%s"; assuming zero.' % band)
-            colorterm = 0.
+        colorterm = self.get_color_term(stars, band)
         #print('Color term:', colorterm)
         stars.mag += colorterm
         ps1mag = stars.mag[I]
@@ -703,6 +591,8 @@ class RawMeasurer(object):
         zp_mean = zp0 + dmag
 
         zp_obs = zp0 + dmagmedsky
+        print('zp_obs', zp_obs, 'kx', kx, 'airmass', airmass)
+        print('zp0 for this exposure would be', zp_obs + kx * (airmass-1.))
         transparency = 10.**(-0.4 * (zp0 - zp_obs - kx * (airmass - 1.)))
         meas.update(zp=zp_obs, transparency=transparency)
 
@@ -863,6 +753,211 @@ class RawMeasurer(object):
 
         return meas
 
+    def update_astrometry(self, *args):
+        return self.histogram_astrometric_shift(*args)
+
+    def histogram_astrometric_shift(self, stars, wcs, fx, fy, trim_x0, trim_y0, pixsc, img, hdr,
+                                    fullW, fullH, ps, printmsg):
+        '''
+        stars: reference stars
+        wcs: header WCS
+        fx,fy: detected stars
+        '''
+        import pylab as plt
+        from astrometry.util.plotutils import dimshow, plothist
+        ok,px,py = wcs.radec2pixelxy(stars.ra, stars.dec)
+        px -= 1
+        py -= 1
+        
+        if ps is not None:
+            #kwa = dict(vmin=-3*sig1, vmax=50*sig1, cmap='gray')
+            # Add to the 'detected sources' plot
+            # mn,mx = np.percentile(img.ravel(), [50,99])
+            # kwa = dict(vmin=mn, vmax=mx, cmap='gray')
+            # plt.clf()
+            # dimshow(img, **kwa)
+            ax = plt.axis()
+            #plt.plot(fx, fy, 'go', mec='g', mfc='none', ms=10)
+            K = np.argsort(stars.mag)
+            plt.plot(px[K[:10]]-trim_x0, py[K[:10]]-trim_y0, 'o', mec='m', mfc='none',ms=12,mew=2)
+            plt.plot(px[K[10:]]-trim_x0, py[K[10:]]-trim_y0, 'o', mec='m', mfc='none', ms=8)
+            plt.axis(ax)
+            plt.title('PS1 stars')
+            #plt.colorbar()
+            ps.savefig()
+
+        # we trimmed the image before running detection; re-add that margin
+        fullx = fx + trim_x0
+        fully = fy + trim_y0
+
+        # Match PS1 to our detections, find offset
+        radius = self.maxshift / pixsc
+
+        I,J,dx,dy = self.match_ps1_stars(px, py, fullx, fully, radius, stars)
+        #print(len(I), 'spatial matches with large radius', self.maxshift,
+        #      'arcsec,', radius, 'pix')
+
+        # Broad (5-pixel) bins are okay because we're going to refine them later... right?
+        bins = 2*int(np.ceil(radius / 5.))
+        print('Histogramming with', bins, 'bins')
+        histo,xe,ye = np.histogram2d(dx, dy, bins=bins,
+                                     range=((-radius,radius),(-radius,radius)))
+        # smooth histogram before finding peak -- fuzzy matching
+        from scipy.ndimage.filters import gaussian_filter
+        histo = gaussian_filter(histo, 1.)
+        histo = histo.T
+        mx = np.argmax(histo)
+        my,mx = np.unravel_index(mx, histo.shape)
+        shiftx = (xe[mx] + xe[mx+1])/2.
+        shifty = (ye[my] + ye[my+1])/2.
+        
+        if ps is not None:
+            plt.clf()
+            #plothist(dx, dy, range=((-radius,radius),(-radius,radius)), nbins=bins)
+            plt.imshow(histo, interpolation='nearest', origin='lower', extent=[-radius, radius, -radius, radius],
+                       cmap='hot')
+            plt.xlabel('dx (pixels)')
+            plt.ylabel('dy (pixels)')
+            plt.title('Offsets to PS1 stars')
+            ax = plt.axis()
+            plt.axhline(0, color='b')
+            plt.axvline(0, color='b')
+            plt.plot(shiftx, shifty, 'o', mec='m', mfc='none', ms=15, mew=3)
+            plt.axis(ax)
+            ps.savefig()
+    
+        # Refine with smaller search radius
+        radius2 = 3. / pixsc
+        I,J,dx,dy = self.match_ps1_stars(px, py, fullx+shiftx, fully+shifty,
+                                         radius2, stars)
+        #print(len(J), 'matches to PS1 with small radius', 3, 'arcsec')
+        shiftx2 = np.median(dx)
+        shifty2 = np.median(dy)
+        #print('Stage-1 shift', shiftx, shifty)
+        #print('Stage-2 shift', shiftx2, shifty2)
+        sx = shiftx + shiftx2
+        sy = shifty + shifty2
+        printmsg('Astrometric shift (%.0f, %.0f) pixels' % (sx,sy))
+
+        # Find affine transformation
+        cx = fullW/2
+        cy = fullH/2
+
+        A = np.zeros((len(J), 3))
+        A[:,0] = 1.
+        A[:,1] = (fullx[J] + sx) - cx
+        A[:,2] = (fully[J] + sy) - cy
+
+        #R = np.linalg.lstsq(A, px[I] - cx, rcond=None)
+        R = np.linalg.lstsq(A, px[I] - cx)
+        resx = R[0]
+        #print('Affine transformation for X:', resx)
+        #R = np.linalg.lstsq(A, py[I] - cy, rcond=None)
+        R = np.linalg.lstsq(A, py[I] - cy)
+        resy = R[0]
+        #print('Affine transformation for Y:', resy)
+
+        measargs = dict(affine = [cx, cy] + list(resx) + list(resy),
+                        px=px-trim_x0-sx, py=py-trim_y0-sy,
+                        dx=sx, dy=sy)
+
+        subh,subw = img.shape
+        from astrometry.util.util import Sip
+        #print('WCS:', wcs)
+        #print('sx,sy,subw,subh', sx, sy, subw, subh)
+        wcs2 = Sip(wcs)
+        x,y = wcs2.get_crpix()
+        wcs2.set_crpix((x - trim_x0 - sx, y - trim_y0 - sy))
+        wcs2.set_width(subw)
+        wcs2.set_height(subh)
+        #print('WCS2:', wcs2)
+        #wcs2 = wcs.get_subimage(sx, sy, subw, subh)
+        #wcs2 = wcs.get_subimage(-trim_x0 - sx, -trim_y0 - sy, fullW, fullH)
+        #print('Trim', trim_x0, trim_y0)
+
+        if True:
+            r0,d0 = stars.ra[I[0]], stars.dec[I[0]]
+            #print('Pan-STARRS RA,Dec:', r0,d0)
+            ok,px0,py0 = wcs.radec2pixelxy(r0, d0)
+            #print('Header WCS -> x,y:', px0-1, py0-1)
+            mx0,my0 = fullx[J[0]], fully[J[0]]
+            #print('VS Matched star x,y:', mx0, my0)
+        
+        if self.debug and ps is not None:
+            plt.clf()
+            plothist(dx, dy, range=((-radius2,radius2),(-radius2,radius2)))
+            plt.xlabel('dx (pixels)')
+            plt.ylabel('dy (pixels)')
+            plt.title('Offsets to PS1 stars')
+            ax = plt.axis()
+            plt.axhline(0, color='b')
+            plt.axvline(0, color='b')
+            plt.plot(shiftx2, shifty2, 'o', mec='m', mfc='none', ms=15, mew=3)
+            plt.axis(ax)
+            ps.savefig()
+
+        if ps is not None:
+            afx = (fullx[J] + sx) - cx
+            afy = (fully[J] + sy) - cy
+            affx = cx + (resx[0] + resx[1] * afx + resx[2] * afy)
+            affy = cy + (resy[0] + resy[1] * afx + resy[2] * afy)
+            affdx = px[I] - affx
+            affdy = py[I] - affy
+            plt.clf()
+            plothist(affdx, affdy, range=((-radius2,radius2),(-radius2,radius2)))
+            plt.xlabel('dx (pixels)')
+            plt.ylabel('dy (pixels)')
+            plt.title('Offsets to PS1 stars after Affine correction')
+            ax = plt.axis()
+            plt.axhline(0, color='b')
+            plt.axvline(0, color='b')
+            #plt.plot(shiftx, shifty, 'o', mec='m', mfc='none', ms=15, mew=3)
+            plt.axis(ax)
+            ps.savefig()
+        
+        if ps is not None:
+            mn,mx = np.percentile(img.ravel(), [50,99])
+            kwa2 = dict(vmin=mn, vmax=mx, cmap='gray')
+            plt.clf()
+            dimshow(img, **kwa2)
+            ax = plt.axis()
+            plt.plot(fx[J], fy[J], 'go', mec='g', mfc='none', ms=10, mew=2)
+            plt.plot(px[I]-sx-trim_x0, py[I]-sy-trim_y0, 'm+', ms=10, mew=2)
+            plt.axis(ax)
+            plt.title('Matched PS1 stars')
+            plt.colorbar()
+            ps.savefig()
+
+            plt.clf()
+            dimshow(img, **kwa2)
+            ax = plt.axis()
+            plt.plot(fx[J], fy[J], 'go', mec='g', mfc='none', ms=10, mew=2)
+            K = np.argsort(stars.mag)
+            plt.plot(px[K[:10]]-sx-trim_x0, py[K[:10]]-sy-trim_y0, 'o', mec='m', mfc='none',ms=12,mew=2)
+            plt.plot(px[K[10:]]-sx-trim_x0, py[K[10:]]-sy-trim_y0, 'o', mec='m', mfc='none', ms=8,mew=2)
+            plt.axis(ax)
+            plt.title('All PS1 stars')
+            plt.colorbar()
+            ps.savefig()
+
+            plt.clf()
+            dimshow(img, **kwa2)
+            ax = plt.axis()
+            ok,px2,py2 = wcs2.radec2pixelxy(stars.ra, stars.dec)
+            px2 -= 1
+            py2 -= 1
+            #plt.plot(fx, fy, 'go', mec='g', mfc='none', ms=10, mew=2)
+            plt.plot(fx[J], fy[J], 'go', mec='g', mfc='none', ms=10, mew=2)
+
+            plt.plot(px2, py2, 'mo', mec='m', mfc='none', ms=8, mew=2)
+            plt.axis(ax)
+            plt.title('All PS1 stars (with New WCS')
+            plt.colorbar()
+            ps.savefig()
+
+
+        return wcs2, measargs
+
 
 class DECamMeasurer(RawMeasurer):
     def __init__(self, *args, **kwargs):
@@ -987,6 +1082,216 @@ class Mosaic3Measurer(RawMeasurer):
         band = bandmap.get(band, band)
         return ps1cat.ps1band[band]
 
+class PointingCamMeasurer(RawMeasurer):
+
+    # full image size: 3296 x 2472
+
+    def __init__(self, *args, **kwargs):
+        ps = kwargs.pop('ps', None)
+        verbose = kwargs.pop('verbose', None)
+        super(PointingCamMeasurer, self).__init__(*args, **kwargs)
+        self.camera = 'pointing'
+
+        self.subW = 3296 // 2
+        self.subH = 2472 // 2
+
+    def get_sky_and_sigma(self, img):
+        #sky,sig1 = sensible_sigmaclip(img[1000:2000, 500:1500])
+        # First quadrant
+        sky,sig1 = sensible_sigmaclip(img[100:self.subH-100, 100:self.subW-100])
+        print('Sky, sig1:', sky, sig1)
+        return sky,sig1
+
+    def get_wcs(self, hdr):
+        from astrometry.util.util import Tan
+        wcs = Tan(hdr)
+        wcs = wcs.get_subimage(0, 0, self.subW, self.subH)
+        return wcs
+
+    def read_raw(self, F, ext):
+        img = F[ext].read()
+        hdr = F[ext].read_header()
+        img = img.astype(np.float32)
+        img = img[:self.subH, :self.subW]
+        return img, hdr
+
+    def get_reference_stars(self, wcs, band):
+        # Use a cut version of the Gaia catalog.
+        cat = GaiaCatalog()
+        stars = cat.get_catalog_in_wcs(wcs)
+        print('Got', len(stars), 'Gaia stars')
+        if not 'topring_mag' in stars.get_columns():
+            raise RuntimeError('Need a specially cut Gaia catalog for the pointing cam')
+        stars.mag = stars.topring_mag
+        stars.cut(stars.mag < 14)
+        print('Cut at 14th mag:', len(stars))
+        return stars
+
+    def cut_reference_catalog(self, stars):
+        return np.ones(len(stars), bool)
+
+    def get_color_term(self, stars, band):
+        return 0.
+
+    def get_exptime(self, primhdr):
+        exptime = primhdr.get('EXPTIME', 0.)
+        if exptime == 0.:
+            exptime = primhdr.get('EXPOSURE', 0.) / 1000.
+        return exptime
+
+class DesiCiMeasurer(RawMeasurer):
+    def __init__(self, *args, **kwargs):
+        ps = kwargs.pop('ps', None)
+        verbose = kwargs.pop('verbose', None)
+        super(DesiCiMeasurer, self).__init__(*args, **kwargs)
+        self.camera = 'desici'
+        self.pixscale = 0.130
+        self.edge_trim = 0
+
+    def get_band(self, primhdr):
+        # HACK
+        return 'r'
+
+    def get_sky_and_sigma(self, img):
+        sky,sig1 = sensible_sigmaclip(img[100:-100, 100:-100])
+        print('Sky, sig1:', sky, sig1)
+        return sky,sig1
+
+    def update_astrometry(self, stars, wcs, fx, fy, trim_x0, trim_y0,
+                          pixsc, img, hdr, fullW, fullH, ps, printmsg):
+        import tempfile
+        from astrometry.util.util import healpix_rangesearch_radec
+        # Run Astrometry.net on cleaned-up image.
+        tempimg = tempfile.NamedTemporaryFile(suffix='.fits')
+        configfile = tempfile.NamedTemporaryFile(suffix='.cfg')
+        fn = tempimg.name
+        fitsio.write(fn, img, header=hdr, clobber=True)
+
+        ra = hdr['CRVAL1']
+        dec = hdr['CRVAL2']
+        radius = 5.
+        nside = 2
+        healpixes = healpix_rangesearch_radec(ra, dec, radius, nside)
+
+        configfn = configfile.name
+        f = open(configfn, 'w')
+        index_dir = os.environ.get('AN_INDEX_DIR', 'index-files')
+        # export AN_INDEX_DIR=/global/project/projectdirs/cosmo/work/users/dstn/index-5000
+        f.write('add_path %s\n' % index_dir +
+                'inparallel\n' +
+                '\n'.join(['index index-5001-%02i' % hp for hp in healpixes]) + '\n' +
+                '\n'.join(['index index-5002-%02i' % hp for hp in healpixes]) + '\n')
+        f.close()
+
+        cmd = 'solve-field --config %s --continue' % configfn
+        cmd += ' --ra %f --dec %f --radius 5' % (ra, dec)
+        if self.ext == 'CIC':
+            pixsc = 0.133
+        else:
+            pixsc = 0.123
+            cmd += ' --xscale 1.09'
+        cmd += ' --scale-low %f --scale-high %f --scale-units app' % (pixsc * 0.95, pixsc * 1.05)
+        cmd += ' --objs 50 --crpix-center'
+        cmd += ' --parity pos'
+        cmd += ' --no-verify --new-fits none --solved none --match none --rdls none --corr none'
+        #cmd += ' --plot-scale 0.25'
+        cmd += ' --no-plots'
+        cmd += ' --downsample 4'
+        #cmd += ' -v'
+        cmd += ' ' + fn
+        print(cmd)
+        os.system(cmd)
+
+        from astrometry.util.util import Sip, Tan
+        wcsfn = fn.replace('.fits', '.wcs')
+        if os.path.exists(wcsfn):
+            wcs2 = Sip(wcsfn)
+
+            imh,imw = img.shape
+            cx,cy = (imw + 1.) / 2., (imh + 1.) / 2.
+            r,d = wcs2.pixelxy2radec(cx, cy)
+            ok,x1,y1 = wcs.radec2pixelxy(r, d)
+            dx = x1 - cx - trim_x0
+            dy = y1 - cy - trim_y0
+            # print('Computing dx,dy from initial WCS:')
+            # print(wcs)
+            # print('to')
+            # print(wcs2)
+            # print('Final WCS image center:', cx,cy)
+            # print('-> RA,Dec', r,d)
+            # print('-> initial WCS coords', x1,y1)
+            # print('-> dx,dy', dx, dy)
+
+            r1,d1 = wcs.radec_center()
+            r2,d2 = wcs2.radec_center()
+            dd = d2 - d1
+            dr = (r2 - r1)*np.cos(np.deg2rad(d2))
+            #print('dr,dd', dr*3600, dd*3600, 'arcsec')
+            print('dx,dy (%.1f, %.1f), dr,dd (%.1f, %.1f)' % (dx, dy, dr*3600., dd*3600.))
+
+            measargs = dict(dx=dx, dy=dy, dra=dr, ddec=dd)
+            return wcs2, measargs
+        print('Solving failed!  Trying histogram...')
+        return self.histogram_astrometric_shift(stars, wcs, fx, fy, trim_x0, trim_y0, pixsc,
+                                                img, hdr, fullW, fullH, ps, printmsg)
+
+    def get_wcs(self, hdr):
+        from astrometry.util.util import Tan
+        # Needs extremely recent Astrometry.net
+        wcs = Tan(hdr)
+        return wcs
+
+    def get_bias(self, ext):
+        # From Aaron:
+        # https://github.com/ameisner/ci_reduce/blob/master/py/ci_reduce/common.py#L315
+        # result in in ADU
+        bias_med_dict = {'CIE' : 991.0, 
+                         'CIN' : 1013.0, 
+                         'CIC' : 1020.0, 
+                         'CIS' : 984.0, 
+                         'CIW' : 990.0}
+        return bias_med_dict.get(ext, 0.)
+
+    def read_raw(self, F, ext):
+        img = F[ext].read()
+        hdr = F[ext].read_header()
+        img = img.astype(np.float32)
+
+        img -= self.get_bias(ext)
+
+        # Estimate per-pixel noise via Blanton's 5-pixel MAD
+        from scipy.ndimage.measurements import label, find_objects
+        slice1 = (slice(0,-5,10),slice(0,-5,10))
+        slice2 = (slice(5,None,10),slice(5,None,10))
+        mad = np.median(np.abs(img[slice1] - img[slice2]).ravel())
+        sig1 = 1.4826 * mad / np.sqrt(2.)
+        #print('Computed sig1 by Blanton method:', sig1)
+        med = np.median(img.ravel())
+        #print('Median:', med)
+        thresh = med + 5. * sig1
+        blobs,nblobs = label(img > thresh)
+        #print('Found', nblobs, 'blobs of pixels above threshold')
+        nz = 0
+        for sy,sx in find_objects(blobs):
+            y0 = sy.start
+            y1 = sy.stop
+            if y1 > y0+1:
+                continue
+            x0 = sx.start
+            x1 = sx.stop
+            if x1 > x0+1:
+                continue
+            nz += 1
+            img[y0,x0] = med
+        print('Zeroed out', nz, 'pixels')
+        return img, hdr
+
+    def get_ps1_band(self, band):
+        return ps1cat.ps1band[band]
+
+    def colorterm_ps1_to_observed(self, ps1stars, band):
+        return 0.
+
 class BokMeasurer(RawMeasurer):
     def __init__(self, *args, **kwargs):
         if not 'pixscale' in kwargs:
@@ -1048,8 +1353,10 @@ class BokMeasurer(RawMeasurer):
         pass
 
     def colorterm_ps1_to_observed(self, ps1stars, band):
-        return ps1_to_decam(ps1stars, band)
+        return ps1_to_90prime(ps1stars, band)
 
+    def get_ps1_band(self, band):
+        return ps1cat.ps1band[band]
 
 
 class BokCPMeasurer(BokMeasurer):
@@ -1180,8 +1487,8 @@ def get_measurer_class_for_file(fn):
             return DECamCPMeasurer
         return DECamMeasurer
 
-def measure_raw(fn, **kwargs):
-    primhdr = fitsio.read_header(fn)
+def measure_raw(fn, primext=0, **kwargs):
+    primhdr = fitsio.read_header(fn, ext=primext)
     cam = camera_name(primhdr)
 
     if cam == 'mosaic3':
@@ -1215,6 +1522,28 @@ def measure_raw(fn, **kwargs):
             return results
         return measure_raw_decam(fn, **kwargs)
 
+    elif cam == 'pointing':
+        #return measure_raw_pointing(fn, **kwargs)
+        nom = kwargs.pop('nom', None)
+        if nom is None:
+            import camera_pointing
+            nom = camera_pointing.PointingCamNominalCalibration()
+        ext = kwargs.pop('ext', 0)
+        meas = PointingCamMeasurer(fn, ext, nom, **kwargs)
+        results = meas.run(**kwargs)
+        return results
+
+    elif cam == 'desi':
+        nom = kwargs.pop('nom', None)
+        if nom is None:
+            import camera_desici
+            nom = camera_desici.DesiCiNominalCalibration()
+        ext = kwargs.pop('ext', 0)
+        meas = DesiCiMeasurer(fn, ext, nom, **kwargs)
+        kwargs.update(primext=primext)
+        results = meas.run(**kwargs)
+        return results
+    
     return None
 
 def get_default_extension(fn):

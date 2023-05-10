@@ -1,4 +1,4 @@
-#! /usr/bin/env python2.7
+#! /usr/bin/env python3.6
 '''
 
 This script is meant to be run during DECaLS/MzLS observing.  It waits
@@ -55,6 +55,21 @@ def db_to_fits(mm):
         else:
             T.set(field, np.array([getattr(m, field) for m in mm]))
     return T
+
+def filter_plot_color(filt, default='0.5'):
+    # Returns a matplotlib color for plotting the given filter name.
+    ccmap = dict(g='g',
+                 r='r',
+                 z='m',
+                 zd='m',
+                 # https://academo.org/demos/wavelength-to-colour-relationship/
+                 N419=(109/255, 0., 251/255),
+                 N501=(0., 1., 135/255),
+                 N540=(129/255, 1., 0.),
+                 N673='r',
+                 N708=(241/255,0.,0.),
+                )
+    return ccmap.get(filt, default)
 
 def recent_gr_seeing(recent=30., exps=None):
     '''
@@ -228,38 +243,57 @@ def get_twilight(obs, date):
 
     return t
 
+def average_by_mjd(Tb):
+    mjds,I = np.unique(Tb.mjd_obs, return_index=True)
+    if len(mjds) == len(Tb):
+        return Tb,None
+
+    Tavg = Tb[I]
+    Iindiv = []
+    for i,mjd in enumerate(Tavg.mjd_obs):
+        II = np.flatnonzero(Tb.mjd_obs == mjd)
+        if len(II) > 1:
+            Iindiv.extend(II)
+        Tavg.seeing[i] = np.mean(Tb.seeing[II])
+        Tavg.sky[i] = np.mean(Tb.sky[II])
+    Iindiv = np.array(Iindiv)
+    return Tavg,Tb[Iindiv]
+
 def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
-                      markmjds=[], show_plot=True, nightly=False):
+                      markmjds=[], show_plot=True, nightly=False,
+                      label_nmatched=True, max_seeing=2.5, target_exptime=True,
+                      nominal_sky=False):
     '''
     Plots our measurements of the conditions, as in the recent.png and
     night.png plots.
     '''
     import pylab as plt
     T = db_to_fits(mm)
+    print('plot_measurements, nightly', nightly, 'target_exptime', target_exptime)
     print(len(T), 'exposures')
     # Replace filter "zd" -> "z", "rd" -> "r".
     T.band = np.array([dict(zd='z', rd='r').get(b, b) for b in T.band])
 
     T.mjd_end = T.mjd_obs + T.exptime / 86400.
 
-    Tnonobject = T[T.obstype != 'object']
+    T.isobject = np.logical_or(T.obstype == 'object', T.obstype == 'science')
+    
+    Tnonobject = T[np.logical_not(T.isobject)]
     print(len(Tnonobject), 'exposures are not OBJECTs')
     print('Obs types:', np.unique(T.obstype))
-    T = T[T.obstype == 'object']
+    T = T[T.isobject]
     print(len(T), 'OBJECT exposures')
 
     if len(T) == 0:
         return
     
-    ccmap = dict(g='g', r='r', z='m')
-    xcolor = '0.5'
-
     bands = np.unique(T.band)
     print('Unique bands:', bands)
     
     TT = []
     for band in bands:
         TT.append(T[T.band == band])
+        print('Band', band, ':', len(TT[-1]), 'images')
 
     plt.clf()
     plt.subplots_adjust(hspace=0.1, top=0.98, right=0.95, left=0.1,
@@ -273,14 +307,17 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
 
     # bad_pixcnt
     I = np.flatnonzero(T.bad_pixcnt)
+    print(len(I), 'images have bad_pixcnt')
     for i in I:
         bads.append((i, 'pixcnt'))
 
     # low nmatched
-    I = np.flatnonzero((T.nmatched >= 0) * (T.nmatched < 10))
-    for i in I:
-        print('Exposure', T.expnum[i], ': nmatched', T.nmatched[i])
-        bads.append((i, 'nmatched'))
+    if label_nmatched:
+        I = np.flatnonzero((T.nmatched >= 0) * (T.nmatched < 10))
+        print(len(I), 'images have bad nmatched')
+        for i in I:
+            print('Exposure', T.expnum[i], ': nmatched', T.nmatched[i])
+            bads.append((i, 'nmatched'))
 
     if allobs is not None:
 
@@ -319,17 +356,24 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         mn,mx = T.seeing[I].min(), T.seeing[I].max()
     else:
         mn,mx = 0.7, 2.5
-    mx = min(mx, 2.5)
+    mx = min(mx, max_seeing)
     yl,yh = mn - 0.15*(mx-mn), mx + 0.05*(mx-mn)
     #print('mn,mx', mn,mx, 'yl,yh', yl,yh)
-    
+
     ## Seeing
     plt.subplot(SP,1,1)
     for band,Tb in zip(bands, TT):
+        # print('Band', band, 'with', len(Tb), 'images.  Seeing:', Tb.seeing, 'exptime', Tb.exptime)
+        # print('Expnum', Tb.expnum)
         I = np.flatnonzero((Tb.seeing > 0) * (Tb.exptime > 30))
         if len(I):
-            plt.plot(Tb.mjd_obs[I], Tb.seeing[I], 'o',
-                     color=ccmap.get(band, xcolor), mec='k')
+            Tavg,Tind = average_by_mjd(Tb[I])
+            if Tind is not None:
+                plt.plot(Tind.mjd_obs, Tind.seeing, 'o',
+                         mec='k', mfc='none', alpha=0.5)
+            plt.plot(Tavg.mjd_obs, Tavg.seeing, 'o',
+                     color=filter_plot_color(band), mec='k')
+
         I = np.flatnonzero(Tb.seeing > mx)
         if len(I):
             plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
@@ -351,7 +395,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     y = yl + 0.01*(yh-yl)
     plt.plot(np.vstack((T.mjd_obs, T.mjd_end)),
              np.vstack((y, y)), '-', lw=3, alpha=0.5,
-             color=ccmap.get(band, xcolor),
+             color=filter_plot_color(band),
              solid_joinstyle='bevel')
 
     plt.ylim(yl,yh)
@@ -375,12 +419,15 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     keepbands = []
     keepTT = []
     for band,Tb in zip(bands, TT):
-        try:
-            sky0 = nom.sky(band)
-        except KeyError:
-            # unknown filter
-            print('Unknown filter for sky:', band)
-            continue
+        if nominal_sky:
+            try:
+                sky0 = nom.sky(band)
+            except KeyError:
+                # unknown filter
+                print('Unknown filter for sky:', band)
+                continue
+        else:
+            sky0 = 0.
         T.dsky[T.band == band] = Tb.sky - sky0
         keepbands.append(band)
         keepTT.append(Tb)
@@ -398,11 +445,19 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     yl,yh = mn - 0.15*(mx-mn), mx + 0.05*(mx-mn)
 
     for band,Tb in zip(bands, TT):
-        sky0 = nom.sky(band)
+        if nominal_sky:
+            sky0 = nom.sky(band)
+        else:
+            sky0 = 0.
         I = np.flatnonzero(Tb.sky > 0)
         if len(I):
-            plt.plot(Tb.mjd_obs[I], Tb.sky[I] - sky0, 'o', mec='k',
-                     color=ccmap.get(band, xcolor))
+            Tavg,Tind = average_by_mjd(Tb[I])
+            if Tind is not None:
+                plt.plot(Tind.mjd_obs, Tind.sky - sky0, 'o',
+                         mec='k', mfc='none', alpha=0.5)
+            plt.plot(Tavg.mjd_obs, Tavg.sky - sky0, 'o',
+                     color=filter_plot_color(band), mec='k')
+
             minsky = min(minsky, min(Tb.sky[I] - sky0))
             nomskies.append((band, sky0))
             medskies.append((band, np.median(Tb.sky[I])))
@@ -417,7 +472,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     xl,xh = plt.xlim()
     plt.text((xl+xh)/2., min(0., (yl + 0.95*(yh-yl))), txt,
              va='bottom', bbox=bbox)
-    
+
     plt.axhline(0, color='k', alpha=0.5)
 
     if nightly:
@@ -429,7 +484,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         plt.text(latest.mjd_obs, latest.dsky - 0.05*(yh-yl),
                  '%.2f' % latest.sky, ha='center', va='top',
                  bbox=bbox)
-    
+
     # Plot strings of pass 1,2,3
     I = np.argsort(T.mjd_obs)
     TJ = T[I]
@@ -443,7 +498,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
             j += 1
         # print('Exposures from [%i,%i) have pass %i' % (i, j, p0))
         tend = TJ[j-1]
-        
+
         y = yl + 0.1 * (yh-yl)
         if j > i+1:
             plt.plot([t.mjd_obs, tend.mjd_obs], [y, y], 'b-', lw=2, alpha=0.5)
@@ -454,11 +509,14 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         plt.text((t.mjd_obs + tend.mjd_obs)/2., y, '%i' % p0,
                  ha='center', va='top')
         i = j
-        
+
     plt.axhline(-0.25, color='k', alpha=0.25)
 
     plt.ylim(yl,yh)
-    plt.ylabel('Sky - nominal (mag)')
+    if nominal_sky:
+        plt.ylabel('Sky - nominal (mag)')
+    else:
+        plt.ylabel('Sky (mag/sq.arcsec)')
 
     ## Transparency
     plt.subplot(SP,1,3)
@@ -467,8 +525,15 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     for band,Tb in zip(bands, TT):
         I = np.flatnonzero(Tb.transparency > 0)
         if len(I):
-            plt.plot(Tb.mjd_obs[I], Tb.transparency[I], 'o', mec='k',
-                     color=ccmap.get(band, xcolor))
+            print('Transparency:', Tb.transparency[I])
+            print('Zeropoint:', Tb.zeropoint[I])
+
+            Tavg,Tind = average_by_mjd(Tb[I])
+            if Tind is not None:
+                plt.plot(Tind.mjd_obs, Tind.transparency, 'o',
+                         mec='k', mfc='none', alpha=0.5)
+            plt.plot(Tavg.mjd_obs, Tavg.transparency, 'o',
+                     color=filter_plot_color(band), mec='k')
         I = np.flatnonzero(Tb.transparency > mx)
         if len(I):
             plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
@@ -496,7 +561,6 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
 
     ## Exposure time plot
     plt.subplot(SP,1,4)
-    mx = 300
     for band,Tb in zip(bands, TT):
         fid = nom.fiducial_exptime(band)
         if fid is None:
@@ -516,21 +580,21 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         #Tb.depth_factor = Tb.exptime / clipped
         Tb.depth_factor = Tb.exptime / exptime
 
-        I = np.flatnonzero((exptime < clipped) * (exptime > 0))
-        if len(I):
-            plt.plot(Tb.mjd_obs[I], exptime[I], '^', **limitstyle(band))
+        if target_exptime:
+            I = np.flatnonzero((exptime < clipped) * (exptime > 0))
+            if len(I):
+                plt.plot(Tb.mjd_obs[I], exptime[I], '^', **limitstyle(band))
 
-        plt.plot(Tb.mjd_obs, clipped, 'o', mec='k', mfc='none', ms=9)
+            plt.plot(Tb.mjd_obs, clipped, 'o', mec='k', mfc='none', ms=9)
 
         # Actual exposure times taken, marked with filled colored circles.
-        I = np.flatnonzero(Tb.exptime > 30)
+        #I = np.flatnonzero(Tb.exptime > 30)
+        I = np.flatnonzero(Tb.exptime > 0)
         if len(I):
             plt.plot(Tb.mjd_obs[I], Tb.exptime[I], 'o', mec='k',
-                     color=ccmap.get(band, xcolor))
+                     color=filter_plot_color(band))
 
     yl,yh = plt.ylim()
-    mx = yh
-
     for band,Tb in zip(bands, TT):
         fid = nom.fiducial_exptime(band)
         if fid is None:
@@ -539,27 +603,30 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         lo,hi = fid.exptime_min, fid.exptime_max
 
         dt = dict(g=-0.5,r=+0.5).get(band, 0.)
-        
-        exptime = basetime * Tb.expfactor
-        clipped = np.clip(exptime, lo, hi)
-        I = np.flatnonzero(exptime > clipped)
-        if len(I):
-            plt.plot(Tb.mjd_obs[I], exptime[I], 'v', **limitstyle(band))
 
-        I = np.flatnonzero(exptime > mx)
-        if len(I):
-            plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
+        if target_exptime:
+            exptime = basetime * Tb.expfactor
+            clipped = np.clip(exptime, lo, hi)
+            I = np.flatnonzero(exptime > clipped)
+            if len(I):
+                plt.plot(Tb.mjd_obs[I], exptime[I], 'v', **limitstyle(band))
 
-        plt.axhline(basetime+dt, color=ccmap.get(band, xcolor), alpha=0.2)
-        plt.axhline(lo+dt, color=ccmap.get(band, xcolor), ls='--', alpha=0.5)
-        plt.axhline(hi+dt, color=ccmap.get(band, xcolor), ls='--', alpha=0.5)
+        if False:
+            I = np.flatnonzero(exptime > mx)
+            if len(I):
+                plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
+
+        if target_exptime:
+            plt.axhline(basetime+dt, color=filter_plot_color(band), alpha=0.2)
+            plt.axhline(lo+dt, color=filter_plot_color(band), ls='--', alpha=0.5)
+            plt.axhline(hi+dt, color=filter_plot_color(band), ls='--', alpha=0.5)
         if band == 'z':
             I = np.flatnonzero(Tb.sky > 0)
             if len(I):
-                plt.plot(Tb.mjd_obs[I], t_sat[I], color=ccmap.get(band, xcolor),
+                plt.plot(Tb.mjd_obs[I], t_sat[I], color=filter_plot_color(band),
                          ls='-', alpha=0.5)
 
-        if not nightly:
+        if (not nightly) and target_exptime:
             I = np.flatnonzero(Tb.exptime > 0)
             if len(I):
                 for i in I:
@@ -567,12 +634,11 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
                              '%.2f' % (Tb.depth_factor[i]),
                              rotation=90, ha='center', va='bottom')
                 yh = max(yh, max(Tb.exptime[I] + 0.3*(yh-yl)))
-                
+
     if not nightly:
         plt.text(latest.mjd_obs, yl+0.03*(yh-yl),
                  '%i s' % int(latest.exptime), ha='center', bbox=bbox)
-                
-    #plt.ylim(yl,min(mx, yh))
+
     plt.ylim(yl,yh)
     plt.ylabel('Exposure time (s)')
 
@@ -580,7 +646,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
 
     I = np.argsort(T.mjd_obs)
     Tx = T[I]
-    
+
     CDs = dict([(ext, nom.cdmatrix(ext)) for ext in np.unique(Tx.extension)])
     CD = np.array([CDs[ext] for ext in Tx.extension])
     dra  = (CD[:,0] * Tx.dx + CD[:,1] * Tx.dy) * 3600.
@@ -593,7 +659,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     yl,yh = -mx,mx
 
     refdra,refddec = None,None
-    print('Camera', Tx.camera[0])
+    #print('Camera', Tx.camera[0])
     if Tx.camera[0].strip() == 'mosaic3':
         # Convert into offsets that match Mosstat ie, offsets in im16,
         # plus magical offset of mosstat-copilot on im16.
@@ -621,7 +687,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
 
             plt.text(mjd, yl+0.03*(yh-yl), '(%.1f, %.1f)' % (r,d),
                      ha='center', bbox=bbox)
-        
+
     else:
         plt.plot(Tx.mjd_obs, dra,  'bo')
         plt.plot(Tx.mjd_obs, ddec, 'go')
@@ -636,7 +702,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     # i = np.argmax(T.mjd_obs)
     # plt.text(T.mjd_obs[i], dra[i], '  RA', ha='left', va='center')
     # plt.text(T.mjd_obs[i], ddec[i], '  Dec', ha='left', va='center')
-    
+
     F = Tnonobject[Tnonobject.obstype == 'focus']
     Z = Tnonobject[Tnonobject.obstype == 'zero']
     print(len(F), 'focus frames,', len(Z), 'zero frames')
@@ -677,10 +743,9 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
                  '(%.1f, %.1f)' % (dra[-1], ddec[-1]), ha='center', bbox=bbox)
 
     plt.ylim(yl, yh)
-    plt.ylabel('dRA (blu), dDec (grn)')
-    
+    plt.ylabel('dRA (blu), dDec (grn) (arcsec)')
     plt.xlabel('MJD')
-    
+
     if mjdrange is not None:
         for sp in range(SP):
             plt.subplot(SP,1,sp+1)
@@ -761,9 +826,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     #           (T.nmatched > 10)]
 
     #number of images with depth factor < 0.3 + number of images with seeing > 2"
-    
     #for band in np.unique(Tcount.band):
-    
     depth_thresh = 0.3
     seeing_thresh = 2.0
     Tbad = []
@@ -808,7 +871,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         plt.draw()
         plt.show(block=False)
         plt.pause(0.001)
-    
+
 def ephemdate_to_mjd(edate):
     # pyephem.Date is days since noon UT on the last day of 1899.
     # MJD is days since midnight UT on 1858/11/17
@@ -820,24 +883,27 @@ def ephemdate_to_mjd(edate):
     return mjd
 
 def set_tile_fields(ccd, hdr, tiles):
-    obj = hdr['OBJECT']
-    print('Object name', obj)
+    obj = hdr.get('OBJECT', '')
+    #print('Object name', obj)
     ccd.object = obj
     tile = get_tile_from_name(obj, tiles)
     if tile is not None:
         ccd.tileid = tile.tileid
         ccd.passnumber = tile.get('pass')
         ccd.tileebv = tile.ebv_med
-    print('Tile id', ccd.tileid, 'pass', ccd.passnumber)
+    #print('Tile id', ccd.tileid, 'pass', ccd.passnumber)
 
 # SFD map isn't picklable, use global instead
 gSFD = None
 
 def get_expnum(phdr):
     expnum = phdr.get('EXPNUM', 0)
-    # Bok
     instrument = phdr.get('INSTRUME')
-    if instrument is not None and instrument.strip() == '90prime':
+    if instrument is None:
+        return expnum
+    instrument = instrument.strip()
+    # Bok
+    if instrument == '90prime':
         date = phdr.get('DATE-OBS').strip()
         #2017-06-15T10:42:01.301'
         yr = date[2:4]
@@ -848,9 +914,30 @@ def get_expnum(phdr):
         sec = date[17:19]
         expnum = int(yr + month + day + hr + minute + sec, 10)
         print('Date', date, '-> faked expnum', expnum)
+    # DESI CI
+    if instrument == 'DESI':
+        expnum = phdr.get('EXPID', 0)
     return expnum
 
+def get_filter(phdr):
+    filt = phdr.get('FILTER', None)
+    if filt is None:
+        instrument = phdr.get('INSTRUME')
+        if instrument is None:
+            return None
+        instrument = instrument.strip()
+        # DESI CI
+        if instrument == 'DESI':
+            filt = 'r'
+    if filt is not None:
+        filt = filt.strip()
+        filt = filt.split()[0]
+    return filt
+
 def process_image(fn, ext, nom, sfd, opt, obs, tiles):
+    if obs is None:
+        from camera import ephem_observer
+        obs = ephem_observer()
     db = opt.db
     print('Reading', fn)
 
@@ -858,30 +945,35 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         sfd = gSFD
 
     # Read primary FITS header
-    phdr = fitsio.read_header(fn)
+    phdr = fitsio.read_header(fn, ext=opt.primext)
 
     obstype = phdr.get('OBSTYPE','').strip()
+    if len(obstype) == 0:
+        obstype = phdr.get('FLAVOR','').strip()
     print('obstype:', obstype)
     exptime = phdr.get('EXPTIME', 0)
+    # pointing cam
+    if exptime == 0:
+        exptime = phdr.get('EXPOSURE', 0) / 1000.
 
     expnum = get_expnum(phdr)
 
-    filt = phdr.get('FILTER', None)
-    if filt is not None:
-        filt = filt.strip()
-        filt = filt.split()[0]
+    filt = get_filter(phdr)
     if filt is None:
         filt = ''
     print('filter:', filt)
 
     airmass = phdr.get('AIRMASS', 0.)
-    ra  = hmsstring2ra (phdr.get('RA', '0'))
-    dec = dmsstring2dec(phdr.get('DEC', '0'))
+    ra  = phdr.get('RA', '0')
+    dec = phdr.get('DEC', '0')
+    if not (isinstance(ra, float) and isinstance(dec, float)):
+        ra  = hmsstring2ra (ra)
+        dec = dmsstring2dec(dec)
 
     # DECam rawdata/DECam_00521494.fits.fz -- "NaN"
     if isinstance(airmass, str):
         airmass = 0.
-    
+
     # Write QA plots to files named by the exposure number
     print('Exposure number:', expnum)
 
@@ -915,13 +1007,17 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         #m,created = obsdb.MeasuredCCD.objects.get_or_create(
         #    filename=fn, extension=ext)
 
-        mlist = obsdb.MeasuredCCD.objects.filter(
-            filename=fn, extension=ext)
+        if opt.by_expnum:
+            mlist = obsdb.MeasuredCCD.objects.filter(
+                expnum=expnum, extension=ext)
+        else:
+            mlist = obsdb.MeasuredCCD.objects.filter(
+                filename=fn, extension=ext)
         # Arbitrarily take first object if more than one found
         if mlist.count() > 0:
             m = mlist[0]
         else:
-            m = obsdb.MeasuredCCD(filename=fn, extension=ext)
+            m = obsdb.MeasuredCCD(filename=fn, expnum=expnum, extension=ext)
             m.save()
 
         if skip:
@@ -931,7 +1027,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
             if m2.count() > 0:
                 print('Expnum and extension already exists in db.')
                 return None
-        
+
         m.obstype = obstype
         m.camera  = camera_name(phdr)
         m.expnum  = expnum
@@ -968,7 +1064,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
                 plt.show(block=False)
                 plt.pause(0.001)
         skip = True
-        
+
     if skip:
         if db:
             m.save()
@@ -982,8 +1078,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         ps = None
 
     # Measure the new image
-    kwa = {}
-    kwa.update(verbose=opt.verbose)
+    kwa = dict(verbose=opt.verbose, primext=opt.primext)
     if ext is not None:
         kwa.update(ext=ext)
     if opt.n_fwhm is not None:
@@ -991,6 +1086,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
     if opt.maxshift is not None:
         kwa.update(measargs=dict(maxshift=opt.maxshift))
     M = measure_raw(fn, ps=ps, **kwa)
+    #print(M)
 
     if opt.doplots:
         from glob import glob
@@ -1004,6 +1100,8 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         if not opt.keep_plots:
             [os.remove(png) for png in pnglist]
 
+    if M is None:
+        return None
     skybright = M['skybright']
     if skybright is None:
         skybright = 0.
@@ -1024,7 +1122,26 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
     band = M['band']
     # Look up E(B-V) in SFD map
     ebv = sfd.ebv(ra, dec)[0]
-    print('E(B-V): %.3f' % ebv)
+
+    if 'dra' in M and 'ddec' in M:
+        dra  = M['dra']  * 3600.
+        ddec = M['ddec'] * 3600.
+    else:
+        dx = M.get('dx',0.)
+        dy = M.get('dy',0.)
+        CD = nom.cdmatrix(ext)
+        dra  = (CD[0] * dx + CD[1] * dy) * 3600.
+        ddec = (CD[2] * dx + CD[3] * dy) * 3600.
+
+    print('E(B-V):          %.3f' % ebv)
+    print('Airmass:         %.3f' % airmass)
+    print('Sky brightness: %.3f' % skybright)
+    zp = M.get('zp',0.)
+    if zp and zp > 0:
+        print('Zeropoint:      %.3f' % M.get('zp', 0.))
+        print('Transparency:    %.3f' % trans)
+    print('Seeing:          %.2f' % M.get('seeing', 0.))
+    print('Astrometric offset: (%.2f, %.2f) arcsec' % (dra, ddec))
 
     if trans > 0:
 
@@ -1033,12 +1150,12 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         expfactor = exposure_factor(fid, nom,
                                     airmass, ebv, M['seeing'], skybright,
                                     trans)
-        print('Exposure factor:              %6.3f' % expfactor)
+        #print('Exposure factor:              %6.3f' % expfactor)
         t_exptime = expfactor * fid.exptime
-        print('Target exposure time:         %6.1f' % t_exptime)
+        #print('Target exposure time:         %6.1f' % t_exptime)
         t_unclipped = t_exptime
         t_exptime = np.clip(t_exptime, fid.exptime_min, fid.exptime_max)
-        print('Clipped exposure time:        %6.1f' % t_exptime)
+        #print('Clipped exposure time:        %6.1f' % t_exptime)
 
         if band == 'z':
             t_sat = nom.saturation_time(band, skybright)
@@ -1046,11 +1163,10 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
                 t_exptime = t_sat
                 print('Reduced exposure time to avoid z-band saturation: %.1f' % t_exptime)
 
-        print
-
-        print('Actual exposure time taken:   %6.1f' % exptime)
-        print('Depth (exposure time) factor: %6.3f' % (exptime / t_exptime))
-        print('Depth factor (on un-clipped exposure time): %6.3f' % (exptime / t_unclipped))
+        #print
+        #print('Actual exposure time taken:   %6.1f' % exptime)
+        #print('Depth (exposure time) factor: %6.3f' % (exptime / t_exptime))
+        #print('Depth factor (on un-clipped exposure time): %6.3f' % (exptime / t_unclipped))
     else:
         expfactor = 0.
 
@@ -1083,14 +1199,17 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         m.affine_dy = aff[5]
         m.affine_dyx = aff[6]
         m.affine_dyy = aff[7]
-    
-    img = fitsio.read(fn, ext=1)
+
+    #print('Meas:', M)
+
+    img = fitsio.read(fn, ext=M['extension'])
     cheaphash = np.sum(img)
     # cheaphash becomes an int64.
     m.md5sum = cheaphash
 
     set_tile_fields(m, phdr, tiles)
 
+    #print('Saving db entry: dx,dy %.1f,%.1f' % (m.dx, m.dy))
     m.save()
     return M
 
@@ -1101,7 +1220,7 @@ def bounce_process_image(X):
         print('Failed to process image:', X)
         import traceback
         traceback.print_exc()
-    
+
 def mark_twilight(obs, date):
     twi = get_twilight(obs, date)
     mark = []
@@ -1119,7 +1238,7 @@ def mark_twilight(obs, date):
     mark.append((ephemdate_to_mjd(twi.eve10), 'g', '10', [1]))
     mark.append((ephemdate_to_mjd(twi.morn10),'g', '10', [1]))
     return mark
-    
+
 def plot_recent(opt, obs, nom, tiles=None, markmjds=[],
                 botplanfn=None, nightly=False, **kwargs):
     ''' Creates the recent.png plot of recent measurements of the conditions.
@@ -1131,13 +1250,13 @@ def plot_recent(opt, obs, nom, tiles=None, markmjds=[],
         mjd_end = mjdnow()
     else:
         mjd_end = opt.mjdend
-    
+
     if opt.mjdstart is None:
         # an hour ago
         mjd_start = mjd_end - 3600. / (24*3600.)
     else:
         mjd_start = opt.mjdstart
-        
+
     # mjd_start <= mjd_obs <= mjd_end
     mm = obsdb.MeasuredCCD.objects.filter(mjd_obs__gte=mjd_start,
                                           mjd_obs__lte=mjd_end)
@@ -1178,24 +1297,25 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart):
         P = fits_table(botplanfn)
         if len(P) == 0:
             P = None
-        
+
     msorted = list(mm.order_by('mjd_obs'))
     mlast   = msorted[-1]
     mrecent = msorted[-10:]
 
-    ccmap = dict(g='g', r='r', z='m', zd='m', rd='r')
     lp,lt = [],[]
 
     plt.clf()
-    I = (tiles.in_desi == 1) * (tiles.z_done == 0)
-    plt.plot(tiles.ra[I], tiles.dec[I], 'k.', alpha=0.05)
-    I = (tiles.in_desi == 1) * (tiles.z_done > 0)
-    plt.plot(tiles.ra[I], tiles.dec[I], 'k.', alpha=0.25)
+
+    if tiles is not None:
+        I = (tiles.in_desi == 1) * (tiles.z_done == 0)
+        plt.plot(tiles.ra[I], tiles.dec[I], 'k.', alpha=0.05)
+        I = (tiles.in_desi == 1) * (tiles.z_done > 0)
+        plt.plot(tiles.ra[I], tiles.dec[I], 'k.', alpha=0.25)
 
     plt.plot([m.rabore for m in msorted], [m.decbore for m in msorted], 'k-',
              lw=2, alpha=0.1)
     pr = plt.scatter([m.rabore for m in msorted], [m.decbore for m in msorted],
-                     color=[ccmap.get(m.band[:1],'k') for m in msorted],
+                     color=[filter_plot_color(m.band[:1],'k') for m in msorted],
                      marker='o', s=20)
     lp.append(pr)
     lt.append('Recent')
@@ -1207,7 +1327,7 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart):
 
     if not nightly and P is not None:
         # Plot the planned exposures per pass.
-        P.color = np.array([ccmap.get(f[:1],'k') for f in P.filter])
+        P.color = np.array([filter_plot_color(f[:1],'k') for f in P.filter])
         I = np.flatnonzero(P.type == '1')
         I = I[:10]
         p1 = plt.scatter(P.ra[I], P.dec[I], c=P.color[I], marker='^', alpha=0.5,
@@ -1216,7 +1336,7 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart):
         plt.plot(P.ra[I], P.dec[I], 'k-', alpha=0.1)
         lp.append(p1)
         lt.append('Upcoming P1')
-        
+
         I = np.flatnonzero(P.type == '2')
         I = I[:10]
         p2 = plt.scatter(P.ra[I], P.dec[I], c=P.color[I], marker='s', alpha=0.5,
@@ -1225,7 +1345,7 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart):
         plt.plot(P.ra[I], P.dec[I], 'k-', alpha=0.1)
         lp.append(p2)
         lt.append('Upcoming P2')
-    
+
         I = np.flatnonzero(P.type == '3')
         I = I[:10]
         p3 = plt.scatter(P.ra[I], P.dec[I], c=P.color[I], marker='p', alpha=0.5,
@@ -1236,7 +1356,7 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart):
         lt.append('Upcoming P3')
 
     pl = plt.plot(mlast.rabore, mlast.decbore, 'o',
-                  color=ccmap.get(mlast.band,'k'), ms=10)
+                  color=filter_plot_color(mlast.band,'k'), ms=10)
     rd.append(([mlast.rabore], [mlast.decbore]))
     lp.append(pl[0])
     lt.append('Last exposure')
@@ -1262,8 +1382,8 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart):
         # Bold line from "most recent" to "first planned"
         if len(I) > 0:
             p = P[I[0]]
-            plt.plot([mlast.rabore, p.ra], [mlast.decbore, p.dec], '-', lw=3, alpha=0.5, color=ccmap.get(p.filter,'k'))
-    
+            plt.plot([mlast.rabore, p.ra], [mlast.decbore, p.dec], '-', lw=3, alpha=0.5, color=filter_plot_color(p.filter,'k'))
+
     plt.xlabel('RA (deg)')
     plt.ylabel('Dec (deg)')
 
@@ -1272,7 +1392,7 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart):
 
     rr = np.hstack([r for r,d in rd])
     dd = np.hstack([d for r,d in rd])
-    
+
     ralo  = rr.min()
     rahi  = rr.max()
     declo = dd.min()
@@ -1280,25 +1400,23 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart):
 
     dr = rahi - ralo
     dd = dechi - declo
-    
+
     plt.axis([rahi+0.1*dr, ralo-0.1*dr, declo-0.1*dd, dechi+0.1*dd])
 
     if nightly:
         ## HACK -- subtract 0.5 for UTC to local calendar date at start of night.
         date = mjdtodate(mjdstart - 0.5)
         plt.title('%i-%02i-%02i' % (date.year, date.month, date.day))
-    
+
     fn = 'radec.png'
     plt.savefig(fn)
     print('Wrote', fn)
-    
-def skip_existing_files(imgfns, rawext, by_expnum=False):
+
+def skip_existing_files(imgfns, exts, by_expnum=False, primext=0):
     import obsdb
-    fns = []
+    assert(exts is not None)
+    fns_exts = []
     for fn in imgfns:
-        skipext = rawext
-        if skipext is None:
-            skipext = get_default_extension(fn)
         if by_expnum:
             expnum = 0
             # check if we've seen this file before (in the database)
@@ -1309,26 +1427,31 @@ def skip_existing_files(imgfns, rawext, by_expnum=False):
                 print('file', fn, 'found in database -- expnum', expnum)
             if expnum == 0:
                 from read_header import read_primary_header
-                #hdr = fitsio.read_header(fn)
-                hdr = read_primary_header(fn)
+                hdr = fitsio.read_header(fn, ext=primext)
                 expnum = get_expnum(hdr)
                 print('file', fn, '-> expnum', expnum)
-            mm = obsdb.MeasuredCCD.objects.filter(expnum=expnum, extension=skipext)
+            mm = obsdb.MeasuredCCD.objects.filter(expnum=expnum, extension__in=exts)
         else:
-            mm = obsdb.MeasuredCCD.objects.filter(filename=fn, extension=skipext)
-        if mm.count():
-            print('Found image', fn, 'in database.  Skipping.')
-            continue
-        fns.append(fn)
-    return fns
+            mm = obsdb.MeasuredCCD.objects.filter(filename=fn, extension__in=exts)
+        # if mm.count():
+        #     print('Found image', fn, 'in database.  Skipping.')
+        #     continue
+        # fns.append(fn)
+        mmexts = set([m.extension for m in mm])
+        for ext in exts:
+            if ext in mmexts:
+                print('Found image', fn, 'ext', ext, 'in database.  Skipping.')
+                continue
+            fns_exts.append((fn, ext))
+    return fns_exts
 
 def coverage_plots(opt, camera_name, nice_camera_name):
     import pylab as plt
     import matplotlib as mpl
-    
+
     plt.figure(figsize=(12,4))
     plt.subplots_adjust(left=0.05, right=0.99, bottom=0.05, top=0.98)
-    
+
     ccds = obsdb.MeasuredCCD.objects.all()
     print(ccds.count(), 'measured CCDs')
     T = db_to_fits(ccds)
@@ -1368,7 +1491,7 @@ def coverage_plots(opt, camera_name, nice_camera_name):
     d = mjdtodate(opt.mjdstart - 0.5)
     tt = '%04i-%02i-%02i' % (d.year, d.month, d.day)
     nn = '%04i%02i%02i' % (d.year, d.month, d.day)
-    print('Found', len(Ti), 'for night of', tt)    
+    print('Found', len(Ti), 'for night of', tt)
     sets.append((Ti, nn, tt))
 
     for T,shortname,name in sets:
@@ -1380,15 +1503,14 @@ def coverage_plots(opt, camera_name, nice_camera_name):
             for p in passes:
                 Tp = Tb[Tb.passnumber == p]
                 print(len(Tp), 'in band', band, 'and pass', p)
-    
                 print('RA', Tp.rabore.min(), Tp.rabore.max())
                 print('Dec', Tp.decbore.min(), Tp.decbore.max())
-    
+
                 # Select one entry per exposure number.
                 expnums,I = np.unique(Tp.expnum, return_index=True)
                 print(len(expnums), 'unique exposure numbers')
                 Tp.cut(I)
-    
+
                 plt.clf()
                 plt.hist2d(Tp.rabore, Tp.decbore, bins=(ras, decs),
                             weights=Tp.exptime,
@@ -1404,7 +1526,7 @@ def coverage_plots(opt, camera_name, nice_camera_name):
                           (name, nice_camera_name, band, p))
                 plt.savefig(fn)
                 print('Wrote', fn)
-    
+
 def main(cmdlineargs=None, get_copilot=False):
     global gSFD
     import optparse
@@ -1414,25 +1536,37 @@ def main(cmdlineargs=None, get_copilot=False):
     from camera import (nominal_cal, ephem_observer, default_extension,
                         tile_path, camera_name, data_env_var, bot_name,
                         nice_camera_name)
+    try:
+        from camera import default_primary_extension
+    except:
+        default_primary_extension = 0
+
+    try:
+        from camera import copilot_plot_args
+    except:
+        copilot_plot_args = {}
+
     nom = nominal_cal
     obs = ephem_observer()
-    
+
     plotfn_default = 'recent.png'
-    
+
+    parser.add_option('--primext', default=default_primary_extension, type=int,
+                      help='Extension to read for "primary" header')
     parser.add_option('--ext', default=default_extension,
-                      help='Extension to read for computing observing conditions: default %default')
+                      help='Extension to read for computing observing conditions: default %default; may be a comma-separated list.')
     parser.add_option('--extnum', type=int, help='Integer extension to read')
     parser.add_option('--rawdata', help='Directory to monitor for new images: default $%s if set, else "rawdata"' % data_env_var, default=None)
 
     parser.add_option('--n-fwhm', default=None, type=int, help='Number of stars on which to measure FWHM')
     parser.add_option('--maxshift', default=None, type=int, help='Maximum search radius for astrometric offset vs Pan-STARRS, in arcsec, default 240.')
-    
+
     parser.add_option('--no-db', dest='db', default=True, action='store_false',
                       help='Do not append results to database')
 
     parser.add_option('--no-focus', dest='focus', default=True,
                       action='store_false', help='Do not analyze focus frames')
-    
+
     parser.add_option('--fits', help='Write database to given FITS table')
     parser.add_option('--plot', action='store_true',
                       help='Plot recent data and quit')
@@ -1442,7 +1576,7 @@ def main(cmdlineargs=None, get_copilot=False):
     parser.add_option('--nightplot', '--night', action='store_true',
                       help="Plot tonight's data and quit", default=False)
     parser.add_option('--ago', type=int, help='Plot N nights ago; with --night')
-    
+
     parser.add_option('--qa-plots', dest='doplots', default=False,
                       action='store_true', help='Create QA plots')
 
@@ -1451,7 +1585,7 @@ def main(cmdlineargs=None, get_copilot=False):
 
     parser.add_option('--keep-plots', action='store_true',
                       help='Do not remove PNG-format plots (normally merged into PDF)')
-    
+
     parser.add_option('--mjdstart', type=float, default=None,
                       help='MJD (UTC) at which to start plot')
 
@@ -1463,11 +1597,14 @@ def main(cmdlineargs=None, get_copilot=False):
                       help='UTC date at which to start plot; eg "2016/02/03 12:35"')
     parser.add_option('--dateend', default=None,
                       help='UTC date at which to end plot')
-    
+
     parser.add_option('--skip', action='store_true',
                       help='Skip image filenames that already exist in the database')
     parser.add_option('--skip-expnum', action='store_true',
                       help='Skip images (by exposure number) that already exist in the database')
+
+    parser.add_option('--by-expnum', action='store_true',
+                      help='Update database entry based on expnum and extension, not filename')
 
     parser.add_option('--threads', type=int, default=None,
                       help='Run multi-threaded when processing list of files on command-line')
@@ -1487,10 +1624,14 @@ def main(cmdlineargs=None, get_copilot=False):
         opt,args = parser.parse_args()
     else:
         opt,args = parser.parse_args(cmdlineargs)
-        
+
     if not opt.show:
         import matplotlib
         matplotlib.use('Agg')
+    try:
+        import pylab as plt
+    except:
+        opt.show = False
 
     imagedir = opt.rawdata
     if imagedir is None:
@@ -1500,27 +1641,29 @@ def main(cmdlineargs=None, get_copilot=False):
     if opt.extnum is not None:
         rawext = opt.extnum
     assert(rawext is not None)
-        
+
     from astrometry.util.fits import fits_table
-    tiles = fits_table(opt.tiles)
+    if opt.tiles is None:
+        tiles = None
+    else:
+        tiles = fits_table(opt.tiles)
 
     from django.conf import settings
     import obsdb
 
-    import pylab as plt
-
-    # Mosaic focus plot
-    # figure 3
-    # RA,Dec plot
-    plt.figure(num=2, figsize=(10,6))
-    # Copilot plot
-    plt.figure(num=1, figsize=(8,10))
+    if opt.show:
+        # Mosaic focus plot
+        # figure 3
+        # RA,Dec plot
+        plt.figure(num=2, figsize=(10,6))
+        # Copilot plot
+        plt.figure(num=1, figsize=(8,10))
 
     if opt.datestart is not None:
         opt.mjdstart = ephemdate_to_mjd(ephem.Date(opt.datestart))
     if opt.dateend is not None:
         opt.mjdend = ephemdate_to_mjd(ephem.Date(opt.dateend))
-    
+
     markmjds = []
 
     if opt.nightplot or opt.covplots:
@@ -1536,7 +1679,7 @@ def main(cmdlineargs=None, get_copilot=False):
 
         if opt.ago:
             sdate -= opt.ago
-            
+
         twi = get_twilight(obs, sdate)
         if opt.mjdstart is None:
             opt.mjdstart = ephemdate_to_mjd(
@@ -1551,7 +1694,7 @@ def main(cmdlineargs=None, get_copilot=False):
     if opt.covplots:
         coverage_plots(opt, camera_name, nice_camera_name)
         return 0
-        
+
     if opt.plot_filename is None:
         opt.plot_filename = plotfn_default
 
@@ -1569,11 +1712,11 @@ def main(cmdlineargs=None, get_copilot=False):
         tiles = fits_table('obstatus/mosaic-tiles_obstatus.fits')
 
         now = mjdnow()
-        
+
         ccds = obsdb.MeasuredCCD.objects.all()
         #ccds = obsdb.MeasuredCCD.objects.all().filter(mjd_obs__gt=now - 0.25)
         #ccds = obsdb.MeasuredCCD.objects.all().filter(mjd_obs__gt=57434)
-        
+
         print(ccds.count(), 'measured CCDs')
         for ccd in ccds:
             try:
@@ -1593,16 +1736,18 @@ def main(cmdlineargs=None, get_copilot=False):
         return 0
 
     botplanfn = '%s-plan.fits' % bot_name
-    
+
     if opt.plot:
         plot_recent(opt, obs, nom,
                     tiles=tiles, markmjds=markmjds, show_plot=False,
-                    nightly=opt.nightplot, botplanfn=botplanfn)
+                    nightly=opt.nightplot, botplanfn=botplanfn, **copilot_plot_args)
         return 0
-        
+
     print('Loading SFD maps...')
     sfd = SFDMap()
-    
+
+    exts = rawext.split(',')
+
     if len(args) > 0:
         mp = None
         if (opt.threads or 0) > 1:
@@ -1611,24 +1756,31 @@ def main(cmdlineargs=None, get_copilot=False):
             mp = multiproc(opt.threads)
 
         if opt.skip:
-            fns = skip_existing_files(args, rawext)
+            fns_exts = skip_existing_files(args, exts, primext=opt.primext)
         elif opt.skip_expnum:
-            fns = skip_existing_files(args, rawext, by_expnum=True)
+            fns_exts = skip_existing_files(args, exts, by_expnum=True, primext=opt.primext)
         else:
-            fns = args
-            
+            fns_exts = []
+            for fn in args:
+                for ext in exts:
+                    fns_exts.append((fn,ext))
+
         if mp is None:
-            for fn in fns:
-                process_image(fn, rawext, nom, sfd, opt, obs, tiles)
+            for fn,ext in fns_exts:
+                process_image(fn, ext, nom, sfd, opt, obs, tiles)
         else:
             sfd = None
+            realobs = obs
+            obs = None
             mp.map(bounce_process_image,
-                   [(fn, rawext, nom, sfd, opt, obs, tiles) for fn in fns])
+                   [(fn, ext, nom, sfd, opt, obs, tiles) for fn,ext in fns_exts])
+            obs = realobs
         plot_recent(opt, obs, nom, tiles=tiles, markmjds=markmjds,
                     show_plot=False, botplanfn=botplanfn)
         return 0
 
-    copilot = Copilot(imagedir, rawext, opt, nom, sfd, obs, tiles, botplanfn)
+    copilot = Copilot(imagedir, exts, opt, nom, sfd, obs, tiles, botplanfn,
+                      copilot_plot_args)
 
     # for testability
     if get_copilot:
@@ -1639,15 +1791,16 @@ def main(cmdlineargs=None, get_copilot=False):
 
 
 class Copilot(NewFileWatcher):
-    def __init__(self, imagedir, rawext,
-                 opt, nom, sfd, obs, tiles, botplanfn):
-        self.rawext = rawext
+    def __init__(self, imagedir, exts,
+                 opt, nom, sfd, obs, tiles, botplanfn, plot_kwargs):
+        self.exts = exts
+        self.plot_kwargs = plot_kwargs
         super(Copilot, self).__init__(imagedir, backlog=True)
 
         # How long before we mark a line on the plot because we
         # haven't seen an image.
         self.longtime = 300.
-        
+
         # Objects passed through to process_file, plot_recent.
         self.opt = opt
         self.nom = nom
@@ -1655,28 +1808,38 @@ class Copilot(NewFileWatcher):
         self.obs = obs
         self.tiles = tiles
         self.botplanfn = botplanfn
-        
+
         # Record of exposure times we've seen
         self.exptimes = []
-        
+
     def filter_backlog(self, backlog):
         backlog = self.filter_new_files(backlog)
-        return skip_existing_files(backlog, self.rawext)
+        ## HACK -- we keep a file if *any* of the exts need to re-run
+        fns_exts = skip_existing_files(backlog, self.exts)
+        fns = []
+        for fn,ext in fns_exts:
+            if fn not in fns:
+                fns.append(fn)
+        return fns
 
     def filter_new_files(self, fns):
+        #print('Filter_new_files:', fns)
         return [fn for fn in fns if
                 fn.endswith('.fits.fz') or fn.endswith('.fits')]
 
     def try_open_file(self, path):
-        print('Trying to open file: %s, ext: %s' % (path, self.rawext))
-        fitsio.read(path, ext=self.rawext)
+        ext = self.exts[0]
+        print('Trying to open file: %s, ext: %s' % (path, ext))
+        fitsio.read(path, ext=ext)
 
     def timed_out(self, dt):
         self.plot_recent()
 
     def process_file(self, path):
-        M = process_image(path, self.rawext, self.nom, self.sfd,
-                          self.opt, self.obs, self.tiles)
+        ### HACK -- mp
+        for ext in self.exts:
+            M = process_image(path, ext, self.nom, self.sfd,
+                              self.opt, self.obs, self.tiles)
         if M is None:
             return
         exptime = M['exptime']
@@ -1684,7 +1847,7 @@ class Copilot(NewFileWatcher):
         # Update the length of time we think we should wait for new exposures
         # based on previous few, plus some margin
         self.longtime = np.max(self.exptimes[-5:]) + 60.
-        
+
     def processed_file(self, path):
         self.lastNewFile = datenow()
         self.plot_recent()
@@ -1698,10 +1861,10 @@ class Copilot(NewFileWatcher):
         if dt > self.longtime:
             edate = self.lastNewFile + datetime.timedelta(0, self.longtime)
             markmjds.append((datetomjd(edate), 'r', 'MISSING IMAGE!'))
-        
+
         plot_recent(self.opt, self.obs, self.nom, tiles=self.tiles,
                     markmjds=markmjds, show_plot=self.opt.show,
-                    botplanfn=self.botplanfn)
+                    botplanfn=self.botplanfn, **self.plot_kwargs)
 
 if __name__ == '__main__':
     import obsdb

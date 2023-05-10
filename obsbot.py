@@ -4,8 +4,10 @@ import os
 import datetime
 from collections import Counter
 import time
-
+import sys
 import numpy as np
+
+py2 = (sys.version_info[0] == 2)
 
 def choose_pass(trans, seeing, skybright, nomsky,
                 forcedir=''):
@@ -110,25 +112,47 @@ class NominalCalibration(object):
         - A_co
         - seeing
         - exptime, exptime_min, exptime_max
-
-        
         '''
-        if not band in ['g','r','z','zd','D51']:
+        if not band in ['u',
+                        'g',
+                        'r',
+                        'i',
+                        'z','zd',
+                        'D51',
+                        'N419',
+                        'N501',
+                        'N540',
+                        'N673',
+                        'N708',
+                ]:
             return None
         fid = NominalExptime()
 
         # 2-coverage targets (90% fill), 5-sigma extinction-corrected
         # canonical galaxy detection.
-        target_depths = dict(g=24.0, r=23.4, z=22.5,
-                             zd=22.5, D51=24.0)
+        target_depths = dict(u=24.0, g=24.0, r=23.4, i=23.0, z=22.5,
+                             zd=22.5, D51=24.0,
+                             N419=24.5,
+                             N501=24.0,
+                             N540=23.4,
+                             N673=23.4,
+                             N708=23.4,
+                             )
 
         target_depth = target_depths[band]
         # -> 1-coverage depth (- ~0.37 mag)
         target_depth -= 2.5*np.log10(np.sqrt(2.))
 
         fid.update(single_exposure_depth = target_depth)
-        
-        if band == 'g':
+
+        if band == 'u':
+            fid.update(
+                exptime     =  70.,
+                exptime_max = 200.,
+                exptime_min =  56.,
+                )
+
+        elif band == 'g':
             fid.update(
                 exptime     =  70.,
                 exptime_max = 200.,
@@ -136,6 +160,13 @@ class NominalCalibration(object):
                 )
 
         elif band == 'r':
+            fid.update(
+                exptime     =  50.,
+                exptime_max = 175.,
+                exptime_min =  40.,
+                )
+
+        elif band == 'i':
             fid.update(
                 exptime     =  50.,
                 exptime_max = 175.,
@@ -157,6 +188,13 @@ class NominalCalibration(object):
                 exptime_min = 200.,
                 )
 
+        elif band in ['N419', 'N501', 'N540', 'N673', 'N708']:
+            # we're not updating exposure times in ODIN, but hey
+            fid.update(
+                exptime     = 900.,
+                exptime_max = 900.,
+                exptime_min = 300.,
+                )
         else:
             raise ValueError('Unknown band "%s"' % band)
 
@@ -167,7 +205,7 @@ class NominalCalibration(object):
 
         # Camera-specific update:
         fid = self._fiducial_exptime(fid, band)
-        
+
         return fid
 
     def _fiducial_exptime(self, fid, band):
@@ -183,9 +221,6 @@ class NominalCalibration(object):
         t_sat = self.saturation_adu / skyflux
         return t_sat
 
-            
-    
-    
 # From Anna Patej's nightlystrategy / mosaicstrategy
 def exposure_factor(fid, cal,
                     airmass, ebv, seeing, skybright, transparency):
@@ -312,10 +347,16 @@ class Logger(object):
         log message.
         kwargs: passed to print().
         '''
-        import StringIO
+        from io import StringIO, BytesIO
         uniq = kwargs.pop('uniq', False)
-        f = StringIO.StringIO()
-        print(*args, file=f, **kwargs)
+        if py2:
+            f = BytesIO()
+        else:
+            f = StringIO()
+        pkw = kwargs.copy()
+        pkw.update(file=f)
+        print(*args, **pkw)
+        #print(*args, file=f, **kwargs)
         s = f.getvalue()
         if uniq and s == self.last_printed:
             return
@@ -388,9 +429,15 @@ class NewFileWatcher(Logger):
             self.log('Directory', self.dir, 'does not exist -- waiting for it',
                      uniq=True)
             return []
-        files = set(os.listdir(self.dir))
-        return [os.path.join(self.dir, fn) for fn in files]
-            
+        files = set()
+        # Note: does not follow directory symlinks.
+        for (dirpath, dirnames, filenames) in os.walk(self.dir):
+            for fn in filenames:
+                files.add(os.path.join(dirpath, fn))
+        #files = set(os.listdir(self.dir))
+        #return [os.path.join(self.dir, fn) for fn in files]
+        return list(files)
+
     def get_new_files(self):
         files = set(self.get_file_list())
         newfiles = list(files - self.oldfiles)
