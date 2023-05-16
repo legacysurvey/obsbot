@@ -16,7 +16,7 @@ def plot_init():
 
 def plot_one(args):
     import pylab as plt
-    
+    #print('Plot_one', args)
     (opt, ax, tiles, filtddec, fcmap, passmap,
      also, LSTs, times, ras, decs, ddecs, fieldname, passnum, exptime, i,
      filtcc, alsocolors, ddecmap, fn) = args
@@ -132,7 +132,7 @@ def plot_one(args):
                          cmap='Blues', alpha=0.2, vmin=1.0, vmax=2.2)
             con = plt.contour(trr, dd, am, levels, colors=[darkblue], alpha=0.1)
             plt.clabel(con, inline=1, fontsize=10, fmt='%.1f',
-                       use_clabeltext=True, alpha=0.25)
+                       use_clabeltext=True)#, alpha=0.25)
             plt.contour(trr, dd, am, [2.0, 2.5], colors=[darkblue], linewidths=[2])
         
     else:
@@ -142,7 +142,7 @@ def plot_one(args):
         con = plt.contour(transform_ra(rr, opt), dd, airmass, levels,
                           colors=[darkblue], alpha=0.1)
         plt.clabel(con, inline=1, fontsize=10, fmt='%.1f',
-               use_clabeltext=True, alpha=0.25)
+               use_clabeltext=True)#, alpha=0.25)
         plt.contour(transform_ra(rr, opt), dd, airmass,
                     [2.0, 2.5], colors=[darkblue], linewidths=[2])
 
@@ -153,7 +153,7 @@ def plot_one(args):
     #darkblue = (0.03, 0.19, 0.42, 0.5)
     con = plt.contour(transform_ra(rr, opt), dd, moonsep, levels, colors='r')
     plt.clabel(con, inline=1, fontsize=10, fmt='%i',
-               use_clabeltext=True, alpha=0.25)
+               use_clabeltext=True)#, alpha=0.25)
 
     LST = LSTs[i]
     plt.axvline(transform_ra(LST, opt), color='0.5')
@@ -189,6 +189,7 @@ def plot_one(args):
         plt.axis(ax)
     plt.savefig(fn)
     print('Wrote', fn)
+    plt.close()
 
 def transform_ra(x, opt):
     #
@@ -249,7 +250,8 @@ def main():
     if opt.mosaic:
         dd = dict(ralo=0, rahi=360, declo=30, dechi=88)
     else:
-        dd = dict(ralo=0, rahi=360, declo=-10, dechi=35)
+        #dd = dict(ralo=0, rahi=360, declo=-10, dechi=35)
+        dd = dict(ralo=0, rahi=360, declo=-31, dechi=17)
     for k in dd.keys():
         if getattr(opt, k, None) is None:
             setattr(opt, k, dd[k])
@@ -439,15 +441,18 @@ def main():
             passnum[i] = pa
             print('Field', f, 'tileid', tile.tileid, 'pass', pa)
 
+    plotdir = os.path.dirname(args[0])
+    plotpat = os.path.join(plotdir, '%s-%%03d.png' % (opt.base))
+
     allargs = []
     for i in reversed(range(0,len(J),opt.skip)):
         #print('Exposure', i, 'of', len(J))
-        fn = '%s-%03i.png' % (opt.base, i)
-        fn = os.path.join(os.path.dirname(args[0]),fn)
+        fn = plotpat % i
         pargs = (opt, ax, tiles, filtddec, fcmap, passmap,
                 also, LSTs, times, ras, decs, ddecs, fieldname, passnum, exptime, i,
                 filtcc, alsocolors, ddecmap, fn)
         allargs.append(pargs)
+        plot_one(pargs)
 
     if opt.threads:
         from astrometry.util.multiproc import multiproc
@@ -456,10 +461,12 @@ def main():
     else:
         plot_init()
         map(plot_one, allargs)
-    #plot_one(pargs)
         
     print()
-    cmd = 'avconv -r 4 -i %s-%%03d.png -y %s.mov' % (opt.base, opt.base)
+    #cmd = 'avconv -r 4 -i %s-%%03d.png -y %s.mov' % (opt.base, opt.base)
+    # https://hamelot.io/visualization/using-ffmpeg-to-convert-a-set-of-images-into-a-video/
+    cmd = ('ffmpeg -r 4 -i %s -vcodec libx264 -crf 25 -pix_fmt yuv420p -y %s.mov' %
+           (plotpat, opt.base))
     print(cmd)
     os.system(cmd)
 
