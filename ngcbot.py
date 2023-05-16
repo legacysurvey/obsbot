@@ -24,21 +24,40 @@ from measure_raw import get_measurer_class_for_file
 from obsbot import NewFileWatcher
 
 if nice_camera_name == 'DECam':
-    legacy_survey_layers = ['decals-dr3', 'sdssco']
+    #legacy_survey_layers = ['decals-dr3', 'sdssco']
+    legacy_survey_layers = ['ls-dr10-grz', 'sdss']
 else:
     legacy_survey_layers = ['mzls+bass-dr4', 'sdssco']
 
 nicelayernames = { 'decals-dr3': 'DECaLS DR3',
                    'mzls+bass-dr4': 'MzLS+BASS DR4',
                    'sdssco': 'SDSS'}
+nicelayernames.update({'ls-dr10': 'Legacy Surveys DR10',
+                       'sdss': 'SDSS'})
+# ngc_typenames = {
+#     'Gx': 'galaxy',
+#     'Gb': 'globular cluster',
+#     'Nb': 'nebula',
+#     'Pl': 'planetary nebula',
+#     'C+N': 'cluster+nebulosity',
+#     'Kt': 'knot in galaxy',
+# }
 
 ngc_typenames = {
-    'Gx': 'galaxy',
-    'Gb': 'globular cluster',
-    'Nb': 'nebula',
-    'Pl': 'planetary nebula',
-    'C+N': 'cluster+nebulosity',
-    'Kt': 'knot in galaxy',
+    'G': 'galaxy',
+    'GPair': 'galaxy pair',
+    'GTrpl': 'galaxy triple',
+    'GGroup': 'galaxy group',
+    'Other': 'other',
+    'GCl': 'globular cluster',
+    'PN': 'planetary nebula',
+    'Neb': 'nebula',
+    'HII': 'HII region',
+    'Cl+N': 'cluster+nebulosity',
+    'RfN': 'reflection nebula',
+    'SNR': 'SNR?',
+    'EmN': 'emission nebula',
+    'Nova': 'nova',
 }
 
 ps = None
@@ -143,19 +162,23 @@ class NgcBot(NewFileWatcher):
         import astrometry
         catdir = os.path.join(os.path.dirname(astrometry.__file__),
                               'catalogs')
-        fn = os.path.join(catdir, 'ngc2000.fits')
+        #fn = os.path.join(catdir, 'ngc2.fits') #'openngc-ngc.fits') #'ngc2000.fits')
+        fn = 'openngc-ngc-custom.fits'
         print('Reading', fn)
         T = fits_table(fn)
         T.delete_column('ngcnum')
         TT.append(T)
 
-        fn = os.path.join(catdir, 'ic2000.fits')
+        #fn = os.path.join(catdir, 'ic2.fits') #'openngc-ic.fits') #'ic2000.fits')
+        fn = 'openngc-ic-custom.fits'
         print('Reading', fn)
         T = fits_table(fn)
         T.delete_column('icnum')
         TT.append(T)
         self.cat = merge_tables(TT, columns='fillzero')
         del TT
+
+        self.cat.rename('type', 'classification')
 
         print('Total of', len(self.cat), 'NGC/IC objects')
         omit = [
@@ -169,6 +192,16 @@ class NgcBot(NewFileWatcher):
             ]
         # '?', # uncertain type or may not exist
         # '', # unidentified or type unknown
+
+        #Counter({'G': 9742, 'OCl': 649, '*': 546, 'Other': 433, '**': 245, 'GPair': 211, 'GCl': 205, 'PN': 129, 'Neb': 93, 'HII': 81, 'Cl+N': 65, '*Ass': 60, 'RfN': 37, 'GTrpl': 23, 'NonEx': 14, 'GGroup': 14, 'SNR': 11, 'EmN': 8, 'Nova': 3})
+        omit = [
+            'OCl',
+            '*',
+            '**',
+            '*Ass',
+            'NonEx',
+        ]
+
         print(Counter(self.cat.classification))
 
         self.cat.cut(np.flatnonzero(np.array([t.strip() not in omit for t in self.cat.classification])))
@@ -176,7 +209,7 @@ class NgcBot(NewFileWatcher):
 
         print('Remaining classifications:', np.unique(self.cat.classification))
 
-        self.spec = fits_table('specObj-dr12-trim-2.fits')
+        #self.spec = fits_table('specObj-dr12-trim-2.fits')
 
         self.cached_flats = {}
         self.read_flats = opt.flats
@@ -671,7 +704,11 @@ class NgcBot(NewFileWatcher):
                 ftmp.write(r.content)
                 ftmp.flush()
                 #fits,hdr = fitsio.read(ftmp.name, header=True)
-                fitsfile = fitsio.FITS(ftmp.name)
+                try:
+                    fitsfile = fitsio.FITS(ftmp.name)
+                except:
+                    print('no coverage in layer', layer)
+                    continue
                 ftmp.close()
                 print('FITS file:', len(fitsfile), 'extensions')
                 hdr = fitsfile[0].read_header()
@@ -691,7 +728,7 @@ class NgcBot(NewFileWatcher):
                     continue
 
                 ### HACK -- surface brightness correction...
-                if layer == 'sdssco':
+                if layer in ['sdssco', 'sdss']:
                     s = (subwcs.pixel_scale() / 0.396)
                     fits *= s**2
 
