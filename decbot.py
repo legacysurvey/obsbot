@@ -452,7 +452,7 @@ class Decbot(Obsbot):
                      (nq, self.nqueued), uniq=True)
             return False
         self.log('%i exposures in the queue, time to queue one.' % (nq))
-        e = self.queue_exposure()
+        e = self.queue_exposure(nq)
         return (e is not None)
 
     def heartbeat(self):
@@ -476,7 +476,7 @@ class Decbot(Obsbot):
         if replan:
             self.update_plans()
 
-    def queue_exposure(self):
+    def queue_exposure(self, nq):
         self.choose_next_pass()
         J = self.get_upcoming()
         if len(J) == 0:
@@ -491,10 +491,40 @@ class Decbot(Obsbot):
             expo = dict(filter=j['filter'], ra=j['RA'], dec=j['dec'],
                         object=j['object'], exptime=j['expTime'],
                         verbose=self.verbose)
-            self.rc.addexposure(**expo)
+
+            # What is the total exposure time of queued exposures?
+            queuedtime = sum(tile['exptime'] + self.nom.overhead
+                             for tile in self.queued_tiles[-nq:])
+            # What time will it be after that exposure time finishes?
+            t = ephem.now() + queuedtime / 86400.
+            # Will that be in twilight?
+            savedate = self.obs.date
+            self.obs.date = t
+            twi = is_twilight(self.obs)
+            self.obs.date = savedate
+
+            print('Now is', ephem.now(), ', queued exposures + overheads will be',
+                  t, ', is that in twi?', twi)
+
             if self.queue_double:
                 self.rc.addexposure(**expo)
+                self.rc.addexposure(**expo)
                 self.queue_double = False
+            elif twi:
+                # Split exposure time into <= 60-second exposures
+                nsub = (int(expo['exptime']) + 59) // 60
+                tsub = (int(expo['exptime']) + (nsub-1)) // nsub
+                print('Split exposure time', expo['exptime'], 'into', nsub, 'x', tsub,
+                      'sec subs')
+                expo['exptime'] = tsub
+                for i in range(nsub):
+                    self.rc.addexposure(**expo)
+
+                j['expTime'] = tsub
+                for i in range(nsub-1):
+                    self.queued_tiles.append(j)
+            else:
+                self.rc.addexposure(**expo)
 
         self.queued_tiles.append(j)
         return j
