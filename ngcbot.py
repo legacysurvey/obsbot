@@ -33,6 +33,7 @@ nicelayernames = { 'decals-dr3': 'DECaLS DR3',
                    'mzls+bass-dr4': 'MzLS+BASS DR4',
                    'sdssco': 'SDSS'}
 nicelayernames.update({'ls-dr10': 'Legacy Surveys DR10',
+                       'ls-dr10-grz': 'Legacy Surveys DR10',
                        'sdss': 'SDSS'})
 # ngc_typenames = {
 #     'Gx': 'galaxy',
@@ -571,14 +572,19 @@ class NgcBot(NewFileWatcher):
             # HACK
             #pixrad *= 3
 
-            r = pixrad
+            rx = pixrad
+            ry = pixrad
+
+            #rx *= 1.5
+            #ry = rx
+
             tt = '%s in exp %i ext %s (%i)' % (obj.name, expnum, extname, ext)
             print(tt)
 
             # Find the cutout region... does it actually overlap the chip?
             H,W = wcs.shape
-            xl,xh = int(np.clip(x-r, 0, W-1)), int(np.clip(x+r, 0, W-1))
-            yl,yh = int(np.clip(y-r, 0, H-1)), int(np.clip(y+r, 0, H-1))
+            xl,xh = int(np.clip(x-rx, 0, W-1)), int(np.clip(x+rx, 0, W-1))
+            yl,yh = int(np.clip(y-ry, 0, H-1)), int(np.clip(y+ry, 0, H-1))
             if xl == xh or yl == yh:
                 print('no actual overlap with image')
                 continue
@@ -620,8 +626,8 @@ class NgcBot(NewFileWatcher):
             ok,x,y = wcs.radec2pixelxy(obj.ra, obj.dec)
             x = x - 1
             y = y - 1
-            xl,xh = int(np.clip(x-r, 0, W-1)), int(np.clip(x+r, 0, W-1))
-            yl,yh = int(np.clip(y-r, 0, H-1)), int(np.clip(y+r, 0, H-1))
+            xl,xh = int(np.clip(x-rx, 0, W-1)), int(np.clip(x+rx, 0, W-1))
+            yl,yh = int(np.clip(y-ry, 0, H-1)), int(np.clip(y+ry, 0, H-1))
             if xl == xh or yl == yh:
                 print('no actual overlap with image')
                 continue
@@ -814,8 +820,9 @@ class NgcBot(NewFileWatcher):
             print('Fraction', coverage, 'of new image has data')
 
             def my_rgb(imgs, bands, **kwargs):
+                S = 1.5
                 return sdss_rgb(imgs, bands,
-                                scales=dict(g=6.0, r=3.4, i=2.5, z=2.2),
+                                scales=dict(g=6.0*S, r=3.4*S, i=2.5*S, z=2.2*S),
                                 m=-0.02, clip=False, **kwargs)
 
             def grayscale(img, band):
@@ -885,6 +892,7 @@ class NgcBot(NewFileWatcher):
 
                 subwcs.set_crpix((ocx,ocy))
             
+            plt.figure(1, figsize=(10,6))
             plt.clf()
             plt.subplots_adjust(left=0.03, right=0.97, bottom=0.03)
             NC = 1 + len(fitsimgs)
