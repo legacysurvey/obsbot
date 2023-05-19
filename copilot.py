@@ -268,6 +268,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     night.png plots.
     '''
     import pylab as plt
+    from astrometry.util.fits import merge_tables
     T = db_to_fits(mm)
     print('plot_measurements, nightly', nightly, 'target_exptime', target_exptime)
     print(len(T), 'exposures')
@@ -848,8 +849,9 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
                 print('Band %s, pass %i: total of %i good tiles' % (band, passnum, Ngood))
                 Tbad.append(Tcount[np.logical_or(shallow, blurry)])
 
+    Tall = merge_tables(TT)
+
     if len(Tbad):
-        from astrometry.util.fits import merge_tables
         Tbad = merge_tables(Tbad)
         print('Possible bad_expid.txt entries:')
         for t in Tbad:
@@ -858,7 +860,14 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
                 bad.append('expfactor=%.2f' % t.depth_factor)
             if t.seeing > seeing_thresh:
                 bad.append('seeing=%.2f' % t.seeing)
-            print('%i %s MzLS_%i_' % (t.expnum, ','.join(bad), t.tileid))
+            print('%i %s %s' % (t.expnum, ','.join(bad), t.object))
+            # Find other exposures on the same tile
+            I = np.flatnonzero((Tall.object == t.object) * (Tall.expnum != t.expnum))
+            if len(I):
+                for tother in Tall[I]:
+                    if tother.expnum in set(Tbad.expnum):
+                        continue
+                    print('#  also expfactor=%.2f %s expnum %i' % (tother.depth_factor, tother.object, tother.expnum))
         print()
 
     if show_plot:
