@@ -286,7 +286,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     print(len(T), 'OBJECT exposures')
 
     if len(T) == 0:
-        return
+        return None
     
     bands = np.unique(T.band)
     print('Unique bands:', bands)
@@ -850,7 +850,8 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
                 Tbad.append(Tcount[np.logical_or(shallow, blurry)])
 
     Tall = merge_tables(TT)
-    Tall[np.argsort(Tall.expnum)].writeto('night.fits')
+    Tall.cut(np.argsort(Tall.expnum))
+    Tall.writeto('night.fits')
 
     if len(Tbad):
         Tbad = merge_tables(Tbad)
@@ -880,6 +881,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         plt.draw()
         plt.show(block=False)
         plt.pause(0.001)
+    return Tall
 
 def ephemdate_to_mjd(edate):
     # pyephem.Date is days since noon UT on the last day of 1899.
@@ -1273,7 +1275,7 @@ def plot_recent(opt, obs, nom, tiles=None, markmjds=[],
     if not len(mm):
         print('No measurements in MJD range', mjd_start, mjd_end, '=> date range',
               mjdtodate(mjd_start), mjdtodate(mjd_end), 'UTC')
-        return
+        return None
 
     if (botplanfn is not None and os.path.exists(botplanfn) and
         tiles is not None):
@@ -1292,10 +1294,10 @@ def plot_recent(opt, obs, nom, tiles=None, markmjds=[],
 
     import pylab as plt
     plt.figure(1)
-    plot_measurements(mm, plotfn, nom, allobs=allobs,
-                      mjdrange=(mjd_start, mjd_end), markmjds=markmjds,
-                      nightly=nightly, **kwargs)
-
+    T = plot_measurements(mm, plotfn, nom, allobs=allobs,
+                          mjdrange=(mjd_start, mjd_end), markmjds=markmjds,
+                          nightly=nightly, **kwargs)
+    return T
 
 def radec_plot(botplanfn, mm, tiles, nightly, mjdstart):
     import pylab as plt
@@ -1536,6 +1538,150 @@ def coverage_plots(opt, camera_name, nice_camera_name):
                 plt.savefig(fn)
                 print('Wrote', fn)
 
+def update_depths(meas, tilefn, opt, obs, nom):
+    from astrometry.util.fits import fits_table
+    from collections import Counter
+
+    print('Updating tiles file', tilefn, 'from exposures:', meas)
+    tiles = fits_table(tilefn)
+    tilemap = dict([(t,i) for i,t in enumerate(tiles.tileid)])
+    print('Read', len(tiles), 'tiles')
+    #print('Measurements:')
+    #meas.about()
+    Itile = np.array([tilemap.get(t, -1) for t in meas.tileid])
+    K = np.flatnonzero(Itile >= 0)
+    print('Matched', len(K), 'tile ids')
+    meas.cut(K)
+    Itile = Itile[K]
+    K = np.flatnonzero(meas.zeropoint > 0)
+    meas.cut(K)
+    Itile = Itile[K]
+    print('Cut to', len(K), 'good zeropoints')
+    assert(np.all(meas.tileid == tiles.tileid[Itile]))
+    print(len(np.unique(meas.tileid)), 'unique tiles')
+
+    print('Tiles', meas.tileid)
+
+    zp0 = np.array([nom.zp0[f] for f in meas.band])
+    pixscale = nom.pixscale
+    gain = nom.gain
+
+    skycounts = meas.exptime * pixscale**2 * 10.** ((meas.sky - zp0) / -2.5)
+    skyerr = np.sqrt(skycounts)
+
+    # MAGIC found empirically....
+    readnoise = 13.
+    # Overall copilot vs DR annotated CCDs depth...
+    correction = -0.119 # mag
+
+    err = np.hypot(skyerr, readnoise) / meas.exptime
+    zpscale = 10.**((meas.zeropoint - 22.5) / 2.5)
+    sig1 = err / zpscale
+
+    psf_sigma = meas.seeing / pixscale / 2.35
+    gaussnorm = 1./(2. * np.sqrt(np.pi) * psf_sigma)
+    detiv = 1. / (sig1 / gaussnorm)**2
+
+    # detflux = 5. * sig1 / gaussnorm
+    # # that's flux in nanomaggies -- convert to mag
+    # psfdepth = -2.5 * (np.log10(detflux) - 9)
+    # psfdepth += correction
+
+    bands = ['g','r','z']
+    for band in bands:
+        Iband = np.flatnonzero(meas.band == band)
+        if len(Iband) == 0:
+            continue
+
+        # We can have multiple measurements of a single exposures (eg, different HDUs).
+        # Average these.
+
+        # We can have multiple exposures of a single tile (eg, we do this in twilight)
+        # Sum these depths.
+
+        print('Band', band, ':', len(Iband), 'measurements')
+        expnum_depth = {}
+        for expnum,depth in zip(meas.expnum[Iband], detiv[Iband]): #psfdepth[Iband]):
+            if expnum in expnum_depth:
+                expnum_depth[expnum].append(depth)
+            else:
+                expnum_depth[expnum] = [depth]
+        # Average
+        for k in list(expnum_depth.keys()):
+            expnum_depth[k] = np.mean(expnum_depth[k])
+        print(len(expnum_depth), 'exposures')
+
+        # Average seeing per exposure
+        expnum_seeing = {}
+        for expnum,seeing in zip(meas.expnum[Iband], meas.seeing[Iband]):
+            if expnum in expnum_seeing:
+                expnum_seeing[expnum].append(seeing)
+            else:
+                expnum_seeing[expnum] = [seeing]
+        for k in list(expnum_seeing.keys()):
+            expnum_seeing[k] = np.mean(expnum_seeing[k])
+
+        # Gather up the exposure numbers for this tile & band
+        tile_expnums = {}
+        for tile,expnum in zip(meas.tileid[Iband], meas.expnum[Iband]):
+            if tile in tile_expnums:
+                if not expnum in tile_expnums[tile]:
+                    tile_expnums[tile].append(expnum)
+            else:
+                tile_expnums[tile] = [expnum]
+
+        # Sum the depths for this tile & band
+        tile_depth = {}
+        for tile,expnums in tile_expnums.items():
+            # Only for logging:
+            # div = np.array([expnum_depth[e] for e in expnums])
+            # detsig = 1./np.sqrt(div)
+            # psfdepth = -2.5 * (np.log10(5. * detsig) - 9)
+            # psfdepth += correction
+            # print('Individual PSF depths:', psfdepth)
+
+            total_detiv = np.sum([expnum_depth[e] for e in expnums])
+            detsig = 1./np.sqrt(total_detiv)
+            psfdepth = -2.5 * (np.log10(5. * detsig) - 9)
+            psfdepth += correction
+            #print('Summed PSF depth:', psfdepth)
+            tile_depth[tile] = psfdepth
+
+        # Computed depth-weighted seeing for this tile & band
+        tile_seeing = {}
+        for tile,expnums in tile_expnums.items():
+            div = np.array([expnum_depth[e] for e in expnums])
+            see = np.array([expnum_seeing[e] for e in expnums])
+            avgsee = np.sum(see * div) / np.sum(div)
+            tile_seeing[tile] = avgsee
+
+        utiles, Iu = np.unique(meas.tileid[Iband], return_index=True)
+        Iupdate = Itile[Iband[Iu]]
+        assert(np.all(tiles.tileid[Iupdate] == utiles))
+        print('Updating', len(Iupdate), 'tiles')
+
+        print('Band', band, 'observed', tiles.get('%s_date' % band)[Iupdate])
+        print('Band', band, 'expnum', tiles.get('%s_expnum' % band)[Iupdate])
+
+        print('Tile/expnums match:', Counter([e in tile_expnums[t] for e,t in zip(tiles.get('%s_expnum' % band)[Iupdate], utiles)]))
+
+        # "Uptiles" already sets X_DATE, X_DONE, X_EXPNUM,
+        # and only occasionally, X_SEEING.  X_DEPTH = 30.
+        print('Band', band, 'seeing was:', tiles.get('%s_seeing' % band)[Iupdate])
+        tiles.get('%s_seeing' % band)[Iupdate] = np.array([tile_seeing[t] for t in utiles])
+        print('-> updated to', tiles.get('%s_seeing' % band)[Iupdate])
+
+        print('Band', band, 'depth was:', tiles.get('%s_depth' % band)[Iupdate])
+        tiles.get('%s_depth' % band)[Iupdate] = np.array([tile_depth[t] for t in utiles])
+        print('-> updated to', tiles.get('%s_depth' % band)[Iupdate])
+
+    tilefn = os.path.realpath(tilefn)
+    print('Real tile filename:', tilefn)
+    tmpfn = os.path.join(os.path.dirname(tilefn), 'tmp-' + os.path.basename(tilefn))
+    tiles.writeto(tmpfn)
+    os.rename(tmpfn, tilefn)
+    print('Updated', tilefn)
+
 def main(cmdlineargs=None, get_copilot=False):
     global gSFD
     import optparse
@@ -1625,6 +1771,10 @@ def main(cmdlineargs=None, get_copilot=False):
 
     parser.add_option('--no-show', dest='show', default=True, action='store_false',
                       help='Do not show plot window, just save it.')
+
+    parser.add_option('--no-update-tiles', dest='update_tiles', default=True,
+                      action='store_false',
+                      help='Do not update tile file with copilot depth estimates for the plotted exposures')
 
     parser.add_option('--verbose', default=False, action='store_true',
                       help='Turn on (even more) verbose logging')
@@ -1716,7 +1866,6 @@ def main(cmdlineargs=None, get_copilot=False):
         return 0
 
     if opt.fix_db:
-
         from astrometry.util.fits import fits_table
         tiles = fits_table('obstatus/mosaic-tiles_obstatus.fits')
 
@@ -1747,9 +1896,15 @@ def main(cmdlineargs=None, get_copilot=False):
     botplanfn = '%s-plan.fits' % bot_name
 
     if opt.plot:
-        plot_recent(opt, obs, nom,
-                    tiles=tiles, markmjds=markmjds, show_plot=False,
-                    nightly=opt.nightplot, botplanfn=botplanfn, **copilot_plot_args)
+        meas = plot_recent(opt, obs, nom,
+                           tiles=tiles, markmjds=markmjds, show_plot=False,
+                           nightly=opt.nightplot, botplanfn=botplanfn,
+                           **copilot_plot_args)
+        if opt.update_tiles:
+            if meas is None:
+                print('No measurements to update tile file')
+            else:
+                update_depths(meas, opt.tiles, opt, obs, nom)
         return 0
 
     print('Loading SFD maps...')
