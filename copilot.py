@@ -1109,7 +1109,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
     if opt.doplots:
         from glob import glob
         # Gather all the QAplots into a single pdf and clean them up.
-        qafile = 'qa-%i.pdf' % expnum
+        qafile = 'qa-%i-%s.pdf' % (expnum, ext)
         pnglist = sorted(glob('qa-%i-??.png' % expnum))
         cmd = 'convert {} {}'.format(' '.join(pnglist), qafile)
         print('Writing out {}'.format(qafile))
@@ -1120,6 +1120,26 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
 
     if M is None:
         return None
+
+    if opt.save_phot:
+        from astrometry.util.fits import fits_table
+        photfn = opt.save_phot
+        photfn = photfn.replace('(EXPNUM)', '%i'%expnum)
+        photfn = photfn.replace('(EXT)', ext)
+        T = fits_table()
+        T.x = M['x']
+        T.y = M['y']
+        T.apmag = M['apmag']
+        T.colorterm = M['colorterm']
+        T.refmag = M['refmag']
+        ps1 = M['refstars']
+        for i,b in enumerate('grizy'):
+            T.set('ps1_mag_%s' % b, ps1.median[:,i])
+            T.set('ps1_mag_stdev_%s' % b, ps1.stdev[:,i])
+        T.ra = ps1.ra
+        T.dec = ps1.dec
+        T.writeto(photfn)
+
     skybright = M['skybright']
     if skybright is None:
         skybright = 0.
@@ -1129,7 +1149,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         m.save()
         return None
 
-    # (example results for testig)
+    # (example results for testing)
     #M = {'seeing': 1.4890481099577366, 'airmass': 1.34,
     #'skybright': 18.383479116033314, 'transparency': 0.94488537276869045,
     #'band': 'z', 'zp': 26.442847814941093}
@@ -1405,7 +1425,7 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart):
     plt.xlabel('RA (deg)')
     plt.ylabel('Dec (deg)')
 
-    plt.figlegend(lp, lt, 'upper right', prop={'size': 10}, ncol=2, numpoints=1,
+    plt.figlegend(lp, lt, loc='upper right', prop={'size': 10}, ncol=2, numpoints=1,
                   bbox_to_anchor=(0.9, 0.97), framealpha=0.5, frameon=True)
 
     rr = np.hstack([r for r,d in rd])
@@ -1669,6 +1689,7 @@ def update_depths(meas, tilefn, opt, obs, nom):
 
         print('Band', band, 'observed', tiles.get('%s_date' % band)[Iupdate])
         print('Band', band, 'expnum', tiles.get('%s_expnum' % band)[Iupdate])
+        print('Band', band, 'done was:', tiles.get('%s_done' % band)[Iupdate])
 
         print('Tile/expnums match:', Counter([e in tile_expnums[t] for e,t in zip(tiles.get('%s_expnum' % band)[Iupdate], utiles)]))
 
@@ -1740,6 +1761,8 @@ def main(cmdlineargs=None, get_copilot=False):
 
     parser.add_option('--qa-plots', dest='doplots', default=False,
                       action='store_true', help='Create QA plots')
+
+    parser.add_option('--save-phot', help='Write photometry results to given filename; (EXPNUM) and (EXT) will get pattern-replaced')
 
     parser.add_option('--cov', dest='covplots', default=False,
                       action='store_true', help='Create coverage plots')
