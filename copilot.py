@@ -34,6 +34,11 @@ from obsbot import (exposure_factor, get_tile_from_name, NewFileWatcher,
 
 from tractor.sfd import SFDMap
 
+def initialize_django():
+    import obsdb
+    from camera import database_filename
+    obsdb.django_setup(database_filename=database_filename)
+
 def db_to_fits(mm):
     '''Converts the obsdb database entries
     (obsdb/{mosaic3,decam}.sqlite3) into FITS format.'''
@@ -954,6 +959,8 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
 
     if sfd is None:
         sfd = gSFD
+        if sfd is None:
+            sfd = SFDMap()
 
     # Read primary FITS header
     phdr = fitsio.read_header(fn, ext=opt.primext)
@@ -1683,7 +1690,6 @@ def update_depths(meas, tilefn, opt, obs, nom):
     print('Updated', tilefn)
 
 def main(cmdlineargs=None, get_copilot=False):
-    global gSFD
     import optparse
     parser = optparse.OptionParser(usage='%prog')
 
@@ -1915,9 +1921,10 @@ def main(cmdlineargs=None, get_copilot=False):
     if len(args) > 0:
         mp = None
         if (opt.threads or 0) > 1:
+            global gSFD
             gSFD = sfd
             from astrometry.util.multiproc import multiproc
-            mp = multiproc(opt.threads)
+            mp = multiproc(opt.threads, init=initialize_django)
 
         if opt.skip:
             fns_exts = skip_existing_files(args, exts, primext=opt.primext)
@@ -2031,7 +2038,5 @@ class Copilot(NewFileWatcher):
                     botplanfn=self.botplanfn, **self.plot_kwargs)
 
 if __name__ == '__main__':
-    import obsdb
-    from camera import database_filename
-    obsdb.django_setup(database_filename=database_filename)
+    initialize_django()
     main()
