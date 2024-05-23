@@ -862,12 +862,12 @@ class RawMeasurer(object):
         A[:,1] = (fullx[J] + sx) - cx
         A[:,2] = (fully[J] + sy) - cy
 
-        #R = np.linalg.lstsq(A, px[I] - cx, rcond=None)
-        R = np.linalg.lstsq(A, px[I] - cx)
+        R = np.linalg.lstsq(A, px[I] - cx, rcond=None)
+        #R = np.linalg.lstsq(A, px[I] - cx)
         resx = R[0]
         #print('Affine transformation for X:', resx)
-        #R = np.linalg.lstsq(A, py[I] - cy, rcond=None)
-        R = np.linalg.lstsq(A, py[I] - cy)
+        R = np.linalg.lstsq(A, py[I] - cy, rcond=None)
+        #R = np.linalg.lstsq(A, py[I] - cy)
         resy = R[0]
         #print('Affine transformation for Y:', resy)
 
