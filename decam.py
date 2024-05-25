@@ -27,9 +27,9 @@ class DecamNominalCalibration(NominalCalibration):
             #            N540 = 24.92,
             N673 = 24.151,
             N708 = 24.92,
-            # made up, = g
-            M411 = 26.610,
-            M464 = 26.610,
+            # from Arjun, 2024-05-25
+            M411 = 24.503,
+            M464 = 24.957,
             )
 
         self.sky0 = dict(
@@ -127,15 +127,18 @@ class DecamNominalCalibration(NominalCalibration):
                 )
 
         elif band == 'M411':
-            # made up, just = g band
+            # k_co from Arjun, 2024-05-24
+            # A_co just = g band
             fid.update(
-                k_co = 0.17,
+                k_co = 0.333,
                 A_co = 3.214,
                 )
+
         elif band == 'M464':
-            # made up, just = g band
+            # k_co from Arjun, 2024-05-24
+            # A_co just = g band
             fid.update(
-                k_co = 0.17,
+                k_co = 0.230,
                 A_co = 3.214,
                 )
 

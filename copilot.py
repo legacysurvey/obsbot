@@ -957,7 +957,9 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
     db = opt.db
     print('Reading', fn)
 
+    print('SFD:', sfd)
     if sfd is None:
+        print('gSFD:', gSFD)
         sfd = gSFD
         if sfd is None:
             sfd = SFDMap()
@@ -1945,6 +1947,7 @@ def main(cmdlineargs=None, get_copilot=False):
         mp = None
         if (opt.threads or 0) > 1:
             global gSFD
+            print('Setting gSFD =', sfd)
             gSFD = sfd
             from astrometry.util.multiproc import multiproc
             mp = multiproc(opt.threads, init=initialize_django)

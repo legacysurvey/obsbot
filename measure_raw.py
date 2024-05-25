@@ -152,6 +152,7 @@ class RawMeasurer(object):
         # Now cut to just *stars* with good colors
         stars.gicolor = stars.median[:,0] - stars.median[:,2]
         keep = (stars.gicolor > 0.4) * (stars.gicolor < 2.7)
+        #keep = (stars.gicolor > -0.5) * (stars.gicolor < 2.7)
         return keep
 
     def get_color_term(self, stars, band):
