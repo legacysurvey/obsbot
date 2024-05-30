@@ -458,6 +458,9 @@ class RawMeasurer(object):
         if stars is None:
             return meas
 
+        if len(fx) == 0:
+            print('No stars detected in image?')
+            return meas
         wcs2,measargs = self.update_astrometry(stars, wcs, fx, fy, trim_x0, trim_y0,
                                                pixsc, img, hdr, fullW, fullH, ps, printmsg)
         meas.update(measargs)
@@ -808,6 +811,7 @@ class RawMeasurer(object):
         # Match PS1 to our detections, find offset
         radius = self.maxshift / pixsc
 
+        print('Matching stars:', len(px), 'PS1 and', len(fullx), 'in image')
         I,J,dx,dy = self.match_ps1_stars(px, py, fullx, fully, radius, stars)
         #print(len(I), 'spatial matches with large radius', self.maxshift,
         #      'arcsec,', radius, 'pix')
@@ -825,7 +829,7 @@ class RawMeasurer(object):
         my,mx = np.unravel_index(mx, histo.shape)
         shiftx = (xe[mx] + xe[mx+1])/2.
         shifty = (ye[my] + ye[my+1])/2.
-        
+
         if ps is not None:
             plt.clf()
             #plothist(dx, dy, range=((-radius,radius),(-radius,radius)), nbins=bins)

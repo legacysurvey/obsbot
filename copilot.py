@@ -1148,9 +1148,9 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
     if skybright is None:
         skybright = 0.
     if not np.isfinite(skybright):
-        print('Negative sky measured:', M['rawsky'], '.  Bad pixcnt:',
-              m.bad_pixcnt)
-        m.save()
+        print('Negative sky measured:', M['rawsky'])
+        if db:
+            m.save()
         return None
 
     # (example results for testing)
