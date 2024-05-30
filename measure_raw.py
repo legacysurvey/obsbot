@@ -152,6 +152,7 @@ class RawMeasurer(object):
         # Now cut to just *stars* with good colors
         stars.gicolor = stars.median[:,0] - stars.median[:,2]
         keep = (stars.gicolor > 0.4) * (stars.gicolor < 2.7)
+        #keep = (stars.gicolor > -0.5) * (stars.gicolor < 2.7)
         return keep
 
     def get_color_term(self, stars, band):
@@ -514,6 +515,7 @@ class RawMeasurer(object):
         stars.mag += colorterm
         ps1mag = stars.mag[I]
         #print('PS1 mag:', ps1mag)
+        ps1_gi = stars.median[I, 0] - stars.median[I, 2]
 
         if False and ps is not None:
             plt.clf()
@@ -531,7 +533,10 @@ class RawMeasurer(object):
         # "apmag2" is the annular sky-subtracted flux
         apmag2 = -2.5 * np.log10(apflux2) + zp0 + 2.5 * np.log10(exptime)
         apmag  = -2.5 * np.log10(apflux ) + zp0 + 2.5 * np.log10(exptime)
-    
+
+        meas.update(x=fx[J], y=fy[J], apflux=apflux2[J], apmag=apmag2[J],
+                    colorterm=colorterm[I], refmag=ps1mag, refstars=stars[I])
+
         if ps is not None:
             plt.clf()
             plt.plot(ps1mag, apmag[J], 'b.', label='No sky sub')
@@ -586,6 +591,16 @@ class RawMeasurer(object):
             plt.ylim(-0.25, 0.25)
             plt.axhline(0, color='k', alpha=0.25)
             plt.title('Zeropoint')
+            ps.savefig()
+
+            plt.clf()
+            plt.plot(ps1_gi, apmag2[J] + dmag2 - ps1mag, 'r.', label='Sky sub')
+            plt.xlabel('PS1 g-i color (mag)')
+            plt.ylabel('DECam ap mag - PS1 mag')
+            plt.legend(loc='upper left')
+            #plt.ylim(-0.25, 1.0)
+            plt.axhline(0, color='k', alpha=0.25)
+            plt.title('Zeropoint (color term)')
             ps.savefig()
 
         zp_mean = zp0 + dmag
@@ -848,12 +863,12 @@ class RawMeasurer(object):
         A[:,1] = (fullx[J] + sx) - cx
         A[:,2] = (fully[J] + sy) - cy
 
-        #R = np.linalg.lstsq(A, px[I] - cx, rcond=None)
-        R = np.linalg.lstsq(A, px[I] - cx)
+        R = np.linalg.lstsq(A, px[I] - cx, rcond=None)
+        #R = np.linalg.lstsq(A, px[I] - cx)
         resx = R[0]
         #print('Affine transformation for X:', resx)
-        #R = np.linalg.lstsq(A, py[I] - cy, rcond=None)
-        R = np.linalg.lstsq(A, py[I] - cy)
+        R = np.linalg.lstsq(A, py[I] - cy, rcond=None)
+        #R = np.linalg.lstsq(A, py[I] - cy)
         resy = R[0]
         #print('Affine transformation for Y:', resy)
 

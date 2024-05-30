@@ -124,6 +124,8 @@ class NominalCalibration(object):
                         'N540',
                         'N673',
                         'N708',
+                        'M411',
+                        'M464',
                 ]:
             return None
         fid = NominalExptime()
@@ -137,6 +139,9 @@ class NominalCalibration(object):
                              N540=23.4,
                              N673=23.4,
                              N708=23.4,
+                             # made up
+                             M411=25.0,
+                             M464=25.0,
                              )
 
         target_depth = target_depths[band]
@@ -194,6 +199,13 @@ class NominalCalibration(object):
                 exptime     = 900.,
                 exptime_max = 900.,
                 exptime_min = 300.,
+                )
+        elif band in ['M411', 'M464']:
+            # IBIS
+            fid.update(
+                exptime     = 300.,
+                exptime_max = 900.,
+                exptime_min = 100.,
                 )
         else:
             raise ValueError('Unknown band "%s"' % band)
