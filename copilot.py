@@ -547,7 +547,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     plt.ylabel('Transparency')
     yl,yh = plt.ylim()
     plt.axhline(0.7, color='k', ls='-', alpha=0.25)
-    yl,yh = min(0.89, max(mn, yl)), min(mx, max(yh, 1.01))
+    yl,yh = min(0.89, min(mn, yl)), min(mx, max(yh, 1.01))
 
     if nightly:
         I = np.flatnonzero(T.transparency > 0)
@@ -572,6 +572,8 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         lo,hi = fid.exptime_min, fid.exptime_max
         # Exposure time we should have taken
         exptime = basetime * Tb.expfactor
+        print('Exposure time we should have taken:', exptime, '= base time', basetime,
+              'x exposure factor', Tb.expfactor)
         clipped = np.clip(exptime, lo, hi)
         if band == 'z':
             t_sat = nom.saturation_time(band, Tb.sky)

@@ -259,14 +259,19 @@ def exposure_factor(fid, cal,
     neff_fid = Neff(fid.seeing)
     neff     = Neff(seeing)
 
-    # print('exposure_factor:')
-    # print('Transparency:', transparency)
-    # print('airmass:', airmass)
-    # print('ebv:', ebv)
-    # print('seeing:', seeing)
-    # print('sky:', skybright)
+    print('exposure_factor:')
+    print('Transparency:', transparency)
+    print('  -> factor', 1./transparency**2)
+    print('airmass:', airmass)
+    print('  -> factor', 10.**(0.8 * fid.k_co * (airmass - 1.)))
+    print('ebv:', ebv)
+    print('  -> factor', 10.**(0.8 * fid.A_co * ebv))
+    print('seeing:', seeing)
     # print('neff:', neff, 'fid', neff_fid)
-    
+    print('  -> factor', (neff / neff_fid))
+    print('sky:', skybright)
+    print('  -> factor', 10.**(-0.4 * (skybright - fid.skybright)))
+
     scaling = (1./transparency**2 *
                10.**(0.8 * fid.k_co * (airmass - 1.)) *
                10.**(0.8 * fid.A_co * ebv) *
