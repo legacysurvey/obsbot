@@ -27,6 +27,21 @@ class RemoteClient():
             return self.cs.execute('command=%s, params = %s' % (command, parameter))
 
     # Added by Dustin -- expose specific functions Klaus has provided for us
+    '''
+    execute('modifyexposure', params="")
+    params is
+    filter={"object":"DECaLS_134_g"},modifications={"expTime":99}
+
+    Returns SUCCESS or FAILED: qManager.modify: No matching... checking pipeline
+    '''
+    def modifyexposure(self, select=None, update=None):
+        if select is None or update is None:
+            raise ValueError('Need to set select= and update=')
+        select_str = json.dumps(select)
+        update_str = json.dumps(update)
+        param_str = 'filter=' + select_str + ',modifications=' + update_str
+        return self.execute('modifyexposure', params=param_str)
+
     def get_propid(self):
         return self.execute('get_propid')
 
