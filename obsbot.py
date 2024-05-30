@@ -204,7 +204,7 @@ class NominalCalibration(object):
             # IBIS
             fid.update(
                 exptime     = 300.,
-                exptime_max = 900.,
+                exptime_max = 500.,
                 exptime_min = 100.,
                 )
         else:
@@ -271,18 +271,18 @@ def exposure_factor(fid, cal,
     neff_fid = Neff(fid.seeing)
     neff     = Neff(seeing)
 
-    print('exposure_factor:')
-    print('Transparency:', transparency)
-    print('  -> factor', 1./transparency**2)
-    print('airmass:', airmass)
-    print('  -> factor', 10.**(0.8 * fid.k_co * (airmass - 1.)))
-    print('ebv:', ebv)
-    print('  -> factor', 10.**(0.8 * fid.A_co * ebv))
-    print('seeing:', seeing)
-    # print('neff:', neff, 'fid', neff_fid)
-    print('  -> factor', (neff / neff_fid))
-    print('sky:', skybright)
-    print('  -> factor', 10.**(-0.4 * (skybright - fid.skybright)))
+    # print('exposure_factor:')
+    # print('Transparency:', transparency)
+    # print('  -> factor', 1./transparency**2)
+    # print('airmass:', airmass)
+    # print('  -> factor', 10.**(0.8 * fid.k_co * (airmass - 1.)))
+    # print('ebv:', ebv)
+    # print('  -> factor', 10.**(0.8 * fid.A_co * ebv))
+    # print('seeing:', seeing)
+    # # print('neff:', neff, 'fid', neff_fid)
+    # print('  -> factor', (neff / neff_fid))
+    # print('sky:', skybright)
+    # print('  -> factor', 10.**(-0.4 * (skybright - fid.skybright)))
 
     scaling = (1./transparency**2 *
                10.**(0.8 * fid.k_co * (airmass - 1.)) *

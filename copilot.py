@@ -73,6 +73,8 @@ def filter_plot_color(filt, default='0.5'):
                  N540=(129/255, 1., 0.),
                  N673='r',
                  N708=(241/255,0.,0.),
+                 M411=(124/255,0,222/255),
+                 M464=(0, 142/255, 255/255),
                 )
     return ccmap.get(filt, default)
 
@@ -462,7 +464,8 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
                 plt.plot(Tind.mjd_obs, Tind.sky - sky0, 'o',
                          mec='k', mfc='none', alpha=0.5)
             plt.plot(Tavg.mjd_obs, Tavg.sky - sky0, 'o',
-                     color=filter_plot_color(band), mec='k')
+                     color=filter_plot_color(band), mec='k',
+                     label=band)
 
             minsky = min(minsky, min(Tb.sky[I] - sky0))
             nomskies.append((band, sky0))
@@ -523,6 +526,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         plt.ylabel('Sky - nominal (mag)')
     else:
         plt.ylabel('Sky (mag/sq.arcsec)')
+    plt.legend()
 
     ## Transparency
     plt.subplot(SP,1,3)
@@ -856,7 +860,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
                 print('Band %s, pass %i: total of %i good tiles' % (band, passnum, Ngood))
                 Tbad.append(Tcount[np.logical_or(shallow, blurry)])
 
-    Tall = merge_tables(TT)
+    Tall = merge_tables(TT, columns='fillzero')
     Tall.cut(np.argsort(Tall.expnum))
     Tall.writeto('night.fits')
 
