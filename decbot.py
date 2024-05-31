@@ -639,11 +639,11 @@ class Decbot(Obsbot):
         nomsky = self.nom.sky(band)
         brighter = nomsky - skybright
     
-        print('Transparency: %6.02f' % trans)
-        print('Seeing      : %6.02f' % seeing)
-        print('Sky         : %6.02f' % skybright)
-        print('Nominal sky : %6.02f' % nomsky)
-        print('Sky over nom: %6.02f   (positive means brighter than nom)' %
+        print('Transparency   : %6.02f' % trans)
+        print('Seeing         : %6.02f' % seeing)
+        print('Sky            : %6.02f' % skybright)
+        print('Nominal sky    : %6.02f' % nomsky)
+        print('Sky over nom   : %6.02f   (positive means brighter than nom)' %
               brighter)
 
         # Just FYI
@@ -651,11 +651,23 @@ class Decbot(Obsbot):
             fid = self.nom.fiducial_exptime(band)
             airmass = M['airmass']
             ebv = sfd_lookup_ebv(M['ra_ccd'], M['dec_ccd'])
-            print('E(B-V)      : %6.02f' % ebv)
+            print('E(B-V)         : %6.02f' % ebv)
             expfactor = exposure_factor(fid, self.nom, airmass, ebv, seeing,
                                         skybright, trans)
             print('Exposure factor: %6.02f' % expfactor)
+            print('  from transp.: %6.02f' % (1./trans**2))
+            print('  from airmass: %6.02f' % (10.**(0.8 * fid.k_co * (airmass - 1.))))
+            print('  from ebv    : %6.02f' % (10.**(0.8 * fid.A_co * ebv)))
+            from obsbot import Neff
+            pixscale = 0.262
+            neff_fid = Neff(fid.seeing, pixscale)
+            neff     = Neff(seeing, pixscale)
+            print('  from seeing : %6.02f' % (neff / neff_fid))
+            print('  from sky    : %6.02f' % (10.**(-0.4 * (skybright - fid.skybright))))
+            #print('M:', M)
         except:
+            #import traceback
+            #traceback.print_exc()
             pass
 
         if self.copilot_db is not None and (M['band'] in ['g','r']):

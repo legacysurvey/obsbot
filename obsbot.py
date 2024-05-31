@@ -233,6 +233,13 @@ class NominalCalibration(object):
         t_sat = self.saturation_adu / skyflux
         return t_sat
 
+def Neff(seeing, pixscale):
+    r_half = 0.45 #arcsec
+    # magic 2.35: convert seeing FWHM into sigmas in arcsec.
+    return (4. * np.pi * (seeing / 2.35)**2 +
+            8.91 * r_half**2 +
+            pixscale**2/12.)
+
 # From Anna Patej's nightlystrategy / mosaicstrategy
 def exposure_factor(fid, cal,
                     airmass, ebv, seeing, skybright, transparency):
@@ -255,21 +262,14 @@ def exposure_factor(fid, cal,
 
     '''
 
-    r_half = 0.45 #arcsec
     ps = cal.pixscale
-
-    def Neff(seeing):
-        # magic 2.35: convert seeing FWHM into sigmas in arcsec.
-        return (4. * np.pi * (seeing / 2.35)**2 +
-                8.91 * r_half**2 +
-                ps**2/12.)
 
     # Nightlystrategy.py has:
     # pfact = 1.15
     # Neff_fid = ((4.0*np.pi*sig_fid**2)**(1.0/pfact)+(8.91*r_half**2)**(1.0/pfact))**pfact
     
-    neff_fid = Neff(fid.seeing)
-    neff     = Neff(seeing)
+    neff_fid = Neff(fid.seeing, ps)
+    neff     = Neff(seeing, ps)
 
     # print('exposure_factor:')
     # print('Transparency:', transparency)
