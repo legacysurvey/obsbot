@@ -101,7 +101,9 @@ class NominalCalibration(object):
                     r = 0.345,
                     z = 0.194,
                     zd = 0.194,
-                    D51 = 0.422)[band]
+                    D51 = 0.422,
+                    M411 = 0.422,
+                    M464 = 0.422)[band]
     
     def fiducial_exptime(self, band):
         '''
@@ -203,9 +205,14 @@ class NominalCalibration(object):
         elif band in ['M411', 'M464']:
             # IBIS
             fid.update(
-                exptime     = 300.,
+                # exptime     = 200.,
+                # exptime_max = 300.,
+                # exptime_min = 100.,
+                # probably roughly what we want...
+                #exptime     = 300.,
+                exptime     = 200.,
                 exptime_max = 500.,
-                exptime_min = 100.,
+                exptime_min = 200.,
                 )
         else:
             raise ValueError('Unknown band "%s"' % band)
