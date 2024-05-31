@@ -35,12 +35,14 @@ class RemoteClient():
     Returns SUCCESS or FAILED: qManager.modify: No matching... checking pipeline
     '''
     def modifyexposure(self, select=None, update=None):
+        import json
         if select is None or update is None:
             raise ValueError('Need to set select= and update=')
         select_str = json.dumps(select)
         update_str = json.dumps(update)
         param_str = 'filter=' + select_str + ',modifications=' + update_str
-        return self.execute('modifyexposure', params=param_str)
+        print('Sending command:', param_str)
+        return self.execute('modifyexposure', parameter=param_str)
 
     def get_propid(self):
         return self.execute('get_propid')
@@ -109,8 +111,13 @@ if __name__ == '__main__':
     res = rc.get_n_queued()
     print('Got N queued:', res)
 
-    res = rc.addexposure(ra=80., dec=-10., verbose=True,
-                         propid='2014B-0404',
-                         #propid='2023A-140687',
-                         object='DECaLS_5774_z')
-    print('Addexposure: got', res)
+    # res = rc.addexposure(ra=80., dec=-10., verbose=True,
+    #                      propid='2014B-0404',
+    #                      #propid='2023A-140687',
+    #                      object='DECaLS_5774_z')
+    # print('Addexposure: got', res)
+
+    res = rc.modifyexposure(select=dict(object='IBIS_deep_desi220_M464_3'),
+                            update=dict(filter='M411'))#expTime=300))
+    #"IBIS_deep_cosmos_M464_1"
+    print('Got', res)
