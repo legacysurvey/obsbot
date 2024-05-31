@@ -279,6 +279,11 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     T = db_to_fits(mm)
     print('plot_measurements, nightly', nightly, 'target_exptime', target_exptime)
     print(len(T), 'exposures')
+
+    # Cut to unique EXPNUM
+    T.cut(np.unique(T.expnum, return_index=True)[1])
+    print(len(T), 'unique EXPNUMs')
+
     # Replace filter "zd" -> "z", "rd" -> "r".
     T.band = np.array([dict(zd='z', rd='r').get(b, b) for b in T.band])
 
@@ -297,11 +302,12 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     
     bands = np.unique(T.band)
     print('Unique bands:', bands)
-    
+
     TT = []
     for band in bands:
-        TT.append(T[T.band == band])
-        print('Band', band, ':', len(TT[-1]), 'images')
+        Tx = T[T.band == band]
+        TT.append(Tx)
+        print('Band', band, ':', len(Tx), 'exposures')
 
     plt.clf()
     plt.subplots_adjust(hspace=0.1, top=0.98, right=0.95, left=0.1,
