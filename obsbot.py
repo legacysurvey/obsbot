@@ -592,9 +592,13 @@ class Obsbot(NewFileWatcher):
 
         # Find other passes
         others = self.other_passes(tile, self.tiles)
+        if others is None:
+            if get_others:
+                return 1.0,[]
+            return 1.0
         others.rename('%s_depth' % band, 'depth')
         others.rename('pass', 'passnum')
-        
+
         target = fid.single_exposure_depth
 
         threshold = 0.25
@@ -709,6 +713,8 @@ class Obsbot(NewFileWatcher):
 
         Returns: *otherpasses*, table object
         '''
+        if tile is None:
+            return None
         if tiles != self.tiles:
             from astrometry.libkd.spherematch import match_radec
             # Could also use the fact that the passes are offset from each other

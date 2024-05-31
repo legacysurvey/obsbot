@@ -14,6 +14,8 @@ exposure.
 '''
 
 from __future__ import print_function
+import matplotlib
+matplotlib.use('Agg')
 import sys
 import time
 import json
@@ -138,6 +140,9 @@ def main(cmdlineargs=None, get_decbot=False):
     for J in [J1,J2,J3]:
         for j in J:
             tileid = get_tile_id_from_name(j['object'])
+            if tileid is None:
+                print('Could not parse tile id from object name', j['object'])
+                continue
             j['tileid'] = tileid
             j['tilepass'] = int(tileid_to_pass[tileid])
 
@@ -716,9 +721,9 @@ class Decbot(Obsbot):
         self.obs.date = ephem.now()
         for ii,jplan in enumerate(J):
             #print('jplan:', jplan)
-            s = (('%s (pass %i), band %s, RA,Dec (%.3f,%.3f), ' +
+            s = (('%s (pass %s), band %s, RA,Dec (%.3f,%.3f), ' +
                   'exptime %i.') %
-                  (jplan['object'], jplan['tilepass'], jplan['filter'],
+                  (jplan['object'], jplan.get('tilepass', 'X'), jplan['filter'],
                    jplan['RA'], jplan['dec'], jplan['expTime']))
             if ii < 3:
                 airmass = self.airmass_for_tile(jplan)
@@ -746,8 +751,11 @@ class Decbot(Obsbot):
         tilename = str(jplan['object'])
         # Find this tile in the tiles table.
         tile = get_tile_from_name(tilename, self.tiles)
-        ebv = tile.ebv_med
-        band = str(jplan['filter'])[0]
+        if tile is None:
+            ebv = sfd_lookup_ebv(jplan['RA'], jplan['dec'])
+        else:
+            ebv = tile.ebv_med
+        band = str(jplan['filter'])#[0] <--- this was for Mosaic3 "zd" :)
         airmass = self.airmass_for_tile(jplan)
         
         M = self.latest_measurement
