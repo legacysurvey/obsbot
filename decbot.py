@@ -709,6 +709,29 @@ class Decbot(Obsbot):
             self.update_plans_for_pass(passnum, J, exptime)
         self.write_plans()
 
+        # Modify the exposure times for our N+1 most recently queued tiles (+1 for the pipelined one)
+        recent = self.queued_tiles[-(self.nqueued+1):]
+        M = self.latest_measurement
+        if len(recent) and M is not None:
+            print('Updating exposure times for recently queued tiles')
+            self.obs.date = ephem.now()
+            for ii,jplan in enumerate(recent):
+                old_exptime = jplan['expTime']
+                exptime = self.exptime_for_tile(jplan)
+                jplan['expTime'] = exptime
+
+                print('Tile', jplan['object'], ': exptime was', old_exptime, 'now', exptime)
+
+                if exptime != old_exptime:
+                    if self.rc is not None:
+                        print('Trying to update exposure time:', dict(object=jplan['object']),
+                              'to', dict(expTime=exptime))
+                        self.rc.modifyexposure(select=dict(object=jplan['object']),
+                                               update=dict(expTime=exptime))
+
+                self.obs.date += (exptime + self.nom.overhead) / 86400.
+            self.obs.date = ephem.now()
+
     def update_plans_for_pass(self, passnum, J, exptime):
         if len(J) == 0:
             print('Could not find a JSON observation in pass', passnum,
