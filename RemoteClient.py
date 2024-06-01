@@ -117,7 +117,7 @@ if __name__ == '__main__':
     #                      object='DECaLS_5774_z')
     # print('Addexposure: got', res)
 
-    res = rc.modifyexposure(select=dict(object='IBIS_deep_desi220_M464_3'),
-                            update=dict(filter='M411'))#expTime=300))
+    res = rc.modifyexposure(select=dict(object='IBIS_deep_desi220_M464_29'),
+                            update=dict(expTime=401))#filter='M411'))#
     #"IBIS_deep_cosmos_M464_1"
     print('Got', res)
