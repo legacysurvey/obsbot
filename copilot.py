@@ -1962,7 +1962,7 @@ def main(cmdlineargs=None, get_copilot=False):
             print('Setting gSFD =', sfd)
             gSFD = sfd
             from astrometry.util.multiproc import multiproc
-            mp = multiproc(opt.threads, init=initialize_django)
+            mp = multiproc(opt.threads) # Don't seem to need this w/ python3: init=initialize_django)
 
         if opt.skip:
             fns_exts = skip_existing_files(args, exts, primext=opt.primext)
