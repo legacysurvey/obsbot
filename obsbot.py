@@ -209,8 +209,7 @@ class NominalCalibration(object):
                 # exptime_max = 300.,
                 # exptime_min = 100.,
                 # probably roughly what we want...
-                #exptime     = 300.,
-                exptime     = 200.,
+                exptime     = 300.,
                 exptime_max = 500.,
                 exptime_min = 200.,
                 )

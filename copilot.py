@@ -532,7 +532,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         plt.ylabel('Sky - nominal (mag)')
     else:
         plt.ylabel('Sky (mag/sq.arcsec)')
-    plt.legend()
+    plt.legend(loc='center left', frameon=True, shadow=True)
 
     ## Transparency
     plt.subplot(SP,1,3)
