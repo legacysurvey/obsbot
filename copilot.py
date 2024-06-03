@@ -621,14 +621,20 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
                 plt.plot(Tb.mjd_obs[I], t_sat[I], color=filter_plot_color(band),
                          ls='-', alpha=0.5)
 
+    # After we've determine the y limits...
+    for band,Tb in zip(bands, TT):
         if (not nightly) and target_exptime:
             I = np.flatnonzero(Tb.exptime > 0)
-            if len(I):
-                for i in I:
-                    plt.text(Tb.mjd_obs[i], Tb.exptime[i] + 0.04*(yh-yl),
-                             '%.2f' % (Tb.depth_factor[i]),
-                             rotation=90, ha='center', va='bottom')
-                yh = max(yh, max(Tb.exptime[I] + 0.3*(yh-yl)))
+            for i in I:
+                offset = 0.06*ylim_hi
+                offsign = +1.
+                va = 'bottom'
+                if Tb.exptime[i] > 0.8 * ylim_hi:
+                    offsign = -1
+                    va = 'top'
+                plt.text(Tb.mjd_obs[i], Tb.exptime[i] + offset * offsign,
+                         '%.2f' % (Tb.depth_factor[i]),
+                         rotation=90, ha='center', va=va)
 
     if not nightly:
         plt.text(latest.mjd_obs, yl+0.03*(yh-yl),
