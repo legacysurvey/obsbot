@@ -269,7 +269,7 @@ def average_by_mjd(Tb):
 def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
                       markmjds=[], show_plot=True, nightly=False,
                       label_nmatched=True, max_seeing=2.5, target_exptime=True,
-                      nominal_sky=False):
+                      relative_sky=False, show_target_exptimes=None):
     '''
     Plots our measurements of the conditions, as in the recent.png and
     night.png plots.
@@ -400,17 +400,19 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     if nightly:
         I = np.flatnonzero(T.seeing > 0)
         if len(I):
-            plt.text(latest.mjd_obs, yl+0.03*(yh-yl),
+            plt.text(latest.mjd_obs, yl+0.07*(yh-yl),
                      'Median: %.2f' % np.median(T.seeing[I]), ha='right', bbox=bbox)
     else:
         plt.text(latest.mjd_obs, yl+0.03*(yh-yl),
                  '%.2f' % latest.seeing, ha='center', bbox=bbox)
 
     y = yl + 0.01*(yh-yl)
-    plt.plot(np.vstack((T.mjd_obs, T.mjd_end)),
-             np.vstack((y, y)), '-', lw=3, alpha=0.5,
-             color=filter_plot_color(band),
-             solid_joinstyle='bevel')
+    for band,Tb in zip(bands, TT):
+        plt.plot(np.vstack((Tb.mjd_obs, Tb.mjd_end)),
+                 np.vstack((y, y)), '-', lw=3, alpha=0.5,
+                 color=filter_plot_color(band),
+                 solid_capstyle='butt')
+        #solid_joinstyle='bevel')
 
     plt.ylim(yl,yh)
     plt.ylabel('Seeing (arcsec)')
@@ -433,7 +435,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     keepbands = []
     keepTT = []
     for band,Tb in zip(bands, TT):
-        if nominal_sky:
+        if relative_sky:
             try:
                 sky0 = nom.sky(band)
             except KeyError:
@@ -459,29 +461,35 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     yl,yh = mn - 0.15*(mx-mn), mx + 0.05*(mx-mn)
 
     for band,Tb in zip(bands, TT):
-        if nominal_sky:
-            sky0 = nom.sky(band)
+        sky0 = nom.sky(band)
+        if relative_sky:
+            sub_sky = sky0
         else:
-            sky0 = 0.
+            sub_sky = 0.
         I = np.flatnonzero(Tb.sky > 0)
         if len(I):
             Tavg,Tind = average_by_mjd(Tb[I])
             if Tind is not None:
-                plt.plot(Tind.mjd_obs, Tind.sky - sky0, 'o',
+                plt.plot(Tind.mjd_obs, Tind.sky - sub_sky, 'o',
                          mec='k', mfc='none', alpha=0.5)
-            plt.plot(Tavg.mjd_obs, Tavg.sky - sky0, 'o',
+            plt.plot(Tavg.mjd_obs, Tavg.sky - sub_sky, 'o',
                      color=filter_plot_color(band), mec='k',
                      label=band)
 
-            minsky = min(minsky, min(Tb.sky[I] - sky0))
-            nomskies.append((band, sky0))
+            minsky = min(minsky, min(Tb.sky[I] - sub_sky))
+            nomskies.append((band, sub_sky))
             medskies.append((band, np.median(Tb.sky[I])))
-        I = np.flatnonzero((Tb.sky - sky0) > mx)
+        I = np.flatnonzero((Tb.sky - sub_sky) > mx)
         if len(I):
             plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
-        I = np.flatnonzero((Tb.sky - sky0) < mn)
+        I = np.flatnonzero((Tb.sky - sub_sky) < mn)
         if len(I):
             plt.plot(Tb.mjd_obs[I], [mn]*len(I), '^', **limitstyle(band))
+
+        if not relative_sky:
+            if band in (show_target_exptimes or []):
+                print('Plotting nominal sky level for', band, ':', sky0)
+                plt.axhline(sky0, color=filter_plot_color(band), alpha=0.5)
 
     txt = ', '.join(['%s=%.2f' % (band,sky0) for band,sky0 in nomskies])
     xl,xh = plt.xlim()
@@ -500,35 +508,9 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
                  '%.2f' % latest.sky, ha='center', va='top',
                  bbox=bbox)
 
-    # Plot strings of pass 1,2,3
-    I = np.argsort(T.mjd_obs)
-    TJ = T[I]
-    TJ.cut(TJ.passnumber > 0)
-    i = 0
-    while i < len(TJ):
-        t = TJ[i]
-        p0 = t.passnumber
-        j = i
-        while j < len(TJ) and TJ.passnumber[j] == p0:
-            j += 1
-        # print('Exposures from [%i,%i) have pass %i' % (i, j, p0))
-        tend = TJ[j-1]
-
-        y = yl + 0.1 * (yh-yl)
-        if j > i+1:
-            plt.plot([t.mjd_obs, tend.mjd_obs], [y, y], 'b-', lw=2, alpha=0.5)
-            # add error bar caps on the endpoints
-            for mjd in [t.mjd_obs, tend.mjd_obs]:
-                plt.plot([mjd, mjd], [y - 0.03*(yh-yl), y + 0.03*(yh-yl)],
-                         'b-', lw=2, alpha=0.5)
-        plt.text((t.mjd_obs + tend.mjd_obs)/2., y, '%i' % p0,
-                 ha='center', va='top')
-        i = j
-
-    plt.axhline(-0.25, color='k', alpha=0.25)
-
     plt.ylim(yl,yh)
-    if nominal_sky:
+    if relative_sky:
+        plt.axhline(-0.25, color='k', alpha=0.25)
         plt.ylabel('Sky - nominal (mag)')
     else:
         plt.ylabel('Sky (mag/sq.arcsec)')
@@ -537,12 +519,11 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     ## Transparency
     plt.subplot(SP,1,3)
     mx = 1.2
-    mn = 0.3
     for band,Tb in zip(bands, TT):
         I = np.flatnonzero(Tb.transparency > 0)
         if len(I):
-            print('Transparency:', Tb.transparency[I])
-            print('Zeropoint:', Tb.zeropoint[I])
+            #print('Transparency:', Tb.transparency[I])
+            #print('Zeropoint:', Tb.zeropoint[I])
 
             Tavg,Tind = average_by_mjd(Tb[I])
             if Tind is not None:
@@ -553,15 +534,12 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         I = np.flatnonzero(Tb.transparency > mx)
         if len(I):
             plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
-        I = np.flatnonzero((Tb.transparency < mn) * (Tb.transparency > 0))
-        if len(I):
-            plt.plot(Tb.mjd_obs[I], [mn]*len(I), 'v', **limitstyle(band))
 
     plt.axhline(1.0, color='k', alpha=0.5)
-    plt.axhline(0.9, color='k', ls='-', alpha=0.25)
+    for t in [0.8, 0.6]:
+        plt.axhline(t, color='k', ls='-', alpha=0.1)
     plt.ylabel('Transparency')
     yl,yh = plt.ylim()
-    plt.axhline(0.7, color='k', ls='-', alpha=0.25)
     yl,yh = min(0.89, min(mn, yl)), min(mx, max(yh, 1.01))
 
     if nightly:
@@ -576,68 +554,67 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     plt.ylim(yl, yh)
 
     ## Exposure time plot
+    ylim_hi = 50
     plt.subplot(SP,1,4)
     for band,Tb in zip(bands, TT):
         fid = nom.fiducial_exptime(band)
         if fid is None:
-            # Band not 'g','r', or 'z'
             print('Unknown band', band)
             continue
         basetime = fid.exptime
         lo,hi = fid.exptime_min, fid.exptime_max
+        ylim_hi = max(ylim_hi, hi)
         # Exposure time we should have taken
         exptime = basetime * Tb.expfactor
-        print('Exposure time we should have taken:', exptime, '= base time', basetime,
-              'x exposure factor', Tb.expfactor)
+        #print('Exposure time we should have taken:', exptime, '= base time', basetime,
+        #      'x exposure factor', Tb.expfactor)
+            
         clipped = np.clip(exptime, lo, hi)
         if band == 'z':
             t_sat = nom.saturation_time(band, Tb.sky)
             bad = (Tb.sky == 0)
             clipped = np.minimum(clipped, t_sat + bad*1000000)
         Tb.clipped_exptime = clipped
-        #Tb.depth_factor = Tb.exptime / clipped
         Tb.depth_factor = Tb.exptime / exptime
 
+        print('Band', band)
+        print('Exposure time     Exposure factor     Ideal exposure time    Depth factor')
+        for t,f,ideal_t,d in zip(Tb.exptime, Tb.expfactor, exptime, Tb.depth_factor):
+            print('    %6.1f         %8.2f           %8.1f       %8.2f' % (t, f, ideal_t, d))
+        
         if target_exptime:
+            # Mark upper limits
             I = np.flatnonzero((exptime < clipped) * (exptime > 0))
             if len(I):
                 plt.plot(Tb.mjd_obs[I], exptime[I], '^', **limitstyle(band))
 
-            plt.plot(Tb.mjd_obs, clipped, 'o', mec='k', mfc='none', ms=9)
+            if band in (show_target_exptimes or []):
+                # Large black circles for "what we should have done"
+                plt.plot(Tb.mjd_obs, clipped, 'o', mec='k', mfc='none', ms=9)
 
+                # If the ideal exposure time got clipped down to the maximum,
+                # mark the ideal time with an upper limit symbol
+                I = np.flatnonzero(exptime > clipped)
+                if len(I):
+                    plt.plot(Tb.mjd_obs[I], exptime[I], 'v',
+                             alpha=0.5, **limitstyle(band))
         # Actual exposure times taken, marked with filled colored circles.
-        #I = np.flatnonzero(Tb.exptime > 30)
         I = np.flatnonzero(Tb.exptime > 0)
         if len(I):
             plt.plot(Tb.mjd_obs[I], Tb.exptime[I], 'o', mec='k',
                      color=filter_plot_color(band))
 
-    yl,yh = plt.ylim()
-    for band,Tb in zip(bands, TT):
-        fid = nom.fiducial_exptime(band)
-        if fid is None:
-            continue
-        basetime = fid.exptime
-        lo,hi = fid.exptime_min, fid.exptime_max
-
-        dt = dict(g=-0.5,r=+0.5).get(band, 0.)
-
         if target_exptime:
-            exptime = basetime * Tb.expfactor
-            clipped = np.clip(exptime, lo, hi)
-            I = np.flatnonzero(exptime > clipped)
-            if len(I):
-                plt.plot(Tb.mjd_obs[I], exptime[I], 'v', **limitstyle(band))
+            # Mark the nominal, min, and max per band.
+            # dt: shift the dashed lines up or down
+            #     dt = dict(g=-0.5,r=+0.5).get(band, 0.)
+            if band in (show_target_exptimes or []):
+                dt = 0
+                plt.axhline(basetime+dt, color=filter_plot_color(band), alpha=0.2)
+                plt.axhline(lo+dt, color=filter_plot_color(band), ls='--', alpha=0.5)
+                plt.axhline(hi+dt, color=filter_plot_color(band), ls='--', alpha=0.5)
 
-        if False:
-            I = np.flatnonzero(exptime > mx)
-            if len(I):
-                plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
-
-        if target_exptime:
-            plt.axhline(basetime+dt, color=filter_plot_color(band), alpha=0.2)
-            plt.axhline(lo+dt, color=filter_plot_color(band), ls='--', alpha=0.5)
-            plt.axhline(hi+dt, color=filter_plot_color(band), ls='--', alpha=0.5)
+        # Mark the saturation exptime
         if band == 'z':
             I = np.flatnonzero(Tb.sky > 0)
             if len(I):
@@ -657,8 +634,9 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         plt.text(latest.mjd_obs, yl+0.03*(yh-yl),
                  '%i s' % int(latest.exptime), ha='center', bbox=bbox)
 
-    plt.ylim(yl,yh)
+    plt.ylim(-50, ylim_hi+50)
     plt.ylabel('Exposure time (s)')
+    plt.axhline(0, color='k', alpha=0.1)
 
     plt.subplot(SP,1,5)
 
@@ -1335,9 +1313,14 @@ def plot_recent(opt, obs, nom, tiles=None, markmjds=[],
 
     import pylab as plt
     plt.figure(1)
+
+    # IBIS
+    show_target_exptimes = ['M411', 'M464']
+
     T = plot_measurements(mm, plotfn, nom, allobs=allobs,
                           mjdrange=(mjd_start, mjd_end), markmjds=markmjds,
-                          nightly=nightly, **kwargs)
+                          nightly=nightly, show_target_exptimes=show_target_exptimes,
+                          **kwargs)
     return T
 
 def radec_plot(botplanfn, mm, tiles, nightly, mjdstart):
