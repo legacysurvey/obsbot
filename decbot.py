@@ -371,10 +371,10 @@ class Decbot(NewFileWatcher):
         # (but only if cut_before_now is set)
         if not self.opt.cut_before_now:
             return
-        if len(J) == 0:
+        if len(self.J) == 0:
             return
         # Is the first planned tile scheduled for before now?
-        jj = [J[0]]
+        jj = [self.J[0]]
         jj = self.tiles_after_now(jj)
         if len(jj) == 0:
             # Replan
