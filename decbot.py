@@ -778,7 +778,6 @@ class Decbot(NewFileWatcher):
         T.tilename = [str(j['object'])  for j in J]
         T.filter   = [str(j['filter'])  for j in J]
         T.exptime  = [    j['expTime']  for j in J]
-        T.planpass = [    j['planpass'] for j in J]
         T.ra       = [    j['RA']       for j in J]
         T.dec      = [    j['dec']      for j in J]
         T.to_np_arrays()
