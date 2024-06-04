@@ -542,15 +542,15 @@ class Decbot(NewFileWatcher):
             expfactor = exposure_factor(fid, self.nom, airmass, ebv, seeing,
                                         skybright, trans)
             print('Exposure factor: %6.02f' % expfactor)
-            print('  from transp.: %6.02f' % (1./trans**2))
-            print('  from airmass: %6.02f' % (10.**(0.8 * fid.k_co * (airmass - 1.))))
-            print('  from ebv    : %6.02f' % (10.**(0.8 * fid.A_co * ebv)))
+            print('   from transp.: %6.02f' % (1./trans**2))
+            print('   from airmass: %6.02f' % (10.**(0.8 * fid.k_co * (airmass - 1.))))
+            print('   from ebv    : %6.02f' % (10.**(0.8 * fid.A_co * ebv)))
             from obsbot import Neff
             pixscale = 0.262
             neff_fid = Neff(fid.seeing, pixscale)
             neff     = Neff(seeing, pixscale)
-            print('  from seeing : %6.02f' % (neff / neff_fid))
-            print('  from sky    : %6.02f' % (10.**(-0.4 * (skybright - fid.skybright))))
+            print('   from seeing : %6.02f' % (neff / neff_fid))
+            print('   from sky    : %6.02f' % (10.**(-0.4 * (skybright - fid.skybright))))
         except:
             pass
 
