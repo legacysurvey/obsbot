@@ -1732,6 +1732,8 @@ def main(cmdlineargs=None, get_copilot=False):
 
     parser.add_option('--fits', help='Write database to given FITS table file')
     parser.add_option('--ecsv', help='Write database to given ECSV file')
+    parser.add_option('--replace-ecsv', help='Replace database contents with contents of given ECSV file')
+    parser.add_option('--append-ecsv', help='Append contents of given ECSV to the database')
     parser.add_option('--plot', action='store_true',
                       help='Plot recent data and quit')
     parser.add_option('--plot-filename', default=None,
@@ -1882,7 +1884,7 @@ def main(cmdlineargs=None, get_copilot=False):
                   'affine_dxy', 'affine_dy', 'affine_dyx', 'affine_dyy' ]:
             T.set(k, T.get(k).astype(np.float32))
         T.efftime = np.zeros(len(T), np.float32)
-        T.rename_column('md5sum', 'checksum')
+        T.rename('md5sum', 'checksum')
         I = np.flatnonzero(T.expfactor > 0)
         T.efftime[I] = T.exptime[I] / T.expfactor[I]
         if opt.fits:
@@ -1898,6 +1900,38 @@ def main(cmdlineargs=None, get_copilot=False):
             t = Table.read(tmpfn)
             os.remove(tmpfn)
             t.write(opt.ecsv, overwrite=True)
+        return 0
+
+    if opt.replace_ecsv or opt.append_ecsv:
+        from astropy.table import Table, MaskedColumn
+        import obsdb
+        from django.db import transaction
+        fn = opt.append_ecsv
+        replace = False
+        if opt.replace_ecsv:
+            fn = opt.replace_ecsv
+            replace = True
+        t = Table.read(fn, format='ascii.ecsv')
+        with transaction.atomic():
+            if replace:
+                obsdb.MeasuredCCD.objects.all().delete()
+            t.rename_column('checksum', 'md5sum')
+            colnames = list(t.columns)
+            colnames.remove('efftime') # not in the db
+            # Fill in masked values (otherwise, ecsv contains -- not "")
+            columns = {}
+            for c in colnames:
+                col = t[c]
+                if isinstance(col, MaskedColumn):
+                    col = col.filled('')
+                columns[c] = col
+            for i in range(len(t)):
+                d = dict()
+                for name,col in columns.items():
+                    d[name] = col[i]
+                #print('init db row:', d)
+                m = obsdb.MeasuredCCD.objects.create(**d)
+                m.save()
         return 0
 
     if opt.fix_db:
