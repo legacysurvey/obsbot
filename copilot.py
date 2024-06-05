@@ -456,8 +456,16 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     if len(I):
         mn,mx = T.dsky[I].min(), T.dsky[I].max()
     else:
-        mn,mx = -2, 1
-    mn = max(mn, -2.0)
+        I = np.flatnonzero(T.seeing > 0)
+        if len(I):
+            mn,mx = T.dsky[I].min(), T.dsky[I].max()
+        else:
+            if relative_sky:
+                mn,mx = -2, 1
+            else:
+                mn,mx = 18,24
+    if relative_sky:
+        mn = max(mn, -2.0)
     yl,yh = mn - 0.15*(mx-mn), mx + 0.05*(mx-mn)
 
     for band,Tb in zip(bands, TT):
