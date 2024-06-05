@@ -541,6 +541,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     plt.ylabel('Transparency')
     yl,yh = plt.ylim()
     yl,yh = min(0.89, min(mn, yl)), min(mx, max(yh, 1.01))
+    yl = max(0, yl)
 
     if nightly:
         I = np.flatnonzero(T.transparency > 0)
