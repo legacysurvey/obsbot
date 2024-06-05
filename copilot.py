@@ -1373,32 +1373,6 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart):
     if not nightly and P is not None:
         # Plot the planned exposures per pass.
         P.color = np.array([filter_plot_color(f[:1],'k') for f in P.filter])
-        I = np.flatnonzero(P.type == '1')
-        I = I[:10]
-        p1 = plt.scatter(P.ra[I], P.dec[I], c=P.color[I], marker='^', alpha=0.5,
-                         s=60)
-        rd.append((P.ra[I], P.dec[I]))
-        plt.plot(P.ra[I], P.dec[I], 'k-', alpha=0.1)
-        lp.append(p1)
-        lt.append('Upcoming P1')
-
-        I = np.flatnonzero(P.type == '2')
-        I = I[:10]
-        p2 = plt.scatter(P.ra[I], P.dec[I], c=P.color[I], marker='s', alpha=0.5,
-                         s=60)
-        rd.append((P.ra[I], P.dec[I]))
-        plt.plot(P.ra[I], P.dec[I], 'k-', alpha=0.1)
-        lp.append(p2)
-        lt.append('Upcoming P2')
-
-        I = np.flatnonzero(P.type == '3')
-        I = I[:10]
-        p3 = plt.scatter(P.ra[I], P.dec[I], c=P.color[I], marker='p', alpha=0.5,
-                         s=60)
-        rd.append((P.ra[I], P.dec[I]))
-        plt.plot(P.ra[I], P.dec[I], 'k-', alpha=0.1)
-        lp.append(p3)
-        lt.append('Upcoming P3')
 
     pl = plt.plot(mlast.rabore, mlast.decbore, 'o',
                   color=filter_plot_color(mlast.band,'k'), ms=10)
