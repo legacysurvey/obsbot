@@ -1032,26 +1032,21 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         #m,created = obsdb.MeasuredCCD.objects.get_or_create(
         #    filename=fn, extension=ext)
 
-        if opt.by_expnum:
+        if skip or opt.by_expnum:
             mlist = obsdb.MeasuredCCD.objects.filter(
                 expnum=expnum, extension=ext)
         else:
             mlist = obsdb.MeasuredCCD.objects.filter(
                 filename=fn, extension=ext)
-        # Arbitrarily take first object if more than one found
         if mlist.count() > 0:
+            if skip:
+                print('Expnum and extension already exists in db.')
+                return None
+            # Arbitrarily take first object if more than one found
             m = mlist[0]
         else:
             m = obsdb.MeasuredCCD(filename=fn, expnum=expnum, extension=ext)
             m.save()
-
-        if skip:
-            # Also try searching by expnum and ext.
-            m2 = obsdb.MeasuredCCD.objects.filter(
-                expnum=expnum, extension=ext)
-            if m2.count() > 0:
-                print('Expnum and extension already exists in db.')
-                return None
 
         m.obstype = obstype
         m.camera  = camera_name(phdr)

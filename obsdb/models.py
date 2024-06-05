@@ -71,7 +71,7 @@ class MeasuredCCD(models.Model):
     rabore = models.FloatField(default=0)
     decbore = models.FloatField(default=0)
 
-    obstype = models.CharField(max_length=64, default='object')
+    obstype = models.CharField(max_length=64, default='')
     
     object = models.CharField(max_length=64, default='')
     tileid = models.IntegerField(default=0)
