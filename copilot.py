@@ -1756,7 +1756,8 @@ def main(cmdlineargs=None, get_copilot=False):
     parser.add_option('--no-focus', dest='focus', default=True,
                       action='store_false', help='Do not analyze focus frames')
 
-    parser.add_option('--fits', help='Write database to given FITS table')
+    parser.add_option('--fits', help='Write database to given FITS table file')
+    parser.add_option('--ecsv', help='Write database to given ECSV file')
     parser.add_option('--plot', action='store_true',
                       help='Plot recent data and quit')
     parser.add_option('--plot-filename', default=None,
@@ -1893,12 +1894,36 @@ def main(cmdlineargs=None, get_copilot=False):
     if opt.plot_filename is None:
         opt.plot_filename = plotfn_default
 
-    if opt.fits:
+    if opt.fits or opt.ecsv:
         ccds = obsdb.MeasuredCCD.objects.all()
         print(ccds.count(), 'measured CCDs')
         T = db_to_fits(ccds)
-        T.writeto(opt.fits)
-        print('Wrote', opt.fits)
+        # IBIS, drop irrelevant columns
+        T.delete_column('bad_pixcnt')
+        T.delete_column('readtime')
+        T.delete_column('passnumber')
+        for k in ['exptime', 'airmass', 'ebv', 'zeropoint', 'transparency',
+                  'seeing', 'sky', 'expfactor', 'dx', 'dy', 'tileebv',
+                  'affine_x0', 'affine_y0', 'affine_dx', 'affine_dxx',
+                  'affine_dxy', 'affine_dy', 'affine_dyx', 'affine_dyy' ]:
+            T.set(k, T.get(k).astype(np.float32))
+        T.efftime = np.zeros(len(T), np.float32)
+        T.rename_column('md5sum', 'checksum')
+        I = np.flatnonzero(T.expfactor > 0)
+        T.efftime[I] = T.exptime[I] / T.expfactor[I]
+        if opt.fits:
+            T.writeto(opt.fits)
+            print('Wrote', opt.fits)
+        elif opt.ecsv:
+            from astropy.table import Table
+            import tempfile
+            # hack: write FITS and read with astropy!
+            f,tmpfn = tempfile.mkstemp(suffix='.fits')
+            os.close(f)
+            T.writeto(tmpfn)
+            t = Table.read(tmpfn)
+            os.remove(tmpfn)
+            t.write(opt.ecsv, overwrite=True)
         return 0
 
     if opt.fix_db:
