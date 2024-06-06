@@ -55,7 +55,7 @@ from astrometry.util.starutil_numpy import dec2dmsstring as dec2dms
 
 from measure_raw import measure_raw
 from obsbot import (
-    exposure_factor, get_tile_from_name, get_tile_id_from_name, get_airmass,
+    exposure_factor, get_tile_from_name, get_airmass,
     NewFileWatcher, datenow, unixtime_to_ephem_date,
     ephem_date_to_mjd)
 

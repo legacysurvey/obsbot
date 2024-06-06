@@ -265,7 +265,9 @@ def get_tile_from_name(name, tiles):
         return None
     # Find this tile in the tiles table.
     I = np.flatnonzero(tiles.tileid == tileid)
-    assert(len(I) == 1)
+    if len(I) != 1:
+        print('Warning: tile file contains', len(I), 'matches for tile name', name, '-> tile ID', tileid, '-- expected only 1 match.')
+        return None
     tile = tiles[I[0]]
     return tile
 
