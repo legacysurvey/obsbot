@@ -1734,6 +1734,7 @@ def main(cmdlineargs=None, get_copilot=False):
     parser.add_option('--ecsv', help='Write database to given ECSV file')
     parser.add_option('--replace-ecsv', help='Replace database contents with contents of given ECSV file')
     parser.add_option('--append-ecsv', help='Append contents of given ECSV to the database')
+    parser.add_option('--replace-fits', help='Replace database contents with contents of given FITS file')
     parser.add_option('--plot', action='store_true',
                       help='Plot recent data and quit')
     parser.add_option('--plot-filename', default=None,
@@ -1878,13 +1879,14 @@ def main(cmdlineargs=None, get_copilot=False):
         T.delete_column('bad_pixcnt')
         T.delete_column('readtime')
         T.delete_column('passnumber')
+        T.rename('md5sum', 'checksum')
         for k in ['exptime', 'airmass', 'ebv', 'zeropoint', 'transparency',
                   'seeing', 'sky', 'expfactor', 'dx', 'dy', 'tileebv',
                   'affine_x0', 'affine_y0', 'affine_dx', 'affine_dxx',
                   'affine_dxy', 'affine_dy', 'affine_dyx', 'affine_dyy' ]:
             T.set(k, T.get(k).astype(np.float32))
+        # Compute effective exposure time
         T.efftime = np.zeros(len(T), np.float32)
-        T.rename('md5sum', 'checksum')
         I = np.flatnonzero(T.expfactor > 0)
         T.efftime[I] = T.exptime[I] / T.expfactor[I]
         if opt.fits:
@@ -1902,16 +1904,24 @@ def main(cmdlineargs=None, get_copilot=False):
             t.write(opt.ecsv, overwrite=True)
         return 0
 
-    if opt.replace_ecsv or opt.append_ecsv:
+    if opt.replace_ecsv or opt.append_ecsv or opt.replace_fits:
         from astropy.table import Table, MaskedColumn
         import obsdb
         from django.db import transaction
-        fn = opt.append_ecsv
+        fn = None
         replace = False
-        if opt.replace_ecsv:
+        fmt = 'ascii.ecsv'
+        if opt.append_ecsv:
+            fn = opt.append_ecsv
+        elif opt.replace_ecsv:
             fn = opt.replace_ecsv
             replace = True
-        t = Table.read(fn, format='ascii.ecsv')
+        elif opt.replace_fits:
+            fn = opt.replace_fits
+            replace = True
+            fmt = 'fits'
+
+        t = Table.read(fn, format=fmt)
         with transaction.atomic():
             if replace:
                 obsdb.MeasuredCCD.objects.all().delete()
