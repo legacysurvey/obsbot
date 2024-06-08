@@ -239,6 +239,22 @@ def get_airmass(alt):
     airm = secz-0.0018167*seczm1-0.002875*seczm1**2-0.0008083*seczm1**3
     return airm
 
+def read_tiles_file(fn):
+    from astrometry.util.fits import fits_table
+    if fn.endswith('.fits'):
+        tiles = fits_table(fn)
+    else:
+        # ECSV... FIXME... read with astropy, convert to astrometry fits_table
+        from astropy.table import Table
+        tiles = fits_table()
+        t = Table.read(fn)
+        colnames = list(t.columns)
+        for c in colnames:
+            col = t[c]
+            tiles.set(c.lower(), col)
+        del t
+    return tiles
+
 def get_tile_id_from_name(name):
     # Parse objname like 'MzLS_5623_z' / 'IBIS_wide_M411_100100'
     parts = str(name).split('_')

@@ -55,7 +55,7 @@ from astrometry.util.starutil_numpy import dec2dmsstring as dec2dms
 
 from measure_raw import measure_raw
 from obsbot import (
-    exposure_factor, get_tile_from_name, get_airmass,
+    exposure_factor, get_tile_from_name, read_tiles_file, get_airmass,
     NewFileWatcher, datenow, unixtime_to_ephem_date,
     ephem_date_to_mjd)
 
@@ -118,7 +118,7 @@ def main(cmdlineargs=None, get_decbot=False):
     print('Read', len(J), 'exposures from the plan file')
 
     print('Reading tiles table', opt.tiles)
-    tiles = fits_table(opt.tiles)
+    tiles = read_tiles_file(opt.tiles)
 
     if opt.cut_past_at_startup:
         # Drop exposures that are scheduled for before *now*

@@ -29,7 +29,7 @@ from astrometry.util.starutil_numpy import hmsstring2ra, dmsstring2dec, mjdtodat
 
 from measure_raw import measure_raw, get_default_extension, camera_name
 
-from obsbot import (exposure_factor, get_tile_from_name, NewFileWatcher,
+from obsbot import (exposure_factor, read_tiles_file, get_tile_from_name, NewFileWatcher,
                     mjdnow, datenow)
 
 from tractor.sfd import SFDMap
@@ -1826,19 +1826,7 @@ def main(cmdlineargs=None, get_copilot=False):
     if opt.tiles is None:
         tiles = None
     else:
-        if opt.tiles.endswith('.fits'):
-            tiles = fits_table(opt.tiles)
-        else:
-            # ECSV... FIXME... read with astropy, convert to astrometry fits_table
-            from astropy.table import Table
-            tiles = fits_table()
-            t = Table.read(opt.tiles)
-            colnames = list(t.columns)
-            for c in colnames:
-                col = t[c]
-                tiles.set(c.lower(), col)
-            del t
-            tiles.about()
+        tiles = read_tiles_file(opt.tiles)
 
     from django.conf import settings
     import obsdb
