@@ -247,7 +247,8 @@ def read_tiles_file(fn):
         # ECSV... FIXME... read with astropy, convert to astrometry fits_table
         from astropy.table import Table
         tiles = fits_table()
-        t = Table.read(fn)
+        fmt = 'ascii.ecsv'
+        t = Table.read(fn, format=fmt)
         colnames = list(t.columns)
         for c in colnames:
             col = t[c]
