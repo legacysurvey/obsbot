@@ -1819,7 +1819,19 @@ def main(cmdlineargs=None, get_copilot=False):
     if opt.tiles is None:
         tiles = None
     else:
-        tiles = fits_table(opt.tiles)
+        if opt.tiles.endswith('.fits'):
+            tiles = fits_table(opt.tiles)
+        else:
+            # ECSV... FIXME... read with astropy, convert to astrometry fits_table
+            from astropy.table import Table
+            tiles = fits_table()
+            t = Table.read(opt.tiles)
+            colnames = list(t.columns)
+            for c in colnames:
+                col = t[c]
+                tiles.set(c.lower(), col)
+            del t
+            tiles.about()
 
     from django.conf import settings
     import obsdb
@@ -1983,7 +1995,8 @@ def main(cmdlineargs=None, get_copilot=False):
             if meas is None:
                 print('No measurements to update tile file')
             else:
-                update_depths(meas, opt.tiles, opt, obs, nom)
+                print('Not trying to update tile file...')
+                #update_depths(meas, opt.tiles, opt, obs, nom)
         return 0
 
     print('Loading SFD maps...')
