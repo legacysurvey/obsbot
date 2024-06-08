@@ -962,9 +962,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
     db = opt.db
     print('Reading', fn)
 
-    print('SFD:', sfd)
     if sfd is None:
-        print('gSFD:', gSFD)
         sfd = gSFD
         if sfd is None:
             sfd = SFDMap()
@@ -975,7 +973,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
     obstype = phdr.get('OBSTYPE','').strip()
     if len(obstype) == 0:
         obstype = phdr.get('FLAVOR','').strip()
-    print('obstype:', obstype)
+    print('Obstype:', obstype)
     exptime = phdr.get('EXPTIME', 0)
     # pointing cam
     if exptime == 0:
@@ -986,7 +984,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
     filt = get_filter(phdr)
     if filt is None:
         filt = ''
-    print('filter:', filt)
+    print('Filter:', filt)
 
     airmass = phdr.get('AIRMASS', 0.)
     ra  = phdr.get('RA', '0')
@@ -1348,22 +1346,31 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart):
     mrecent = msorted[-10:]
 
     lp,lt = [],[]
-
     plt.clf()
 
     if tiles is not None:
-        I = (tiles.in_desi == 1) * (tiles.z_done == 0)
-        plt.plot(tiles.ra[I], tiles.dec[I], 'k.', alpha=0.05)
-        I = (tiles.in_desi == 1) * (tiles.z_done > 0)
-        plt.plot(tiles.ra[I], tiles.dec[I], 'k.', alpha=0.25)
+        try:
+            #I = (tiles.in_ibis == 0) * (tiles.filter == 'M411')
+            #plt.plot(tiles.ra[I], tiles.dec[I], 'k.', alpha=0.05)
+            I = (tiles.in_ibis == 1) * (tiles.filter == 'M411')
+            plt.plot(tiles.ra[I], tiles.dec[I], 'ko', alpha=0.05, mew=0, ms=5)
+        except:
+            pass
 
-    plt.plot([m.rabore for m in msorted], [m.decbore for m in msorted], 'k-',
-             lw=2, alpha=0.1)
-    pr = plt.scatter([m.rabore for m in msorted], [m.decbore for m in msorted],
-                     color=[filter_plot_color(m.band[:1],'k') for m in msorted],
-                     marker='o', s=20)
-    lp.append(pr)
-    lt.append('Recent')
+    plt.plot([m.rabore for m in msorted], [m.decbore for m in msorted],
+             'k-', lw=2, alpha=0.1)
+    bands = np.unique([m.band for m in msorted])
+    for b in bands:
+        mb = [m for m in msorted if m.band == b]
+        pr = plt.scatter([m.rabore for m in mb], [m.decbore for m in mb],
+                         color=filter_plot_color(b, 'k'),
+                         marker='o', s=20, edgecolors='none')
+        lp.append(pr)
+        if nightly:
+            lt.append(b)
+            #lt.append("Night's Exposures")
+        else:
+            lt.append('Recent ' + b)
 
     rd = []
     if nightly:
@@ -1374,11 +1381,11 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart):
         # Plot the planned exposures per pass.
         P.color = np.array([filter_plot_color(f[:1],'k') for f in P.filter])
 
-    pl = plt.plot(mlast.rabore, mlast.decbore, 'o',
-                  color=filter_plot_color(mlast.band,'k'), ms=10)
-    rd.append(([mlast.rabore], [mlast.decbore]))
-    lp.append(pl[0])
-    lt.append('Last exposure')
+        pl = plt.plot(mlast.rabore, mlast.decbore, 'o',
+                      color=filter_plot_color(mlast.band,'k'), ms=10)
+        rd.append(([mlast.rabore], [mlast.decbore]))
+        lp.append(pl[0])
+        lt.append('Last exposure')
 
     if not nightly and P is not None:
         I = np.flatnonzero(P.type == 'P')
@@ -1420,7 +1427,7 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart):
     dr = rahi - ralo
     dd = dechi - declo
 
-    plt.axis([rahi+0.1*dr, ralo-0.1*dr, declo-0.1*dd, dechi+0.1*dd])
+    plt.axis([min(360, rahi+0.1*dr), max(0, ralo-0.1*dr), declo-0.1*dd, dechi+0.1*dd])
 
     if nightly:
         ## HACK -- subtract 0.5 for UTC to local calendar date at start of night.
@@ -2008,7 +2015,6 @@ def main(cmdlineargs=None, get_copilot=False):
         mp = None
         if (opt.threads or 0) > 1:
             global gSFD
-            print('Setting gSFD =', sfd)
             gSFD = sfd
             from astrometry.util.multiproc import multiproc
             mp = multiproc(opt.threads) # Don't seem to need this w/ python3: init=initialize_django)
