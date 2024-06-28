@@ -48,8 +48,7 @@ def db_to_fits(mm):
                   'airmass', 'racenter', 'deccenter', 'rabore', 'decbore',
                   'band', 'ebv', 'zeropoint', 'transparency', 'seeing',
                   'sky', 'expfactor', 'camera', 'dx', 'dy', 'nmatched',
-                  'md5sum', 'bad_pixcnt', 'readtime',
-                  'obstype',
+                  'md5sum', 'bad_pixcnt', 'readtime', 'obstype',
                   'object', 'tileid', 'passnumber', 'tileebv',
                   'affine_x0', 'affine_y0',
                   'affine_dx', 'affine_dxx', 'affine_dxy',
@@ -435,13 +434,13 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     keepbands = []
     keepTT = []
     for band,Tb in zip(bands, TT):
+        try:
+            s = nom.sky(band)
+        except KeyError:
+            print('Skipping band', band)
+            continue
         if relative_sky:
-            try:
-                sky0 = nom.sky(band)
-            except KeyError:
-                # unknown filter
-                print('Unknown filter for sky:', band)
-                continue
+            sky0 = s
         else:
             sky0 = 0.
         T.dsky[T.band == band] = Tb.sky - sky0
@@ -842,22 +841,19 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     seeing_thresh = 2.0
     Tbad = []
     for band,Tb in zip(bands, TT):
-        for passnum in [1,2,3]:
-
-            Tcount = Tb[(Tb.passnumber == passnum) * (Tb.bad_pixcnt == False) *
-                        (Tb.nmatched > 10)]
-            N = len(Tcount)
-            print('\nBand %s, pass %i: total of %i tiles' % (band, passnum, N))
-            if N > 0:
-                shallow = (Tcount.depth_factor < depth_thresh)
-                blurry = (Tcount.seeing > seeing_thresh)
-                if np.sum(shallow):
-                    print('  %i have low depth_factor < %g' % (np.sum(shallow), depth_thresh))
-                if np.sum(blurry):
-                    print('  %i have large seeing > %g' % (np.sum(blurry), seeing_thresh))
-                Ngood = np.sum(np.logical_not(shallow) * np.logical_not(blurry))
-                print('Band %s, pass %i: total of %i good tiles' % (band, passnum, Ngood))
-                Tbad.append(Tcount[np.logical_or(shallow, blurry)])
+        Tcount = Tb[(Tb.bad_pixcnt == False) * (Tb.nmatched > 10)]
+        N = len(Tcount)
+        print('Band %s: total of %i tiles' % (band, N))
+        if N > 0:
+            shallow = (Tcount.depth_factor < depth_thresh)
+            blurry = (Tcount.seeing > seeing_thresh)
+            if np.sum(shallow):
+                print('  %i have low depth_factor < %g' % (np.sum(shallow), depth_thresh))
+            if np.sum(blurry):
+                print('  %i have large seeing > %g' % (np.sum(blurry), seeing_thresh))
+            Ngood = np.sum(np.logical_not(shallow) * np.logical_not(blurry))
+            print('Band %s: total of %i good tiles' % (band, Ngood))
+            Tbad.append(Tcount[np.logical_or(shallow, blurry)])
 
     Tall = merge_tables(TT, columns='fillzero')
     Tall.cut(np.argsort(Tall.expnum))
@@ -1113,7 +1109,6 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         pnglist = sorted(glob('qa-%i-??.png' % expnum))
         cmd = 'convert {} {}'.format(' '.join(pnglist), qafile)
         print('Writing out {}'.format(qafile))
-        #print(cmd)
         os.system(cmd)
         if not opt.keep_plots:
             [os.remove(png) for png in pnglist]
@@ -1173,44 +1168,39 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
 
     print('E(B-V):          %.3f' % ebv)
     print('Airmass:         %.3f' % airmass)
-    print('Sky brightness: %.3f' % skybright)
+    print('Sky brightness:  %.3f' % skybright)
     zp = M.get('zp',0.)
     if zp and zp > 0:
-        print('Zeropoint:      %.3f' % M.get('zp', 0.))
+        print('Zeropoint:       %.3f' % M.get('zp', 0.))
         print('Transparency:    %.3f' % trans)
-    print('Seeing:          %.2f' % M.get('seeing', 0.))
-    print('Astrometric offset: (%.2f, %.2f) arcsec' % (dra, ddec))
-
-    if trans > 0:
-
-        fid = nom.fiducial_exptime(band)
-
-        expfactor = exposure_factor(fid, nom,
-                                    airmass, ebv, M['seeing'], skybright,
-                                    trans)
-        #print('Exposure factor:              %6.3f' % expfactor)
-        t_exptime = expfactor * fid.exptime
-        #print('Target exposure time:         %6.1f' % t_exptime)
-        t_unclipped = t_exptime
-        t_exptime = np.clip(t_exptime, fid.exptime_min, fid.exptime_max)
-        #print('Clipped exposure time:        %6.1f' % t_exptime)
-
-        if band == 'z':
-            t_sat = nom.saturation_time(band, skybright)
-            if t_exptime > t_sat:
-                t_exptime = t_sat
-                print('Reduced exposure time to avoid z-band saturation: %.1f' % t_exptime)
-
-        #print
-        #print('Actual exposure time taken:   %6.1f' % exptime)
-        #print('Depth (exposure time) factor: %6.3f' % (exptime / t_exptime))
-        #print('Depth factor (on un-clipped exposure time): %6.3f' % (exptime / t_unclipped))
-    else:
-        expfactor = 0.
+    seeing = M.get('seeing', 0.)
+    print('Seeing:          %.2f' % seeing)
+    print('Astrometric offset:  (%.2f, %.2f) arcsec' % (dra, ddec))
 
     M.update(expnum=expnum)
     if not db:
         return M
+
+    if trans > 0:
+        fid = nom.fiducial_exptime(band)
+        expfactor = exposure_factor(fid, nom, airmass, ebv, seeing, skybright, trans)
+        # #print('Exposure factor:              %6.3f' % expfactor)
+        # t_exptime = expfactor * fid.exptime
+        # #print('Target exposure time:         %6.1f' % t_exptime)
+        # t_unclipped = t_exptime
+        # t_exptime = np.clip(t_exptime, fid.exptime_min, fid.exptime_max)
+        # #print('Clipped exposure time:        %6.1f' % t_exptime)
+        # 
+        # if band == 'z':
+        #     t_sat = nom.saturation_time(band, skybright)
+        #     if t_exptime > t_sat:
+        #         t_exptime = t_sat
+        #         print('Reduced exposure time to avoid z-band saturation: %.1f' % t_exptime)
+        # #print('Actual exposure time taken:   %6.1f' % exptime)
+        # #print('Depth (exposure time) factor: %6.3f' % (exptime / t_exptime))
+        # #print('Depth factor (on un-clipped exposure time): %6.3f' % (exptime / t_unclipped))
+    else:
+        expfactor = 0.
 
     m.racenter  = M['ra_ccd']
     m.deccenter = M['dec_ccd']
@@ -1220,7 +1210,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         zp = 0.
     m.zeropoint = zp
     m.transparency = trans
-    m.seeing = M.get('seeing', 0.)
+    m.seeing = seeing
     m.sky = skybright
     m.expfactor = expfactor
     m.dx = M.get('dx', 0)
@@ -1237,7 +1227,6 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         m.affine_dy = aff[5]
         m.affine_dyx = aff[6]
         m.affine_dyy = aff[7]
-
     #print('Meas:', M)
 
     img = fitsio.read(fn, ext=M['extension'])
@@ -1246,8 +1235,6 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
     m.md5sum = cheaphash
 
     set_tile_fields(m, phdr, tiles)
-
-    #print('Saving db entry: dx,dy %.1f,%.1f' % (m.dx, m.dy))
     m.save()
     return M
 
@@ -1263,16 +1250,14 @@ def mark_twilight(obs, date):
     twi = get_twilight(obs, date)
     mark = []
     mark.append((ephemdate_to_mjd(twi.eve18), 'b', '18', [1]))
-    #print('Evening twi18:', eve18, markmjds[-1])
     mark.append((ephemdate_to_mjd(twi.morn18), 'b', '18', [1]))
-    #print('Morning twi18:', morn18, markmjds[-1])
     gb = (0., 0.6, 0.6)
     mark.append((ephemdate_to_mjd(twi.eve15), gb, '15', [1]))
     mark.append((ephemdate_to_mjd(twi.morn15), gb, '15', [1]))
 
     mark.append((ephemdate_to_mjd(twi.eve12), gb, '12', [1]))
     mark.append((ephemdate_to_mjd(twi.morn12), gb, '12', [1]))
-    #orange = (1., 0.6, 0)
+
     mark.append((ephemdate_to_mjd(twi.eve10), 'g', '10', [1]))
     mark.append((ephemdate_to_mjd(twi.morn10),'g', '10', [1]))
     return mark
@@ -1911,6 +1896,7 @@ def main(cmdlineargs=None, get_copilot=False):
             t.write(opt.ecsv, overwrite=True)
         return 0
 
+    # Update (replace or append) database from ECSV or FITS table
     if opt.replace_ecsv or opt.append_ecsv or opt.replace_fits:
         from astropy.table import Table, MaskedColumn
         import obsdb
@@ -1954,13 +1940,10 @@ def main(cmdlineargs=None, get_copilot=False):
     if opt.fix_db:
         from astrometry.util.fits import fits_table
         tiles = fits_table('obstatus/mosaic-tiles_obstatus.fits')
-
         now = mjdnow()
-
         ccds = obsdb.MeasuredCCD.objects.all()
         #ccds = obsdb.MeasuredCCD.objects.all().filter(mjd_obs__gt=now - 0.25)
         #ccds = obsdb.MeasuredCCD.objects.all().filter(mjd_obs__gt=57434)
-
         print(ccds.count(), 'measured CCDs')
         for ccd in ccds:
             try:
@@ -1968,15 +1951,12 @@ def main(cmdlineargs=None, get_copilot=False):
                 # band = hdr['FILTER']
                 # band = band.split()[0]
                 # ccd.band = band
-
                 set_tile_fields(ccd, hdr, tiles)
-
                 ccd.save()
                 print('Fixed', ccd.filename)
             except:
                 import traceback
                 traceback.print_exc()
-
         return 0
 
     botplanfn = '%s-plan.fits' % bot_name
@@ -2005,12 +1985,14 @@ def main(cmdlineargs=None, get_copilot=False):
             global gSFD
             gSFD = sfd
             from astrometry.util.multiproc import multiproc
-            mp = multiproc(opt.threads) # Don't seem to need this w/ python3: init=initialize_django)
+            # Don't seem to need this w/ python3: init=initialize_django)
+            mp = multiproc(opt.threads)
 
         if opt.skip:
             fns_exts = skip_existing_files(args, exts, primext=opt.primext)
         elif opt.skip_expnum:
-            fns_exts = skip_existing_files(args, exts, by_expnum=True, primext=opt.primext)
+            fns_exts = skip_existing_files(args, exts,
+                                           by_expnum=True, primext=opt.primext)
         else:
             fns_exts = []
             for fn in args:
@@ -2041,7 +2023,6 @@ def main(cmdlineargs=None, get_copilot=False):
     copilot.run()
     return 0
 
-
 class Copilot(NewFileWatcher):
     def __init__(self, imagedir, exts,
                  opt, nom, sfd, obs, tiles, botplanfn, plot_kwargs):
@@ -2051,7 +2032,7 @@ class Copilot(NewFileWatcher):
 
         # How long before we mark a line on the plot because we
         # haven't seen an image.
-        self.longtime = 300.
+        self.longtime = 600.
 
         # Objects passed through to process_file, plot_recent.
         self.opt = opt

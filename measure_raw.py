@@ -1420,7 +1420,6 @@ def measure_raw_decam(fn, ext='N4', nom=None, ps=None, measargs={}, **kwargs):
     transparency : float, fraction.  Atmospheric transparency, based
         on computed zeropoint versus canonical zeropoint.
 
-
     Details:
     --------
 
@@ -1562,7 +1561,7 @@ def measure_raw(fn, primext=0, **kwargs):
         kwargs.update(primext=primext)
         results = meas.run(**kwargs)
         return results
-    
+
     return None
 
 def get_default_extension(fn):

@@ -182,8 +182,7 @@ def Neff(seeing, pixscale):
             pixscale**2/12.)
 
 # From Anna Patej's nightlystrategy / mosaicstrategy
-def exposure_factor(fid, cal,
-                    airmass, ebv, seeing, skybright, transparency):
+def exposure_factor(fid, cal, airmass, ebv, seeing, skybright, transparency):
     '''
     Computes a factor by which the exposure time should be scaled
     relative to nominal.
