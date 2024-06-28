@@ -1293,9 +1293,9 @@ def plot_recent(opt, obs, nom, tiles=None, markmjds=[],
         tiles is not None):
         import pylab as plt
         plt.figure(2)
-        radec_plot(botplanfn, mm, tiles, nightly, mjd_start)
+        radec_plot(botplanfn, mm, tiles, nightly, mjd_start, opt.radec_plot_filename)
     elif nightly:
-        radec_plot(None, mm, tiles, nightly, mjd_start)
+        radec_plot(None, mm, tiles, nightly, mjd_start, opt.radec_plot_filename)
 
     camera = mm[0].camera
     allobs = obsdb.MeasuredCCD.objects.filter(camera=camera)
@@ -1316,7 +1316,7 @@ def plot_recent(opt, obs, nom, tiles=None, markmjds=[],
                           **kwargs)
     return T
 
-def radec_plot(botplanfn, mm, tiles, nightly, mjdstart):
+def radec_plot(botplanfn, mm, tiles, nightly, mjdstart, plotfn):
     import pylab as plt
     from astrometry.util.fits import fits_table
     if botplanfn is None:
@@ -1419,9 +1419,8 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart):
         date = mjdtodate(mjdstart - 0.5)
         plt.title('%i-%02i-%02i' % (date.year, date.month, date.day))
 
-    fn = 'radec.png'
-    plt.savefig(fn)
-    print('Wrote', fn)
+    plt.savefig(plotfn)
+    print('Wrote', plotfn)
 
 def skip_existing_files(imgfns, exts, by_expnum=False, primext=0):
     import obsdb
@@ -1538,16 +1537,55 @@ def coverage_plots(opt, camera_name, nice_camera_name):
                 plt.savefig(fn)
                 print('Wrote', fn)
 
-def update_depths(meas, tilefn, opt, obs, nom):
+def update_tile_file(meas, tilefn, opt, obs, nom):
     from astrometry.util.fits import fits_table
+    from astropy.table import Table, MaskedColumn
     from collections import Counter
 
     print('Updating tiles file', tilefn, 'from exposures:', meas)
-    tiles = fits_table(tilefn)
-    tilemap = dict([(t,i) for i,t in enumerate(tiles.tileid)])
+    fmt = 'ascii.ecsv'
+    tiles = Table.read(tilefn, format=fmt)
     print('Read', len(tiles), 'tiles')
-    #print('Measurements:')
+    print('tiles:', tiles)
+    print('columns:', tiles.columns)
+    #tilemap = dict([(t,i) for i,t in enumerate(tiles['tileid'])])
+    objmap = dict([(obj,i) for i,obj in enumerate(tiles['OBJECT'])])
+
+    print('Measurements:')
     #meas.about()
+    # meas tileids are all zero.
+    print('meas 0:', meas[0])
+    meas[0].about()
+
+    # Ugh, on at least one night, I (dstn) messed up and manually submitted tiles
+    # with the wrong OBJECT name (ie, they had M411 in the OBJECT name, but actually
+    # used the M464 filter).  So we can't depend on OBJECt... or we find and work around
+    # these mess-ups?
+
+    ii,jj = [],[]
+    for i,o in enumerate(meas.object):
+        try:
+            j = objmap[o]
+        except KeyError:
+            continue
+        ii.append(i)
+        jj.append(j)
+    meas.cut(np.array(ii))
+    tiles = tiles[np.array(jj)]
+
+    from astrometry.util.starutil_numpy import arcsec_between
+    dd = np.array([arcsec_between(r1,d1,r2,d2) for r1,d1,r2,d2 in zip(meas.rabore, meas.decbore, tiles['RA'], tiles['DEC'])])
+    print('Max arcsec between tiles file (from OBJECT lookup) and file headers:', max(dd))
+
+    filtok = (meas.band == tiles['FILTER'])
+    print('FILTER correct:', Counter(filtok))
+
+    I = np.flatnonzero(~filtok)
+    print('Mismatched: Tile file:', tiles['OBJECT'][I], 'versus actual image contents:', meas.band[I])
+
+    
+    
+    return
     Itile = np.array([tilemap.get(t, -1) for t in meas.tileid])
     K = np.flatnonzero(Itile >= 0)
     print('Matched', len(K), 'tile ids')
@@ -1704,7 +1742,8 @@ def main(cmdlineargs=None, get_copilot=False):
     nom = nominal_cal
     obs = ephem_observer()
 
-    plotfn_default = 'recent.png'
+    parser.add_option('--end-of-night', default=False, action='store_true',
+                      help='Run end-of-night actions')
 
     parser.add_option('--primext', default=default_primary_extension, type=int,
                       help='Extension to read for "primary" header')
@@ -1729,8 +1768,10 @@ def main(cmdlineargs=None, get_copilot=False):
     parser.add_option('--replace-fits', help='Replace database contents with contents of given FITS file')
     parser.add_option('--plot', action='store_true',
                       help='Plot recent data and quit')
-    parser.add_option('--plot-filename', default=None,
-                      help='Save plot to given file, default %s' % plotfn_default)
+    parser.add_option('--plot-filename', default='recent.png',
+                      help='Save "copilot" plot to given file, default %(default)s')
+    parser.add_option('--radec-plot-filename', default='radec.png',
+                      help='Save "radec" plot to given file, default %(default)s')
 
     parser.add_option('--nightplot', '--night', action='store_true',
                       help="Plot tonight's data and quit", default=False)
@@ -1831,7 +1872,7 @@ def main(cmdlineargs=None, get_copilot=False):
 
     markmjds = []
 
-    if opt.nightplot or opt.covplots:
+    if opt.nightplot or opt.covplots or opt.end_of_night:
         if opt.nightplot:
             opt.plot = True
             if opt.plot_filename is None:
@@ -1846,6 +1887,17 @@ def main(cmdlineargs=None, get_copilot=False):
             sdate -= opt.ago
 
         twi = get_twilight(obs, sdate)
+
+        if opt.end_of_night:
+            local = ephem.localtime(twi.eve10)
+            yymmdd = '%04i-%02i-%02i' % (local.year, local.month, local.day)
+            print('Observing night:', yymmdd)
+            logdir = os.path.join(os.environ['HOME'], 'ibis-observing', 'logs')
+            opt.ecsv = os.path.join(logdir, 'db-%s.ecsv' % yymmdd)
+            opt.plot = True
+            opt.plot_filename = os.path.join(logdir, '%s-night.png' % yymmdd)
+            opt.radec_plot_filename = os.path.join(logdir, '%s-radec.png' % yymmdd)
+
         if opt.mjdstart is None:
             opt.mjdstart = ephemdate_to_mjd(
                 twi.eve10 - np.abs(twi.eve12-twi.eve10))
@@ -1860,12 +1912,13 @@ def main(cmdlineargs=None, get_copilot=False):
         coverage_plots(opt, camera_name, nice_camera_name)
         return 0
 
-    if opt.plot_filename is None:
-        opt.plot_filename = plotfn_default
-
     if opt.fits or opt.ecsv:
         ccds = obsdb.MeasuredCCD.objects.all()
+        if opt.end_of_night:
+            ccds = ccds.filter(mjd_obs__gte=opt.mjdstart, mjd_obs__lte=opt.mjdend)
         print(ccds.count(), 'measured CCDs')
+        if len(ccds) == 0:
+            return -1
         T = db_to_fits(ccds)
         # IBIS, drop irrelevant columns
         T.delete_column('bad_pixcnt')
@@ -1894,7 +1947,8 @@ def main(cmdlineargs=None, get_copilot=False):
             t = Table.read(tmpfn)
             os.remove(tmpfn)
             t.write(opt.ecsv, overwrite=True)
-        return 0
+        if not opt.end_of_night:
+            return 0
 
     # Update (replace or append) database from ECSV or FITS table
     if opt.replace_ecsv or opt.append_ecsv or opt.replace_fits:
@@ -1970,8 +2024,26 @@ def main(cmdlineargs=None, get_copilot=False):
             if meas is None:
                 print('No measurements to update tile file')
             else:
-                print('Not trying to update tile file...')
-                #update_depths(meas, opt.tiles, opt, obs, nom)
+                print('Not updating tile file...')
+                #update_tile_file(meas, opt.tiles, opt, obs, nom)
+        if not opt.end_of_night:
+            return 0
+
+    if opt.end_of_night:
+        ecsv = os.path.basename(opt.ecsv)
+        plot = os.path.basename(opt.plot_filename)
+        radec = os.path.basename(opt.radec_plot_filename)
+        files = ' '.join([ecsv, plot, radec])
+        cmd = ('cd %s && git add %s && '
+               + 'git commit %s -m "add copilot database for %s" && '
+               + 'git push') % (logdir, files, files, yymmdd)
+        print('Committing observing log files:')
+        print(cmd)
+        rtn = os.system(cmd)
+        if rtn:
+            print('WARNING: committing observing log files failed.')
+        else:
+            print('Observing log files committed.')
         return 0
 
     print('Loading SFD maps...')
