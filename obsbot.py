@@ -175,7 +175,9 @@ class NominalCalibration(object):
         return t_sat
 
 def Neff(seeing, pixscale):
-    r_half = 0.45 #arcsec
+    # Use PSF depth
+    r_half = 0.
+    # r_half = 0.45 #arcsec
     # magic 2.35: convert seeing FWHM into sigmas in arcsec.
     return (4. * np.pi * (seeing / 2.35)**2 +
             8.91 * r_half**2 +
