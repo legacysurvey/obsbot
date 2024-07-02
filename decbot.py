@@ -408,7 +408,7 @@ class Decbot(NewFileWatcher):
             print('Now is %s, queued exposures + overheads will be %s, is that in twi? %s' %
                   (ephem.now(), str(ephem.date(t)), twi))
 
-            if twi:
+            if twi and False:
                 # Split exposure time into <= 60-second exposures
                 nsub = (int(expo['exptime']) + 59) // 60
                 tsub = (int(expo['exptime']) + (nsub-1)) // nsub
