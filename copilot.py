@@ -2035,7 +2035,7 @@ def main(cmdlineargs=None, get_copilot=False):
         radec = os.path.basename(opt.radec_plot_filename)
         files = ' '.join([ecsv, plot, radec])
         cmd = ('cd %s && git add %s && '
-               + 'git commit %s -m "add copilot database for %s" && '
+               + 'git commit %s -m "add copilot database and plots for %s" && '
                + 'git push') % (logdir, files, files, yymmdd)
         print('Committing observing log files:')
         print(cmd)
@@ -2044,6 +2044,19 @@ def main(cmdlineargs=None, get_copilot=False):
             print('WARNING: committing observing log files failed.')
         else:
             print('Observing log files committed.')
+
+        obsdb_dir = os.path.join(os.environ['HOME'], 'obsbot', 'obsdb')
+
+        cmd = ('cd %s && git commit %s -m "update copilot database file for %s '
+               + '&& git push') % (obsdb_dir, 'decam.sqlite3', yymmdd)
+        print('Committing copilot database:')
+        print(cmd)
+        rtn = os.system(cmd)
+        if rtn:
+            print('WARNING: committing copilot database file failed.')
+        else:
+            print('Copilot database file committed.')
+
         return 0
 
     print('Loading SFD maps...')
