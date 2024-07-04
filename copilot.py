@@ -2047,7 +2047,7 @@ def main(cmdlineargs=None, get_copilot=False):
 
         obsdb_dir = os.path.join(os.environ['HOME'], 'obsbot', 'obsdb')
 
-        cmd = ('cd %s && git commit %s -m "update copilot database file for %s '
+        cmd = ('cd %s && git commit %s -m "update copilot database file for %s" '
                + '&& git push') % (obsdb_dir, 'decam.sqlite3', yymmdd)
         print('Committing copilot database:')
         print(cmd)
