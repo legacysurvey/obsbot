@@ -362,7 +362,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
 
     bbox = dict(facecolor='white', alpha=0.8, edgecolor='none')
     
-    SP = 5
+    SP = 6
     # which ones will we use to set the scale?
     I = np.flatnonzero((T.seeing > 0) * (T.exptime > 30))
     if len(I):
@@ -521,7 +521,8 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         plt.ylabel('Sky - nominal (mag)')
     else:
         plt.ylabel('Sky (mag/sq.arcsec)')
-    plt.legend(loc='center left', frameon=True, shadow=True)
+    plt.legend(loc='center right', bbox_to_anchor=(1.06, 0.5),
+               frameon=True, shadow=True)
 
     ## Transparency
     plt.subplot(SP,1,3)
@@ -652,7 +653,64 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     plt.ylabel('Exposure time (s)')
     plt.axhline(0, color='k', alpha=0.1)
 
+    # Efftime factors plot
     plt.subplot(SP,1,5)
+    from obsbot import Neff
+    Tplot = []
+    for band,Tb in zip(bands, TT):
+        fid = nom.fiducial_exptime(band)
+        if fid is None:
+            continue
+        Tplot.append(Tb)
+        # pull factors out of the exposure_factor() function.
+        ps = nom.pixscale
+        neff_fid = Neff(fid.seeing, ps)
+        neff     = Neff(Tb.seeing, ps)
+        Tb.efftime_seeing = neff_fid / neff
+        Tb.efftime_transparency = Tb.transparency**2
+        Tb.efftime_airmass = 10.**-(0.8 * fid.k_co * (Tb.airmass - 1.))
+        Tb.efftime_sky = 10.**(0.4 * (Tb.sky - fid.skybright))
+        Tb.efftime_ebv = 10.**(-0.8 * fid.A_co * Tb.ebv)
+        Tb.is_survey_band = np.array([show_target_exptimes is None or
+                                      band in show_target_exptimes] * len(Tb))
+
+    Tplot = merge_tables(Tplot)
+    Tplot.cut(np.argsort(Tplot.mjd_obs))
+
+    factors = [(Tplot.efftime_seeing, 'Seeing'),
+               (Tplot.efftime_transparency, 'Transp.'),
+               (Tplot.efftime_airmass, 'Airmass'),
+               (Tplot.efftime_ebv, 'Extinct.'),
+               (Tplot.efftime_sky, 'Sky'),
+               ]
+    total = 1.
+    mn = 1.
+    mx = 1.
+    count = Tplot.is_survey_band
+    for factor,label in factors:
+        total = total * factor
+        mn = min(mn, min(min(factor[count]), min(total[count])))
+        mx = max(mx, max(max(factor[count]), max(total[count])))
+    yl = max(mn / 1.2, 0.1)
+    yh = min(mx * 1.2, 10.)
+
+    y0 = yl*1.01
+    y1 = yh/1.01
+    for factor,label in factors:
+        plt.plot(Tplot.mjd_obs, np.clip(factor, y0, y1), label=label)
+    plt.plot(Tplot.mjd_obs, np.clip(total, y0, y1), label='Total')
+    plt.ylabel('Efftime %')
+    plt.yscale('log')
+    plt.yticks([0.1, 0.5, 1.0, 2.0, 10.0], labels=['10', '50', '100', '200', '1000'])
+    plt.ylim(yl, yh)
+    plt.axhline(1.,  color='k', alpha=0.2)
+    plt.axhline(0.5, color='k', alpha=0.1, linestyle='--')
+    plt.axhline(2.,  color='k', alpha=0.1, linestyle='--')
+    plt.legend(loc='upper right', bbox_to_anchor=(1.06, 1.05),
+               frameon=True, shadow=True, fontsize=8)
+
+    # dRA/dDec plot
+    plt.subplot(SP,1,6)
 
     I = np.argsort(T.mjd_obs)
     Tx = T[I]
@@ -1875,7 +1933,7 @@ def main(cmdlineargs=None, get_copilot=False):
     if opt.nightplot or opt.covplots or opt.end_of_night:
         if opt.nightplot:
             opt.plot = True
-            if opt.plot_filename is None:
+            if opt.plot_filename == 'recent.png':
                 opt.plot_filename = 'night.png'
 
         if opt.mjdstart is not None:
