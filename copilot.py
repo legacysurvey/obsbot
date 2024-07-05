@@ -563,95 +563,47 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     plt.ylim(yl, yh)
 
     ## Exposure time plot
-    ylim_hi = 50
     plt.subplot(SP,1,4)
+    ytop = 50
+    first = True
     for band,Tb in zip(bands, TT):
         fid = nom.fiducial_exptime(band)
         if fid is None:
             print('Unknown band', band)
             continue
+        I = np.flatnonzero(Tb.expfactor != 0)
+        if len(I) == 0:
+            continue
+        Tplot = Tb[I]
         basetime = fid.exptime
         lo,hi = fid.exptime_min, fid.exptime_max
-        ylim_hi = max(ylim_hi, hi)
-        # Exposure time we should have taken
-        exptime = basetime * Tb.expfactor
-        #print('Exposure time we should have taken:', exptime, '= base time', basetime,
-        #      'x exposure factor', Tb.expfactor)
+        kw = {}
+        if first:
+            kw.update(label='Efftime')
+        plt.plot(Tplot.mjd_obs, Tplot.exptime / Tplot.expfactor, 'o',
+                 mec='k', color=filter_plot_color(band), **kw)
+        if first:
+            kw.update(label='Exptime')
+        plt.plot(Tplot.mjd_obs, Tplot.exptime, 'o', mec='k', mfc='none', **kw)
+        first = False
+        ytop = max(ytop, max(max(Tplot.exptime), max(Tplot.exptime / Tplot.expfactor)))
+        if band in (survey_bands or []):
+            plt.axhline(basetime, color=filter_plot_color(band), alpha=0.2)
+            ytop = max(ytop, basetime)
+            plt.axhline(lo, color=filter_plot_color(band), ls='--', alpha=0.5)
+            plt.axhline(hi, color=filter_plot_color(band), ls='--', alpha=0.5)
             
-        clipped = np.clip(exptime, lo, hi)
-        if band == 'z':
-            t_sat = nom.saturation_time(band, Tb.sky)
-            bad = (Tb.sky == 0)
-            clipped = np.minimum(clipped, t_sat + bad*1000000)
-        Tb.clipped_exptime = clipped
-        Tb.depth_factor = Tb.exptime / exptime
+        # Used later...
+        Tb.depth_factor = Tb.exptime / (basetime * Tb.expfactor)
+        Tb.depth_factor[Tb.expfactor == 0] = 0.
 
-        print('Band', band)
-        print('Exposure time     Exposure factor     Ideal exposure time    Depth factor')
-        for t,f,ideal_t,d in zip(Tb.exptime, Tb.expfactor, exptime, Tb.depth_factor):
-            print('    %6.1f         %8.2f           %8.1f       %8.2f' % (t, f, ideal_t, d))
-        
-        if target_exptime:
-            # Mark upper limits
-            I = np.flatnonzero((exptime < clipped) * (exptime > 0))
-            if len(I):
-                plt.plot(Tb.mjd_obs[I], exptime[I], '^', **limitstyle(band))
-
-            if band in (survey_bands or []):
-                # Large black circles for "what we should have done"
-                plt.plot(Tb.mjd_obs, clipped, 'o', mec='k', mfc='none', ms=9)
-
-                # If the ideal exposure time got clipped down to the maximum,
-                # mark the ideal time with an upper limit symbol
-                I = np.flatnonzero(exptime > clipped)
-                if len(I):
-                    plt.plot(Tb.mjd_obs[I], exptime[I], 'v',
-                             alpha=0.5, **limitstyle(band))
-        # Actual exposure times taken, marked with filled colored circles.
-        I = np.flatnonzero(Tb.exptime > 0)
-        if len(I):
-            plt.plot(Tb.mjd_obs[I], Tb.exptime[I], 'o', mec='k',
-                     color=filter_plot_color(band))
-
-        if target_exptime:
-            # Mark the nominal, min, and max per band.
-            # dt: shift the dashed lines up or down
-            #     dt = dict(g=-0.5,r=+0.5).get(band, 0.)
-            if band in (survey_bands or []):
-                dt = 0
-                plt.axhline(basetime+dt, color=filter_plot_color(band), alpha=0.2)
-                plt.axhline(lo+dt, color=filter_plot_color(band), ls='--', alpha=0.5)
-                plt.axhline(hi+dt, color=filter_plot_color(band), ls='--', alpha=0.5)
-
-        # Mark the saturation exptime
-        if band == 'z':
-            I = np.flatnonzero(Tb.sky > 0)
-            if len(I):
-                plt.plot(Tb.mjd_obs[I], t_sat[I], color=filter_plot_color(band),
-                         ls='-', alpha=0.5)
-
-    # After we've determine the y limits...
-    for band,Tb in zip(bands, TT):
-        if (not nightly) and target_exptime:
-            I = np.flatnonzero(Tb.exptime > 0)
-            for i in I:
-                offset = 0.06*ylim_hi
-                offsign = +1.
-                va = 'bottom'
-                if Tb.exptime[i] > 0.8 * ylim_hi:
-                    offsign = -1
-                    va = 'top'
-                plt.text(Tb.mjd_obs[i], Tb.exptime[i] + offset * offsign,
-                         '%.2f' % (Tb.depth_factor[i]),
-                         rotation=90, ha='center', va=va)
-
-    if not nightly:
-        plt.text(latest.mjd_obs, yl+0.03*(yh-yl),
-                 '%i s' % int(latest.exptime), ha='center', bbox=bbox)
-
-    plt.ylim(-50, ylim_hi+50)
-    plt.ylabel('Exposure time (s)')
-    plt.axhline(0, color='k', alpha=0.1)
+    plt.ylim(0, ytop*1.05)
+    plt.legend(loc='center right', bbox_to_anchor=(1.06, 0.5),
+               frameon=True, shadow=True, fontsize=8)
+    plt.ylabel('Exp/Eff time (sec)')
+    # if not nightly:
+    #     plt.text(latest.mjd_obs, yl+0.03*(yh-yl),
+    #              '%i s' % int(latest.exptime), ha='center', bbox=bbox)
 
     # Efftime factors plot
     plt.subplot(SP,1,5)
@@ -674,7 +626,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         Tb.is_survey_band = np.array([survey_bands is None or
                                       band in survey_bands] * len(Tb))
 
-    Tplot = merge_tables(Tplot)
+    Tplot = merge_tables(Tplot, columns='fillzero')
     Tplot.cut(np.argsort(Tplot.mjd_obs))
 
     factors = [(Tplot.efftime_seeing, 'Seeing'),
@@ -698,6 +650,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     y1 = yh/1.01
     for factor,label in factors:
         plt.plot(Tplot.mjd_obs, np.clip(factor, y0, y1), label=label)
+    # Note, this "total" = 1/expfactor
     plt.plot(Tplot.mjd_obs, np.clip(total, y0, y1), color='k', lw=2, label='Total')
     plt.ylabel('Efftime %')
     plt.yscale('log')
