@@ -605,7 +605,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     #     plt.text(latest.mjd_obs, yl+0.03*(yh-yl),
     #              '%i s' % int(latest.exptime), ha='center', bbox=bbox)
 
-    # Efftime factors plot
+    # Efftime factors (Speed) plot
     plt.subplot(SP,1,5)
     from obsbot import Neff
     Tplot = []
@@ -652,7 +652,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         plt.plot(Tplot.mjd_obs, np.clip(factor, y0, y1), label=label)
     # Note, this "total" = 1/expfactor
     plt.plot(Tplot.mjd_obs, np.clip(total, y0, y1), color='k', lw=2, label='Total')
-    plt.ylabel('Efftime %')
+    plt.ylabel('Speed (%)')
     plt.yscale('log')
     plt.yticks([0.1, 0.5, 1.0, 2.0, 10.0], labels=['10', '50', '100', '200', '1000'])
     plt.ylim(yl, yh)
