@@ -639,6 +639,8 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     mn = 1.
     mx = 1.
     count = Tplot.is_survey_band
+    if np.sum(count) == 0:
+        count = np.ones(len(Tplot), bool)
     for factor,label in factors:
         total = total * factor
         mn = min(mn, min(min(factor[count]), min(total[count])))
