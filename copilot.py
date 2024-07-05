@@ -268,7 +268,7 @@ def average_by_mjd(Tb):
 def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
                       markmjds=[], show_plot=True, nightly=False,
                       label_nmatched=True, max_seeing=2.5, target_exptime=True,
-                      relative_sky=False, show_target_exptimes=None):
+                      relative_sky=False, survey_bands=None):
     '''
     Plots our measurements of the conditions, as in the recent.png and
     night.png plots.
@@ -494,7 +494,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
             plt.plot(Tb.mjd_obs[I], [mn]*len(I), '^', **limitstyle(band))
 
         if not relative_sky:
-            if band in (show_target_exptimes or []):
+            if band in (survey_bands or []):
                 print('Plotting nominal sky level for', band, ':', sky0)
                 plt.axhline(sky0, color=filter_plot_color(band), alpha=0.5)
 
@@ -597,7 +597,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
             if len(I):
                 plt.plot(Tb.mjd_obs[I], exptime[I], '^', **limitstyle(band))
 
-            if band in (show_target_exptimes or []):
+            if band in (survey_bands or []):
                 # Large black circles for "what we should have done"
                 plt.plot(Tb.mjd_obs, clipped, 'o', mec='k', mfc='none', ms=9)
 
@@ -617,7 +617,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
             # Mark the nominal, min, and max per band.
             # dt: shift the dashed lines up or down
             #     dt = dict(g=-0.5,r=+0.5).get(band, 0.)
-            if band in (show_target_exptimes or []):
+            if band in (survey_bands or []):
                 dt = 0
                 plt.axhline(basetime+dt, color=filter_plot_color(band), alpha=0.2)
                 plt.axhline(lo+dt, color=filter_plot_color(band), ls='--', alpha=0.5)
@@ -671,8 +671,8 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         Tb.efftime_airmass = 10.**-(0.8 * fid.k_co * (Tb.airmass - 1.))
         Tb.efftime_sky = 10.**(0.4 * (Tb.sky - fid.skybright))
         Tb.efftime_ebv = 10.**(-0.8 * fid.A_co * Tb.ebv)
-        Tb.is_survey_band = np.array([show_target_exptimes is None or
-                                      band in show_target_exptimes] * len(Tb))
+        Tb.is_survey_band = np.array([survey_bands is None or
+                                      band in survey_bands] * len(Tb))
 
     Tplot = merge_tables(Tplot)
     Tplot.cut(np.argsort(Tplot.mjd_obs))
@@ -703,9 +703,9 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     plt.yscale('log')
     plt.yticks([0.1, 0.5, 1.0, 2.0, 10.0], labels=['10', '50', '100', '200', '1000'])
     plt.ylim(yl, yh)
-    plt.axhline(1.,  color='k', alpha=0.2)
-    plt.axhline(0.5, color='k', alpha=0.1, linestyle='--')
-    plt.axhline(2.,  color='k', alpha=0.1, linestyle='--')
+    plt.axhline(1.,  color='k', alpha=0.5)
+    plt.axhline(0.5, color='k', alpha=0.25, linestyle='--')
+    plt.axhline(2.,  color='k', alpha=0.25, linestyle='--')
     plt.legend(loc='upper right', bbox_to_anchor=(1.06, 1.05),
                frameon=True, shadow=True, fontsize=8)
 
@@ -1366,11 +1366,11 @@ def plot_recent(opt, obs, nom, tiles=None, markmjds=[],
     plt.figure(1)
 
     # IBIS
-    show_target_exptimes = ['M411', 'M464']
+    survey_bands = ['M411', 'M464']
 
     T = plot_measurements(mm, plotfn, nom, allobs=allobs,
                           mjdrange=(mjd_start, mjd_end), markmjds=markmjds,
-                          nightly=nightly, show_target_exptimes=show_target_exptimes,
+                          nightly=nightly, survey_bands=survey_bands,
                           **kwargs)
     return T
 
