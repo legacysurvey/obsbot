@@ -698,7 +698,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     y1 = yh/1.01
     for factor,label in factors:
         plt.plot(Tplot.mjd_obs, np.clip(factor, y0, y1), label=label)
-    plt.plot(Tplot.mjd_obs, np.clip(total, y0, y1), label='Total')
+    plt.plot(Tplot.mjd_obs, np.clip(total, y0, y1), color='k', lw=2, label='Total')
     plt.ylabel('Efftime %')
     plt.yscale('log')
     plt.yticks([0.1, 0.5, 1.0, 2.0, 10.0], labels=['10', '50', '100', '200', '1000'])
