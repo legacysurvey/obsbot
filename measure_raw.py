@@ -169,11 +169,6 @@ class RawMeasurer(object):
 
     def get_airmass(self, primhdr):
         airmass = primhdr['AIRMASS']
-        # airmass can be 'NaN'
-        airmass = float(airmass)
-        if not np.isfinite(airmass):
-            printmsg('Bad airmass:', airmass, '-- setting to 1.0')
-            airmass = 1.0
         return airmass
 
     def run(self, ps=None, primext=0, focus=False, momentsize=5,
@@ -257,6 +252,11 @@ class RawMeasurer(object):
         exptime = self.get_exptime(primhdr)
         airmass = self.get_airmass(primhdr)
         printmsg('Band', band, 'Exptime', exptime, 'Airmass', airmass)
+        # airmass can be 'NaN'
+        airmass = float(airmass)
+        if not np.isfinite(airmass):
+            printmsg('Bad airmass:', airmass, '-- setting to 1.0')
+            airmass = 1.0
 
         zp0 = self.zeropoint_for_exposure(band, ext=self.ext, exptime=exptime, primhdr=primhdr)
         printmsg('Nominal zeropoint:', zp0)
@@ -277,8 +277,7 @@ class RawMeasurer(object):
             kx = None
 
         # Find the sky value and noise level
-        sky,sig1 = self.get_sky_and_sigma(img)
-        sky1 = np.median(sky)
+        skymod,sky1,sig1 = self.get_sky_and_sigma(img)
 
         if zp0 is not None:
             skybr = -2.5 * np.log10(sky1/pixsc/pixsc/exptime) + zp0
@@ -305,8 +304,9 @@ class RawMeasurer(object):
         if skybr is not None and not np.isfinite(skybr):
             print('Measured negative sky brightness:', sky1, 'counts')
             return meas
-        
-        img -= sky
+
+        img -= skymod
+        del skymod
 
         self.remove_sky_gradients(img)
 
@@ -995,7 +995,8 @@ class DECamMeasurer(RawMeasurer):
 
     def get_sky_and_sigma(self, img):
         sky,sig1 = sensible_sigmaclip(img[1500:2500, 500:1000])
-        return sky,sig1
+        sky1 = np.median(sky)
+        return sky,sky1,sig1
 
     def get_wcs(self, hdr):
         from astrometry.util.util import wcs_pv2sip_hdr
@@ -1078,7 +1079,8 @@ class Mosaic3Measurer(RawMeasurer):
         splinesky.addTo(skyimg)
         
         mnsky,sig1 = sensible_sigmaclip(img - skyimg)
-        return skyimg,sig1
+        sky1 = np.median(skyimg)
+        return skyimg,sky1,sig1
 
     def remove_sky_gradients(self, img):
         pass
@@ -1123,7 +1125,8 @@ class PointingCamMeasurer(RawMeasurer):
         # First quadrant
         sky,sig1 = sensible_sigmaclip(img[100:self.subH-100, 100:self.subW-100])
         print('Sky, sig1:', sky, sig1)
-        return sky,sig1
+        sky1 = np.median(sky)
+        return sky,sky1,sig1
 
     def get_wcs(self, hdr):
         from astrometry.util.util import Tan
@@ -1178,7 +1181,8 @@ class DesiCiMeasurer(RawMeasurer):
     def get_sky_and_sigma(self, img):
         sky,sig1 = sensible_sigmaclip(img[100:-100, 100:-100])
         print('Sky, sig1:', sky, sig1)
-        return sky,sig1
+        sky1 = np.median(sky)
+        return sky,sky1,sig1
 
     def update_astrometry(self, stars, wcs, fx, fy, trim_x0, trim_y0,
                           pixsc, img, hdr, fullW, fullH, ps, printmsg):
@@ -1370,7 +1374,8 @@ class BokMeasurer(RawMeasurer):
         skyimg = np.zeros_like(img)
         splinesky.addTo(skyimg)
         mnsky,sig1 = sensible_sigmaclip(img - skyimg)
-        return skyimg,sig1
+        sky1 = np.median(skyimg)
+        return skyimg,sky1,sig1
 
     def remove_sky_gradients(self, img):
         pass
