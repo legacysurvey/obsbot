@@ -169,6 +169,11 @@ class RawMeasurer(object):
 
     def get_airmass(self, primhdr):
         airmass = primhdr['AIRMASS']
+        # airmass can be 'NaN'
+        airmass = float(airmass)
+        if not np.isfinite(airmass):
+            printmsg('Bad airmass:', airmass, '-- setting to 1.0')
+            airmass = 1.0
         return airmass
 
     def run(self, ps=None, primext=0, focus=False, momentsize=5,
@@ -252,11 +257,6 @@ class RawMeasurer(object):
         exptime = self.get_exptime(primhdr)
         airmass = self.get_airmass(primhdr)
         printmsg('Band', band, 'Exptime', exptime, 'Airmass', airmass)
-        # airmass can be 'NaN'
-        airmass = float(airmass)
-        if not np.isfinite(airmass):
-            printmsg('Bad airmass:', airmass, '-- setting to 1.0')
-            airmass = 1.0
 
         zp0 = self.zeropoint_for_exposure(band, ext=self.ext, exptime=exptime, primhdr=primhdr)
         printmsg('Nominal zeropoint:', zp0)
