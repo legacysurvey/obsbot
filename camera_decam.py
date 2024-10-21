@@ -30,4 +30,4 @@ def ephem_observer():
     decam.horizon = -np.sqrt(2.0*decam.elev/R_earth)
     return decam
 
-tile_path = 'obstatus/decam-tiles_obstatus.fits'
+tile_path = 'obstatus/ibis-tiles.ecsv'

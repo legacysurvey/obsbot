@@ -9,67 +9,6 @@ import numpy as np
 
 py2 = (sys.version_info[0] == 2)
 
-def choose_pass(trans, seeing, skybright, nomsky,
-                forcedir=''):
-
-    brighter = nomsky - skybright
-
-    transcut = 0.9
-    seeingcut = 1.25
-    brightcut = 0.25
-
-    transcut2 = 0.7
-    seeingcut2 = 2.0
-    
-    transok = trans > transcut
-    seeingok = seeing < seeingcut
-    brightok = brighter < brightcut
-
-    transfair = trans > transcut2
-    seeingfair = seeing < seeingcut2
-
-    trans_txt = 'good' if transok else ('fair' if transfair else 'poor')
-    seeing_txt = 'good' if seeingok else ('fair' if seeingfair else 'poor')
-
-    pass1ok = transok and seeingok and brightok
-    pass2ok = (transok and seeingfair) or (seeingok and transfair)
-    
-    print('Transparency: %s       (%6.2f vs %6.2f = good, %6.2f = fair)' %
-          (trans_txt, trans, transcut, transcut2))
-    print('Seeing      : %s       (%6.2f vs %6.2f = good, %6.2f = fair)' %
-          (seeing_txt, seeing, seeingcut, seeingcut2))
-    print('Brightness  : %s       (%6.2f vs %6.2f = pass)' %
-          (('pass' if brightok else 'fail'), skybright, nomsky+brightcut))
-    print('Pass 1 = transparency AND seeing AND brightness: %s' % pass1ok)
-    print('Pass 2 = (transparency good and seeing fair) OR (seeing good and transparency fair): %s' % pass2ok)
-
-    p,fn = get_forced_pass(forcedir)
-    if p is not None:
-        print('Forcing pass %i because file exists: %s' % (p, fn))
-        return p
-    
-    path = os.path.join(forcedir, 'nopass1')
-    if os.path.exists(path):
-        print('File %s exists; not allowing pass 1' % path)
-        pass1ok = False
-        
-    if pass1ok:
-        return 1
-    if pass2ok:
-        return 2
-    return 3
-
-def get_forced_pass(forcedir=''):
-    ''' Returns tuple (forced pass number, filename)'''
-    for p in [1,2,3]:
-        path = os.path.join(forcedir, 'forcepass%i' % p)
-        #print('Checking for file "%s"' % path)
-        if os.path.exists(path):
-            #print('Forcing pass %i because file exists: %s' % (p, path))
-            return p, path
-    return None, None
-    
-
 class NominalExptime(object):
     def update(self, **kwargs):
         for k,v in kwargs.items():
@@ -83,9 +22,7 @@ class NominalCalibration(object):
 
     - pixscale -- in arcsec/pixel
     - overhead -- in seconds
-    
     '''
-
     def zeropoint(self, band, ext=None):
         pass
 
@@ -103,8 +40,9 @@ class NominalCalibration(object):
                     zd = 0.194,
                     D51 = 0.422,
                     M411 = 0.422,
-                    M464 = 0.422)[band]
-    
+                    M464 = 0.422,
+                    )[band]
+
     def fiducial_exptime(self, band):
         '''
         Returns an object with attributes:
@@ -141,9 +79,9 @@ class NominalCalibration(object):
                              N540=23.4,
                              N673=23.4,
                              N708=23.4,
-                             # made up
-                             M411=25.0,
-                             M464=25.0,
+                             # 25.0 after 6 passes (this is 25.0 - 2.5*np.log10(np.sqrt(3)), because of the extra sqrt(2) below!)
+                             M411=24.40,
+                             M464=24.40,
                              )
 
         target_depth = target_depths[band]
@@ -196,19 +134,16 @@ class NominalCalibration(object):
                 )
 
         elif band in ['N419', 'N501', 'N540', 'N673', 'N708']:
-            # we're not updating exposure times in ODIN, but hey
+            # we're not updating exposure times in ODIN or MERIAN, but hey
             fid.update(
                 exptime     = 900.,
                 exptime_max = 900.,
                 exptime_min = 300.,
                 )
+
         elif band in ['M411', 'M464']:
             # IBIS
             fid.update(
-                # exptime     = 200.,
-                # exptime_max = 300.,
-                # exptime_min = 100.,
-                # probably roughly what we want...
                 exptime     = 300.,
                 exptime_max = 500.,
                 exptime_min = 200.,
@@ -218,7 +153,7 @@ class NominalCalibration(object):
 
         fid.update(
             skybright = self.sky(band),
-            seeing = 1.3,
+            seeing = 1.25,
             )
 
         # Camera-specific update:
@@ -240,15 +175,16 @@ class NominalCalibration(object):
         return t_sat
 
 def Neff(seeing, pixscale):
-    r_half = 0.45 #arcsec
+    # Use PSF depth
+    r_half = 0.
+    # r_half = 0.45 #arcsec
     # magic 2.35: convert seeing FWHM into sigmas in arcsec.
     return (4. * np.pi * (seeing / 2.35)**2 +
             8.91 * r_half**2 +
             pixscale**2/12.)
 
 # From Anna Patej's nightlystrategy / mosaicstrategy
-def exposure_factor(fid, cal,
-                    airmass, ebv, seeing, skybright, transparency):
+def exposure_factor(fid, cal, airmass, ebv, seeing, skybright, transparency):
     '''
     Computes a factor by which the exposure time should be scaled
     relative to nominal.
@@ -264,8 +200,6 @@ def exposure_factor(fid, cal,
     Returns:
     scaling: exposure time scale factor,
       scaling = T_new/T_fiducial
-
-
     '''
 
     ps = cal.pixscale
@@ -273,7 +207,7 @@ def exposure_factor(fid, cal,
     # Nightlystrategy.py has:
     # pfact = 1.15
     # Neff_fid = ((4.0*np.pi*sig_fid**2)**(1.0/pfact)+(8.91*r_half**2)**(1.0/pfact))**pfact
-    
+
     neff_fid = Neff(fid.seeing, ps)
     neff     = Neff(seeing, ps)
 
@@ -306,17 +240,39 @@ def get_airmass(alt):
     airm = secz-0.0018167*seczm1-0.002875*seczm1**2-0.0008083*seczm1**3
     return airm
 
+def read_tiles_file(fn):
+    from astrometry.util.fits import fits_table
+    if fn.endswith('.fits'):
+        tiles = fits_table(fn)
+    else:
+        # ECSV... FIXME... read with astropy, convert to astrometry fits_table
+        from astropy.table import Table
+        tiles = fits_table()
+        fmt = 'ascii.ecsv'
+        t = Table.read(fn, format=fmt)
+        colnames = list(t.columns)
+        for c in colnames:
+            col = t[c]
+            tiles.set(c.lower(), col)
+        del t
+    return tiles
+
 def get_tile_id_from_name(name):
-    # Parse objname like 'MzLS_5623_z'
+    # Parse objname like 'MzLS_5623_z' / 'IBIS_wide_M411_100100'
     parts = str(name).split('_')
-    ok = (len(parts) == 3)
-    if ok:
+    if len(parts) == 3:
+        # OLD DECaLS / MzLS
         band = parts[2]
-        ok = ok and (band in 'grz')
-    if not ok:
-        return None
+        if not band in 'grz':
+            return None
+        tilestr = parts[1]
+
+    elif len(parts) == 4:
+        # IBIS
+        tilestr = parts[-1]
+
     try:
-        tileid = int(parts[1])
+        tileid = int(tilestr)
     except:
         return None
     return tileid
@@ -327,7 +283,9 @@ def get_tile_from_name(name, tiles):
         return None
     # Find this tile in the tiles table.
     I = np.flatnonzero(tiles.tileid == tileid)
-    assert(len(I) == 1)
+    if len(I) != 1:
+        print('Warning: tile file contains', len(I), 'matches for tile name', name, '-> tile ID', tileid, '-- expected only 1 match.')
+        return None
     tile = tiles[I[0]]
     return tile
 
@@ -394,7 +352,7 @@ class Logger(object):
     def debug(self, *args, **kwargs):
         if self.verbose:
             self.log(*args, **kwargs)
-            
+
 class NewFileWatcher(Logger):
     def __init__(self, dir, backlog=True, only_process_newest=False,
                  ignore_missing_dir=False,
@@ -427,7 +385,7 @@ class NewFileWatcher(Logger):
         else:
             self.backlog = set()
             self.oldfiles = set(self.filter_new_files(files))
-            
+
         # initialize timeout counter
         self.lastTimeout = datenow()
         self.lastNewFile = datenow()
@@ -457,8 +415,6 @@ class NewFileWatcher(Logger):
         for (dirpath, dirnames, filenames) in os.walk(self.dir):
             for fn in filenames:
                 files.add(os.path.join(dirpath, fn))
-        #files = set(os.listdir(self.dir))
-        #return [os.path.join(self.dir, fn) for fn in files]
         return list(files)
 
     def get_new_files(self):
@@ -489,7 +445,7 @@ class NewFileWatcher(Logger):
 
     def try_open_file(self, path):
         pass
-    
+
     def heartbeat(self):
         pass
 
@@ -505,7 +461,7 @@ class NewFileWatcher(Logger):
         '''We found new files in the directory we're monitoring.
         Files from the backlog don't get this function called.'''
         pass
-    
+
     def run_one(self):
         fns = self.get_new_files()
         if len(fns):
@@ -554,7 +510,7 @@ class NewFileWatcher(Logger):
             self.processed_file(fn)
             self.lastNewFile = self.lastTimeout = datenow()
             return True
-            
+
         except IOError as e:
             self.log('Failed to process file: %s (%s)' % (fn, str(e)))
             if self.verbose:
@@ -573,174 +529,3 @@ class NewFileWatcher(Logger):
             gotone = self.run_one()
             sleep = not gotone
             self.heartbeat()
-    
-
-
-
-# Code shared between mosbot.py and decbot.py
-class Obsbot(NewFileWatcher):
-    def __init__(self, *args, **kwargs):
-        super(Obsbot, self).__init__(*args, **kwargs)
-        self.tiletree = None
-
-    def adjust_for_previous(self, tile, band, fid, debug=False,
-                            get_others=False):
-        '''
-        Adjust the exposure time we should take for this image based
-        on data we've already taken.
-        '''
-        # Find the other passes for this tile, and if we've taken an
-        # exposure, think about adjusting the exposure time.  If the
-        # depth in the other exposure is more than THRESHOLD too
-        # shallow, ignore it on the assumption that we'll re-take it.
-        # If there is a previous exposure for THIS tile, reduce our
-        # exposure time accordingly.
-
-        # Find other passes
-        others = self.other_passes(tile, self.tiles)
-        if others is None:
-            if get_others:
-                return 1.0,[]
-            return 1.0
-        others.rename('%s_depth' % band, 'depth')
-        others.rename('pass', 'passnum')
-
-        target = fid.single_exposure_depth
-
-        threshold = 0.25
-
-        others.shortfall = target - others.depth
-        others.factor    = (10.**(-others.shortfall / 2.5))**2
-        # If we don't know the depth yet, assume it is fine.
-        others.factor[others.depth == 30] = 1.0
-        # No obs, or non-photometric = no depth
-        others.factor[others.depth <=  1] = 0.0
-        # Depth below threshold: treat as though the image was not taken
-        others.factor[others.shortfall > threshold] = 0.0
-
-        if debug:
-            print('Adjusting exposure for tile', tile.tileid, 'pass',
-                  tile.get('pass'))
-
-        # depth = 0 means no obs;
-        # depth = 1 means non-photometric observation was taken.
-        # depth = 30 means image was taken but we don't know how deep it is yet
-
-        I = np.flatnonzero((others.depth > 1) * (others.depth < 30))
-        if len(I) == 0:
-            if debug:
-                print('No other passes have measured depths')
-            if get_others:
-                return 1.0,others
-            return 1.0
-        if debug:
-            print('Other tile passes:', others.passnum[I])
-            print('  depths:', others.depth[I])
-            print('  factors:', others.factor[I])
-            print('Target depth:', target)
-
-        thisfactor = 1.0
-
-        thispass = tile.get('pass')
-
-        if debug:
-            print('This tile is pass', thispass)
-
-        # How much extra depth is required due to make up for previous exposures?
-        needed = 0.
-        
-        for passnum in [1,2,3]:
-            if passnum == thispass:
-                continue
-
-            # "acceptable" tiles
-            I = np.flatnonzero((others.passnum == passnum) *
-                               (others.factor > 0))
-            if len(I) == 0:
-                continue
-
-            if debug:
-                print('Tiles for pass', passnum, ':', others.tileid[I])
-                print('  with factors:', others.factor[I])
-
-            # We want to make up for the worst "acceptable" surrounding tile
-            factor = min(others.factor[I])
-
-            if debug:
-                print('Need to make up factor', 1.-factor, 'for this pass')
-
-            # Only increase the depth needed; we would need to know
-            # that the whole region is covered to the required depth
-            # (incl chip gaps) in order to decrease the depth required.
-            needed += max(0, (1. - factor))
-
-        if debug:
-            print('Total factor that needs to be made up:', needed)
-
-        # # Split this extra required exposure time between the remaining
-        # # passes...
-        # # Magic number 3 = three passes
-        # nremain = max(1, 3 - len(I))
-        # if debug:
-        #     print('Extra time to be taken in this image:', extra / nremain)
-        # thisfactor += extra / nremain
-
-        thisfactor += needed
-            
-        # If there were previous exposures for this tile, subtract their depth
-        # from what we need for this exposure.
-
-        depth = tile.get('%s_depth' % band)
-        if depth > 1:
-            # If this tile has had previous exposure(s), subtract that.
-            shortfall = target - depth
-            if depth == 30:
-                factor = 1.
-            elif shortfall > threshold:
-                factor = 0.
-            else:
-                factor = (10.**(-shortfall / 2.5))**2
-            if debug:
-                print('This tile had previous depth:', depth, '-> factor', factor)
-            thisfactor -= factor
-
-        if debug:
-            print('Exposure time factor based on previous exposures:',
-                  thisfactor)
-
-        if get_others:
-            return thisfactor,others
-        return thisfactor
-
-    def other_passes(self, tile, tiles):
-        '''
-        Given tile number *tile*, return the obstatus rows for the other passes
-        on this tile center.
-
-        Returns: *otherpasses*, table object
-        '''
-        if tile is None:
-            return None
-        if tiles != self.tiles:
-            from astrometry.libkd.spherematch import match_radec
-            # Could also use the fact that the passes are offset from each other
-            # by a fixed index (15872 for decam)...
-            # Max separation is about 0.6 degrees for DECam...
-            #### FIXME for Mosaic this is much smaller... and the three passes
-            #### for a tile are not necessarily relatively close to each other.
-            I,J,d = match_radec(tile.ra, tile.dec, tiles.ra, tiles.dec, 1.)
-            # Omit 'tile' itself...
-            K = np.flatnonzero(tiles.tileid[J] != tile.tileid)
-            J = J[K]
-            return tiles[J]
-
-        if self.tiletree is None:
-            from astrometry.libkd.spherematch import tree_build_radec
-            self.tiletree = tree_build_radec(self.tiles.ra, self.tiles.dec)
-
-        from astrometry.libkd.spherematch import tree_search_radec
-        J = tree_search_radec(self.tiletree, tile.ra, tile.dec, 1.0)
-        # Omit 'tile' itself...
-        K = np.flatnonzero(tiles.tileid[J] != tile.tileid)
-        J = J[K]
-        return tiles[J]
