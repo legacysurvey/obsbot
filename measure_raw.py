@@ -167,6 +167,10 @@ class RawMeasurer(object):
     def get_exptime(self, primhdr):
         return primhdr['EXPTIME']
 
+    def get_airmass(self, primhdr):
+        airmass = primhdr['AIRMASS']
+        return airmass
+
     def run(self, ps=None, primext=0, focus=False, momentsize=5,
             n_fwhm=100, verbose=True, get_image=False, flat=None):
         if ps is not None:
@@ -1157,10 +1161,6 @@ class PointingCamMeasurer(RawMeasurer):
         if exptime == 0.:
             exptime = primhdr.get('EXPOSURE', 0.) / 1000.
         return exptime
-
-    def get_airmass(self, primhdr):
-        airmass = primhdr['AIRMASS']
-        return airmass
 
 class DesiCiMeasurer(RawMeasurer):
     def __init__(self, *args, **kwargs):
