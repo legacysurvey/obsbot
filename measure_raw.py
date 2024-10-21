@@ -246,7 +246,7 @@ class RawMeasurer(object):
             
         band = self.get_band(primhdr)
         exptime = self.get_exptime(primhdr)
-        airmass = primhdr['AIRMASS']
+        airmass = self.get_airmass(primhdr)
         printmsg('Band', band, 'Exptime', exptime, 'Airmass', airmass)
         # airmass can be 'NaN'
         airmass = float(airmass)
@@ -1157,6 +1157,10 @@ class PointingCamMeasurer(RawMeasurer):
         if exptime == 0.:
             exptime = primhdr.get('EXPOSURE', 0.) / 1000.
         return exptime
+
+    def get_airmass(self, primhdr):
+        airmass = primhdr['AIRMASS']
+        return airmass
 
 class DesiCiMeasurer(RawMeasurer):
     def __init__(self, *args, **kwargs):
