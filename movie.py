@@ -92,7 +92,7 @@ def plot_one(args):
     moon.compute(obs)
     moonra  = np.rad2deg(moon.ra)
     moondec = np.rad2deg(moon.dec)
-    print('Moon RA,Dec', moonra, moondec)
+    #print('Moon RA,Dec', moonra, moondec)
     plt.plot(transform_ra(moonra, opt), moondec, 'o',
              ms=20, mec=(1,0.6,0), mew=5, mfc='none', zorder=40)
     #plt.plot(moonra, moondec, 'o', ms=20, mec='k', mew=1)
@@ -375,7 +375,7 @@ def main():
         print(len(tiles), 'in footprint')
 
     from copilot import filter_plot_color
-    filts = ['g','r','z','M411','M437','M464','M490','M516']
+    filts = ['g','r','z','M411','M437','M438','M464','M490','M516','M517']
     fcmap = dict([(f, filter_plot_color(f)) for f in filts])
     #fcmap = dict(g='g',r='r',z='m', zd='m')
     ddecmap = dict(g=-0.2, r=0, z=0.2, zd=0.2)

@@ -41,9 +41,11 @@ class NominalCalibration(object):
                     D51 = 0.422,
                     M411 = 0.422,
                     M437 = 0.422,
+                    M438 = 0.422,
                     M464 = 0.422,
                     M490 = 0.422,
                     M516 = 0.422,
+                    M517 = 0.422,
                     )[band]
 
     def fiducial_exptime(self, band):
@@ -69,9 +71,11 @@ class NominalCalibration(object):
                         'N708',
                         'M411',
                         'M437',
+                        'M438',
                         'M464',
                         'M490',
                         'M516',
+                        'M517',
                 ]:
             return None
         fid = NominalExptime()
@@ -88,9 +92,11 @@ class NominalCalibration(object):
                              # 25.0 after 6 passes (this is 25.0 - 2.5*np.log10(np.sqrt(3)), because of the extra sqrt(2) below!)
                              M411=24.40,
                              M437=24.40,
+                             M438=24.40,
                              M464=24.40,
                              M490=24.40,
                              M516=24.40,
+                             M517=24.40,
                              )
 
         target_depth = target_depths[band]
@@ -150,7 +156,7 @@ class NominalCalibration(object):
                 exptime_min = 300.,
                 )
 
-        elif band in ['M411', 'M437', 'M464', 'M490', 'M516']:
+        elif band in ['M411', 'M437', 'M438', 'M464', 'M490', 'M516', 'M517']:
             # IBIS
             fid.update(
                 exptime     = 300.,
