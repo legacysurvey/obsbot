@@ -10,6 +10,8 @@ from astrometry.util.starutil_numpy import degrees_between
 
 from obsbot import get_tile_from_name
 
+SGC_DRA = 180.
+
 def plot_init():
     import matplotlib
     matplotlib.use('Agg')
@@ -17,8 +19,8 @@ def plot_init():
 def plot_one(args):
     import pylab as plt
     #print('Plot_one', args)
-    (opt, ax, tiles, filtddec, fcmap, passmap,
-     also, LSTs, times, ras, decs, ddecs, fieldname, passnum, exptime, i,
+    (opt, ax, tiles, filtddec, fcmap,
+     also, LSTs, times, ras, decs, ddecs, fieldname, exptime, i,
      filtcc, alsocolors, ddecmap, fn) = args
     print('Plotting', fn)
 
@@ -39,21 +41,19 @@ def plot_one(args):
     if tiles is not None:
         todo = np.ones(len(tiles), bool)
         for filt in opt.bands:
-            for p in [1,2,3]:
-                I = ((tiles.get('pass') == p) *
-                     (tiles.get('%s_done' % filt) == 1))
-                todo[I] = False
-                #print sum(I), 'tiles done in', filt, 'pass', p
-                plt.plot(transform_ra(tiles.ra[I], opt),
-                         tiles.dec[I] + filtddec[filt],
-                         linestyle='none',
-                         color=fcmap[filt], alpha=0.25, mec=fcmap[filt],
-                         zorder=10,
-                         **passmap[p])
+            I = ((tiles.get('filter') == filt) *
+                 (tiles.done == 1))
+            todo[I] = False
+            plt.plot(transform_ra(tiles.ra[I], opt),
+                     tiles.dec[I] + filtddec.get(filt, 0),
+                     linestyle='none',
+                     color=fcmap[filt], alpha=0.25, mec=fcmap[filt],
+                     zorder=10)
         #print sum(todo), 'tiles to-do'
-        aa = 0.1
-        if opt.mosaic:
-            aa = 0.03
+        #aa = 0.1
+        #if opt.mosaic:
+        #    aa = 0.03
+        aa = 0.03
         plt.plot(transform_ra(tiles.ra[todo], opt), tiles.dec[todo], '.',
                  color='k', alpha=aa, zorder=15)
 
@@ -70,7 +70,7 @@ def plot_one(args):
              bbox=dict(facecolor='w', alpha=0.8, edgecolor=edgecolor,
                        zorder=60), zorder=61)
 
-    for ia,(atimes, aras, adecs, afilts, aexptime, afieldname, apassnum) in enumerate(also):
+    for ia,(atimes, aras, adecs, afilts, aexptime, afieldname) in enumerate(also):
         I = np.flatnonzero(atimes <= times[i])
         afiltcc = np.array([fcmap[f]  for f in afilts])
         addecs = np.array([ddecmap[f] for f in afilts])
@@ -118,6 +118,7 @@ def plot_one(args):
                 
     levels = np.append(np.arange(1.0, 2.5, 0.1), [2.5, 3.0, 4.0])
     darkblue = (0.03, 0.19, 0.42, 0.5)
+
     if opt.sgc:
         # Plot the contours in two parts... if SGC_DRA != an rr grid point, this
         # may be ugly...
@@ -160,13 +161,13 @@ def plot_one(args):
         
     plt.xlabel('RA (deg)')
     plt.ylabel('Dec (deg)')
-    tt = ('%s: (%.1f,%.1f), pass %i, UT: %s, %i sec' %
-          (fieldname[i], ras[i], decs[i],passnum[i], times[i], exptime[i]))
-    for (atimes, aras, adecs, afilts, aexptime, afieldname, apassnum) in also:
+    tt = ('%s: (%.1f,%.1f), UT: %s, %i sec' %
+          (fieldname[i], ras[i], decs[i], times[i], exptime[i]))
+    for (atimes, aras, adecs, afilts, aexptime, afieldname) in also:
         I = np.flatnonzero(atimes <= times[i])
         ii = I[-1]
-        tt += ('\n%s, (%.1f, %.1f), pass %i, %i sec' %
-               (afieldname[ii], aras[ii], adecs[ii], apassnum[i], aexptime[ii]))
+        tt += ('\n%s, (%.1f, %.1f), %i sec' %
+               (afieldname[ii], aras[ii], adecs[ii], aexptime[ii]))
 
     if len(also):
         for ia,txt in enumerate(tt.split('\n')):
@@ -199,7 +200,6 @@ def transform_ra(x, opt):
     # We then explicitly set the tick marks to hide the body... ahem, cover
     # our tracks.
     #
-    SGC_DRA = 180.
     if opt.sgc:
         #transform_ra = lambda x: (x + SGC_DRA) % 360.
         return (x + SGC_DRA) % 360.
@@ -385,18 +385,9 @@ def main():
     filts = np.array([j['filter'] for j in J])
     exptime = np.array([j['expTime'] for j in J])
     fieldname = [j['object'] for j in J]
-    passnum = np.zeros(len(J), int)
-
     
     filtcc = np.array([fcmap.get(f,'k') for f in filts])
     ddecs = np.array([ddecmap.get(f,0) for f in filts])
-
-    # passmap = { 1: dict(marker='.'),
-    #             2: dict(marker='o', mfc='none'),
-    #             3: dict(marker='x') }
-    passmap = { 1: dict(marker='.'),
-                2: dict(marker='.'),
-                3: dict(marker='.'), }
 
     opt.bands = opt.bands.split(',')
     if len(opt.bands) == 1:
@@ -406,11 +397,9 @@ def main():
         filtddec = { 'g': -ddec, 'r': 0, 'z': ddec }
     
     seqmap = ['r','y','g','b','m']
-    #seqcc = np.array([seqmap[s % len(seqmap)] for s in seqnum])
-    #seqcc = np.array([seqmap[s % len(seqmap)] for s in seqid])
-    
-    ax = [transform_ra(opt.rahi, opt), transform_ra(opt.ralo, opt),
-          opt.declo, opt.dechi]
+
+    # "ax" are the limits that we tell matplotlib - for SGC these are FAKE coords
+    ax = [opt.rahi, opt.ralo, opt.declo, opt.dechi]
 
     alsocolors = 'kbr'
 
@@ -423,26 +412,12 @@ def main():
         afilts = np.array([j['filter'] for j in Ja])
         aexptime = np.array([j['expTime'] for j in Ja])
         afieldname = [j['object'] for j in Ja]
-        apassnum = np.zeros(len(Ja), int)
         if tiles is not None:
             for i,f in enumerate(afieldname):
                 tile = get_tile_from_name(f, tiles)
                 if tile is None:
                     continue
-                pa = tile.get('pass')
-                apassnum[i] = pa
-        also.append((atimes, aras, adecs, afilts, aexptime, afieldname, apassnum))
-
-    # Try to get the pass number via parsing the field name to get tile id
-    # and looking up the pass number in the tiles table.
-    if tiles is not None:
-        for i,f in enumerate(fieldname):
-            tile = get_tile_from_name(f, tiles)
-            if tile is None:
-                continue
-            pa = tile.get('pass')
-            passnum[i] = pa
-            print('Field', f, 'tileid', tile.tileid, 'pass', pa)
+        also.append((atimes, aras, adecs, afilts, aexptime, afieldname))
 
     plotdir = os.path.dirname(args[0])
     plotpat = os.path.join(plotdir, '%s-%%03d.png' % (opt.base))
@@ -451,8 +426,8 @@ def main():
     for i in reversed(range(0,len(J),opt.skip)):
         #print('Exposure', i, 'of', len(J))
         fn = plotpat % i
-        pargs = (opt, ax, tiles, filtddec, fcmap, passmap,
-                also, LSTs, times, ras, decs, ddecs, fieldname, passnum, exptime, i,
+        pargs = (opt, ax, tiles, filtddec, fcmap,
+                also, LSTs, times, ras, decs, ddecs, fieldname, exptime, i,
                 filtcc, alsocolors, ddecmap, fn)
         allargs.append(pargs)
         plot_one(pargs)
