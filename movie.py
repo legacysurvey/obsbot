@@ -214,7 +214,7 @@ def main():
     parser = optparse.OptionParser(usage='%prog <json>')
     parser.add_option('--base', default='plan', help='Plot base filename')
     parser.add_option('-t', '--obstatus', help='Show already-observed tiles?')
-    parser.add_option('--bands', help='Plot only already-observed tiles in the given bands', default='g,r,z')
+    parser.add_option('--bands', help='Plot only already-observed tiles in the given bands (default %default)', default='g,r,z')
     parser.add_option('--sgc', action='store_true', help='Center on SGC?')
 
     parser.add_option('--ralo',  type=float, default=None)
@@ -365,16 +365,19 @@ def main():
 
     tiles = None
     if opt.obstatus is not None:
-        from astrometry.util.fits import fits_table
+        from obsbot import read_tiles_file
         
-        tiles = fits_table(opt.obstatus)
+        tiles = read_tiles_file(opt.obstatus)
         print('Read', len(tiles), 'tiles')
-        tiles = tiles[(tiles.in_des == 0) * np.logical_or(
-            (tiles.in_sdss == 1),
-            (tiles.in_sdss == 0) * (tiles.in_desi == 1))]
+        #tiles = tiles[(tiles.in_des == 0) * np.logical_or(
+        #    (tiles.in_sdss == 1),
+        #    (tiles.in_sdss == 0) * (tiles.in_desi == 1))]
         print(len(tiles), 'in footprint')
-    
-    fcmap = dict(g='g',r='r',z='m', zd='m')
+
+    from copilot import filter_plot_color
+    filts = ['g','r','z','M411','M437','M464','M490','M516']
+    fcmap = dict([(f, filter_plot_color(f)) for f in filts])
+    #fcmap = dict(g='g',r='r',z='m', zd='m')
     ddecmap = dict(g=-0.2, r=0, z=0.2, zd=0.2)
     
     ras = np.array([j['RA'] for j in J])
@@ -385,8 +388,8 @@ def main():
     passnum = np.zeros(len(J), int)
 
     
-    filtcc = np.array([fcmap[f] for f in filts])
-    ddecs = np.array([ddecmap[f] for f in filts])
+    filtcc = np.array([fcmap.get(f,'k') for f in filts])
+    ddecs = np.array([ddecmap.get(f,0) for f in filts])
 
     # passmap = { 1: dict(marker='.'),
     #             2: dict(marker='o', mfc='none'),
