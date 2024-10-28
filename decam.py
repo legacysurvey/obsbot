@@ -30,6 +30,10 @@ class DecamNominalCalibration(NominalCalibration):
             # from Arjun, 2024-05-25
             M411 = 24.503,
             M464 = 24.957,
+            # FAKE values
+            M437 = 24.7,
+            M490 = 25.0,
+            M516 = 25.0,
             )
 
         self.sky0 = dict(
@@ -47,7 +51,10 @@ class DecamNominalCalibration(NominalCalibration):
             N708 = 19.614,
             # made up, = g
             M411 = 22.04,
+            M437 = 22.04,
             M464 = 22.04,
+            M490 = 22.04,
+            M516 = 22.04,
             )
 
     def zeropoint(self, band, ext=None):
@@ -134,8 +141,32 @@ class DecamNominalCalibration(NominalCalibration):
                 A_co = 3.214,
                 )
 
+        elif band == 'M437':
+            # FAKE k_co from interpolating M411 and M464
+            # A_co just = g band
+            fid.update(
+                k_co = 0.281,
+                A_co = 3.214,
+                )
+
         elif band == 'M464':
             # k_co from Arjun, 2024-05-24
+            # A_co just = g band
+            fid.update(
+                k_co = 0.230,
+                A_co = 3.214,
+                )
+
+        elif band == 'M490':
+            # FAKE k_co = M464
+            # A_co just = g band
+            fid.update(
+                k_co = 0.230,
+                A_co = 3.214,
+                )
+
+        elif band == 'M516':
+            # FAKE k_co = M464
             # A_co just = g band
             fid.update(
                 k_co = 0.230,
