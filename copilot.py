@@ -1142,6 +1142,11 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         T = fits_table()
         T.x = M['x']
         T.y = M['y']
+        T.expnum = M['band']
+        T.airmass = M['airmass']
+        T.exptime = M['exptime']
+        T.ccdname = M['primhdr']['CCDNAME']
+        T.apflux = M['apflux']
         T.apmag = M['apmag']
         T.colorterm = M['colorterm']
         T.refmag = M['refmag']
