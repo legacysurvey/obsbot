@@ -375,7 +375,7 @@ def main():
         print(len(tiles), 'in footprint')
 
     from copilot import filter_plot_color
-    filts = ['g','r','z','M411','M437','M438','M464','M490','M516','M517']
+    filts = ['g','r','z','M411','M438','M464','M490','M517']
     fcmap = dict([(f, filter_plot_color(f)) for f in filts])
     #fcmap = dict(g='g',r='r',z='m', zd='m')
     ddecmap = dict(g=-0.2, r=0, z=0.2, zd=0.2)

@@ -51,11 +51,9 @@ class DecamNominalCalibration(NominalCalibration):
             N708 = 19.614,
             # made up, = g
             M411 = 22.04,
-            M437 = 22.04,
             M438 = 22.04,
             M464 = 22.04,
             M490 = 22.04,
-            M516 = 22.04,
             M517 = 22.04,
             )
 
