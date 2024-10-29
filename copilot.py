@@ -1569,11 +1569,9 @@ def update_tile_file(meas, tilefn, opt, obs, nom):
     print('Read', len(tiles), 'tiles')
     print('tiles:', tiles)
     print('columns:', tiles.columns)
-    #tilemap = dict([(t,i) for i,t in enumerate(tiles['tileid'])])
-    objmap = dict([(obj,i) for i,obj in enumerate(tiles['OBJECT'])])
 
     print('Measurements:')
-    #meas.about()
+    meas.about()
     # meas tileids are all zero.
     print('meas 0:', meas[0])
     meas[0].about()
@@ -1583,164 +1581,37 @@ def update_tile_file(meas, tilefn, opt, obs, nom):
     # used the M464 filter).  So we can't depend on OBJECt... or we find and work around
     # these mess-ups?
 
-    ii,jj = [],[]
-    for i,o in enumerate(meas.object):
+    objmap = dict([(obj, i) for i,obj in enumerate(meas.object)])
+    for i in range(len(tiles)):
+        # match each row in tiles to meas (most won't match)
         try:
-            j = objmap[o]
+            j = objmap[tiles['OBJECT'][i]]
         except KeyError:
             continue
-        ii.append(i)
-        jj.append(j)
-    meas.cut(np.array(ii))
-    tiles = tiles[np.array(jj)]
 
-    from astrometry.util.starutil_numpy import arcsec_between
-    dd = np.array([arcsec_between(r1,d1,r2,d2) for r1,d1,r2,d2 in zip(meas.rabore, meas.decbore, tiles['RA'], tiles['DEC'])])
-    print('Max arcsec between tiles file (from OBJECT lookup) and file headers:', max(dd))
+        # Lookup tile center vs boresight pointing
+        from astrometry.util.starutil_numpy import arcsec_between
+        dd = arcsec_between(meas.rabore[j], meas.decbore[j], tiles['RA'][i], tiles['DEC'][i])
+        assert(dd < 15.)
 
-    filtok = (meas.band == tiles['FILTER'])
-    print('FILTER correct:', Counter(filtok))
+        assert(meas.band[j] == tiles['FILTER'][i])
 
-    I = np.flatnonzero(~filtok)
-    print('Mismatched: Tile file:', tiles['OBJECT'][I], 'versus actual image contents:', meas.band[I])
-
-    
-    
-    return
-    Itile = np.array([tilemap.get(t, -1) for t in meas.tileid])
-    K = np.flatnonzero(Itile >= 0)
-    print('Matched', len(K), 'tile ids')
-    meas.cut(K)
-    Itile = Itile[K]
-    K = np.flatnonzero(meas.zeropoint > 0)
-    meas.cut(K)
-    Itile = Itile[K]
-    print('Cut to', len(K), 'good zeropoints')
-    assert(np.all(meas.tileid == tiles.tileid[Itile]))
-    print(len(np.unique(meas.tileid)), 'unique tiles')
-
-    print('Tiles', meas.tileid)
-
-    zp0 = np.array([nom.zp0[f] for f in meas.band])
-    pixscale = nom.pixscale
-    gain = nom.gain
-
-    skycounts = meas.exptime * pixscale**2 * 10.** ((meas.sky - zp0) / -2.5)
-    skyerr = np.sqrt(skycounts)
-
-    # MAGIC found empirically....
-    readnoise = 13.
-    # Overall copilot vs DR annotated CCDs depth...
-    correction = -0.119 # mag
-
-    err = np.hypot(skyerr, readnoise) / meas.exptime
-    zpscale = 10.**((meas.zeropoint - 22.5) / 2.5)
-    sig1 = err / zpscale
-
-    psf_sigma = meas.seeing / pixscale / 2.35
-    gaussnorm = 1./(2. * np.sqrt(np.pi) * psf_sigma)
-    detiv = 1. / (sig1 / gaussnorm)**2
-
-    # detflux = 5. * sig1 / gaussnorm
-    # # that's flux in nanomaggies -- convert to mag
-    # psfdepth = -2.5 * (np.log10(detflux) - 9)
-    # psfdepth += correction
-
-    bands = ['g','r','z']
-    for band in bands:
-        Iband = np.flatnonzero(meas.band == band)
-        if len(Iband) == 0:
+        if meas.zeropoint[j] <= 0:
             continue
 
-        # We can have multiple measurements of a single exposures (eg, different HDUs).
-        # Average these.
+        efftime = meas.exptime[j] / meas.expfactor[j]
 
-        # We can have multiple exposures of a single tile (eg, we do this in twilight)
-        # Sum these depths.
-
-        print('Band', band, ':', len(Iband), 'measurements')
-        expnum_depth = {}
-        for expnum,depth in zip(meas.expnum[Iband], detiv[Iband]): #psfdepth[Iband]):
-            if expnum in expnum_depth:
-                expnum_depth[expnum].append(depth)
-            else:
-                expnum_depth[expnum] = [depth]
-        # Average
-        for k in list(expnum_depth.keys()):
-            expnum_depth[k] = np.mean(expnum_depth[k])
-        print(len(expnum_depth), 'exposures')
-
-        # Average seeing per exposure
-        expnum_seeing = {}
-        for expnum,seeing in zip(meas.expnum[Iband], meas.seeing[Iband]):
-            if expnum in expnum_seeing:
-                expnum_seeing[expnum].append(seeing)
-            else:
-                expnum_seeing[expnum] = [seeing]
-        for k in list(expnum_seeing.keys()):
-            expnum_seeing[k] = np.mean(expnum_seeing[k])
-
-        # Gather up the exposure numbers for this tile & band
-        tile_expnums = {}
-        for tile,expnum in zip(meas.tileid[Iband], meas.expnum[Iband]):
-            if tile in tile_expnums:
-                if not expnum in tile_expnums[tile]:
-                    tile_expnums[tile].append(expnum)
-            else:
-                tile_expnums[tile] = [expnum]
-
-        # Sum the depths for this tile & band
-        tile_depth = {}
-        for tile,expnums in tile_expnums.items():
-            # Only for logging:
-            # div = np.array([expnum_depth[e] for e in expnums])
-            # detsig = 1./np.sqrt(div)
-            # psfdepth = -2.5 * (np.log10(5. * detsig) - 9)
-            # psfdepth += correction
-            # print('Individual PSF depths:', psfdepth)
-
-            total_detiv = np.sum([expnum_depth[e] for e in expnums])
-            detsig = 1./np.sqrt(total_detiv)
-            psfdepth = -2.5 * (np.log10(5. * detsig) - 9)
-            psfdepth += correction
-            #print('Summed PSF depth:', psfdepth)
-            tile_depth[tile] = psfdepth
-
-        # Computed depth-weighted seeing for this tile & band
-        tile_seeing = {}
-        for tile,expnums in tile_expnums.items():
-            div = np.array([expnum_depth[e] for e in expnums])
-            see = np.array([expnum_seeing[e] for e in expnums])
-            avgsee = np.sum(see * div) / np.sum(div)
-            tile_seeing[tile] = avgsee
-
-        utiles, Iu = np.unique(meas.tileid[Iband], return_index=True)
-        Iupdate = Itile[Iband[Iu]]
-        assert(np.all(tiles.tileid[Iupdate] == utiles))
-        print('Updating', len(Iupdate), 'tiles')
-
-        print('Band', band, 'observed', tiles.get('%s_date' % band)[Iupdate])
-        print('Band', band, 'expnum', tiles.get('%s_expnum' % band)[Iupdate])
-        print('Band', band, 'done was:', tiles.get('%s_done' % band)[Iupdate])
-
-        print('Tile/expnums match:', Counter([e in tile_expnums[t] for e,t in zip(tiles.get('%s_expnum' % band)[Iupdate], utiles)]))
-
-        # "Uptiles" already sets X_DATE, X_DONE, X_EXPNUM,
-        # and only occasionally, X_SEEING.  X_DEPTH = 30.
-        print('Band', band, 'seeing was:', tiles.get('%s_seeing' % band)[Iupdate])
-        tiles.get('%s_seeing' % band)[Iupdate] = np.array([tile_seeing[t] for t in utiles])
-        print('-> updated to', tiles.get('%s_seeing' % band)[Iupdate])
-
-        print('Band', band, 'depth was:', tiles.get('%s_depth' % band)[Iupdate])
-        tiles.get('%s_depth' % band)[Iupdate] = np.array([tile_depth[t] for t in utiles])
-        print('-> updated to', tiles.get('%s_depth' % band)[Iupdate])
+        tiles['EFFTIME_TOT'][i] += efftime
+        # ????
+        tiles['DONE'][i] = True
 
     tilefn = os.path.realpath(tilefn)
     print('Real tile filename:', tilefn)
     tmpfn = os.path.join(os.path.dirname(tilefn), 'tmp-' + os.path.basename(tilefn))
-    tiles.writeto(tmpfn)
-    os.rename(tmpfn, tilefn)
-    print('Updated', tilefn)
+    tiles.write(tmpfn, overwrite=True)
+    print('Wrote', tmpfn)
+    #os.rename(tmpfn, tilefn)
+    #print('Updated', tilefn)
 
 def main(cmdlineargs=None, get_copilot=False):
     import optparse
@@ -2045,8 +1916,8 @@ def main(cmdlineargs=None, get_copilot=False):
             if meas is None:
                 print('No measurements to update tile file')
             else:
-                print('Not updating tile file...')
-                #update_tile_file(meas, opt.tiles, opt, obs, nom)
+                print('Updating tile file...')
+                update_tile_file(meas, opt.tiles, opt, obs, nom)
         if not opt.end_of_night:
             return 0
 
