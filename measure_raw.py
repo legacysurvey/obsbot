@@ -397,7 +397,7 @@ class RawMeasurer(object):
         s = np.sqrt(np.maximum(0, ((mx2 - my2)/2.)**2 + mxy**2))
         a = np.sqrt(np.maximum(0, (mx2 + my2) / 2. + s))
         b = np.sqrt(np.maximum(0, (mx2 + my2) / 2. - s))
-        ell = 1. - b/a
+        ell = 1. - b/np.maximum(a, 1)
 
         wtheta = np.rad2deg(np.arctan2(2 * wmxy, wmx2 - wmy2) / 2.)
         wtheta = np.abs(wtheta) * np.sign(wmxy)
