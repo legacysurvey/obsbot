@@ -73,11 +73,9 @@ def filter_plot_color(filt, default='0.5'):
                  N673='r',
                  N708=(241/255,0.,0.),
                  M411=(124/255,0,222/255),
-                 M437=(23/255, 0, 255/255),
                  M438=(23/255, 0, 255/255),
                  M464=(0, 142/255, 255/255),
                  M490=(0, 255/255, 255/255),
-                 M516=(36/255, 255/255, 0),
                  M517=(36/255, 255/255, 0),
                 )
     return ccmap.get(filt, default)
@@ -1336,7 +1334,7 @@ def plot_recent(opt, obs, nom, tiles=None, markmjds=[],
     plt.figure(1)
 
     # IBIS
-    survey_bands = ['M411', 'M437', 'M438', 'M464', 'M450', 'M516', 'M517']
+    survey_bands = ['M411', 'M438', 'M464', 'M450', 'M517']
 
     T = plot_measurements(mm, plotfn, nom, allobs=allobs,
                           mjdrange=(mjd_start, mjd_end), markmjds=markmjds,
