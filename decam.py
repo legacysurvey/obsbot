@@ -133,44 +133,35 @@ class DecamNominalCalibration(NominalCalibration):
                 A_co = 2.165,
                 )
 
+        # These values are from Arjun, 2024-10-29, on decam-chatter
         elif band == 'M411':
-            # k_co from Arjun, 2024-05-24
-            # A_co just = g band
             fid.update(
                 k_co = 0.333,
-                A_co = 3.214,
+                A_co = 4.296,
                 )
 
-        elif band in ['M437', 'M438']:
-            # FAKE k_co from interpolating M411 and M464
-            # A_co just = g band
+        elif band == 'M438':
             fid.update(
-                k_co = 0.281,
-                A_co = 3.214,
+                k_co = 0.273,
+                A_co = 4.103,
                 )
 
         elif band == 'M464':
-            # k_co from Arjun, 2024-05-24
-            # A_co just = g band
             fid.update(
-                k_co = 0.230,
-                A_co = 3.214,
+                k_co = 0.223,
+                A_co = 3.880,
                 )
 
         elif band == 'M490':
-            # FAKE k_co = M464
-            # A_co just = g band
             fid.update(
-                k_co = 0.230,
-                A_co = 3.214,
+                k_co = 0.197,
+                A_co = 3.637,
                 )
 
-        elif band in ['M516', 'M517']:
-            # FAKE k_co = M464
-            # A_co just = g band
+        elif band == 'M517':
             fid.update(
-                k_co = 0.230,
-                A_co = 3.214,
+                k_co = 0.174,
+                A_co = 3.391,
                 )
 
         else:
