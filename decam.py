@@ -32,7 +32,7 @@ class DecamNominalCalibration(NominalCalibration):
             M464 = 24.957,
             # FAKE values
             M437 = 24.7,
-            M438 = 24.7,
+            M438 = 24.42,
             M490 = 25.0,
             M516 = 25.0,
             M517 = 25.0,
