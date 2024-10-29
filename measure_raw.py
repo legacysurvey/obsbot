@@ -394,16 +394,16 @@ class RawMeasurer(object):
         # semi-major/minor axes and position angle
         theta = np.rad2deg(np.arctan2(2 * mxy, mx2 - my2) / 2.)
         theta = np.abs(theta) * np.sign(mxy)
-        s = np.sqrt(((mx2 - my2)/2.)**2 + mxy**2)
-        a = np.sqrt((mx2 + my2) / 2. + s)
-        b = np.sqrt((mx2 + my2) / 2. - s)
+        s = np.sqrt(np.maximum(0, ((mx2 - my2)/2.)**2 + mxy**2))
+        a = np.sqrt(np.maximum(0, (mx2 + my2) / 2. + s))
+        b = np.sqrt(np.maximum(0, (mx2 + my2) / 2. - s))
         ell = 1. - b/a
 
         wtheta = np.rad2deg(np.arctan2(2 * wmxy, wmx2 - wmy2) / 2.)
         wtheta = np.abs(wtheta) * np.sign(wmxy)
-        ws = np.sqrt(((wmx2 - wmy2)/2.)**2 + wmxy**2)
-        wa = np.sqrt((wmx2 + wmy2) / 2. + ws)
-        wb = np.sqrt((wmx2 + wmy2) / 2. - ws)
+        ws = np.sqrt(np.maximum(0, ((wmx2 - wmy2)/2.)**2 + wmxy**2))
+        wa = np.sqrt(np.maximum(0, (wmx2 + wmy2) / 2. + ws))
+        wb = np.sqrt(np.maximum(0, (wmx2 + wmy2) / 2. - ws))
         well = 1. - wb/wa
             
         fx = np.array(fx)
