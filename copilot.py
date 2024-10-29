@@ -526,7 +526,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         plt.ylabel('Sky - nominal (mag)')
     else:
         plt.ylabel('Sky (mag/sq.arcsec)')
-    plt.legend(loc='center right', bbox_to_anchor=(1.06, 0.5),
+    plt.legend(loc='center left', bbox_to_anchor=(0., 0.5),
                frameon=True, shadow=True)
 
     ## Transparency
@@ -603,7 +603,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         Tb.depth_factor[Tb.expfactor == 0] = 0.
 
     plt.ylim(0, ytop*1.05)
-    plt.legend(loc='center right', bbox_to_anchor=(1.06, 0.5),
+    plt.legend(loc='center left', bbox_to_anchor=(0.0, 0.5), #bbox_to_anchor=(1.06, 0.5),
                frameon=True, shadow=True, fontsize=8)
     plt.ylabel('Exp/Eff time (sec)')
     # if not nightly:
@@ -666,7 +666,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     plt.axhline(1.,  color='k', alpha=0.5)
     plt.axhline(0.5, color='k', alpha=0.25, linestyle='--')
     plt.axhline(2.,  color='k', alpha=0.25, linestyle='--')
-    plt.legend(loc='upper right', bbox_to_anchor=(1.06, 1.05),
+    plt.legend(loc='upper left', bbox_to_anchor=(0., 1.05),
                frameon=True, shadow=True, fontsize=8)
 
     # dRA/dDec plot
