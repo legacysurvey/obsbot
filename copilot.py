@@ -2123,6 +2123,7 @@ def main(cmdlineargs=None, get_copilot=False):
     if get_copilot:
         return copilot
 
+    copilot.plot_recent()
     copilot.run()
     return 0
 
