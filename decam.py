@@ -31,9 +31,9 @@ class DecamNominalCalibration(NominalCalibration):
             M411 = 24.503,
             M464 = 24.957,
             # from Arjun, 2024-10-28
-            M438 = 24.40,
-            M490 = 24.60,
-            M517 = 24.58,
+            M438 = 24.79,
+            M490 = 24.98,
+            M517 = 24.77,
             )
 
         self.sky0 = dict(
