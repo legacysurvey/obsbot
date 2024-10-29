@@ -1137,13 +1137,18 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         photfn = opt.save_phot
         photfn = photfn.replace('(EXPNUM)', '%i'%expnum)
         photfn = photfn.replace('(EXT)', ext)
+        filtname = M['band']
+        photfn = photfn.replace('(FILT)', filtname)
+
         T = fits_table()
         T.x = M['x']
         T.y = M['y']
-        T.expnum = M['band']
-        T.airmass = M['airmass']
-        T.exptime = M['exptime']
-        T.ccdname = M['primhdr']['CCDNAME']
+        T.expnum = np.array([expnum] * len(T))
+        T.filter = np.array([filtname] * len(T))
+        T.airmass = np.array([M['airmass']] * len(T))
+        T.exptime = np.array([M['exptime']] * len(T))
+        ccdname = M['hdr']['EXTNAME']
+        T.ccdname = np.array([ccdname] * len(T))
         T.apflux = M['apflux']
         T.apmag = M['apmag']
         T.colorterm = M['colorterm']
@@ -1672,7 +1677,7 @@ def main(cmdlineargs=None, get_copilot=False):
     parser.add_option('--qa-plots', dest='doplots', default=False,
                       action='store_true', help='Create QA plots')
 
-    parser.add_option('--save-phot', help='Write photometry results to given filename; (EXPNUM) and (EXT) will get pattern-replaced')
+    parser.add_option('--save-phot', help='Write photometry results to given filename; (EXPNUM) and (EXT) and (FILT) will get pattern-replaced')
 
     parser.add_option('--cov', dest='covplots', default=False,
                       action='store_true', help='Create coverage plots')
