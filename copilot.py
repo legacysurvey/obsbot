@@ -1774,6 +1774,8 @@ def main(cmdlineargs=None, get_copilot=False):
             opt.plot = True
             if opt.plot_filename == 'recent.png':
                 opt.plot_filename = 'night.png'
+            if opt.radec_plot_filename == 'radec.png':
+                opt.radec_plot_filename = 'night-radec.png'
 
         if opt.mjdstart is not None:
             sdate = ephem.Date(mjdtodate(opt.mjdend))
