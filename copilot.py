@@ -1641,6 +1641,8 @@ def main(cmdlineargs=None, get_copilot=False):
 
     parser.add_option('--end-of-night', default=False, action='store_true',
                       help='Run end-of-night actions')
+    parser.add_option('--dry-run', default=False, action='store_true',
+                      help='For end-of-night, only print "git" commands, do not run them')
 
     parser.add_option('--primext', default=default_primary_extension, type=int,
                       help='Extension to read for "primary" header')
@@ -1917,7 +1919,7 @@ def main(cmdlineargs=None, get_copilot=False):
     if opt.plot:
         meas = plot_recent(opt, obs, nom,
                            tiles=tiles, markmjds=markmjds, show_plot=False,
-                           nightly=opt.nightplot, botplanfn=botplanfn,
+                           nightly=opt.nightplot or opt.end_of_night, botplanfn=botplanfn,
                            **copilot_plot_args)
         if opt.update_tiles:
             if meas is None:
@@ -1938,11 +1940,14 @@ def main(cmdlineargs=None, get_copilot=False):
                + 'git push') % (logdir, files, files, yymmdd)
         print('Committing observing log files:')
         print(cmd)
-        rtn = os.system(cmd)
-        if rtn:
-            print('WARNING: committing observing log files failed.')
+        if not opt.dry_run:
+            rtn = os.system(cmd)
+            if rtn:
+                print('WARNING: committing observing log files failed.')
+            else:
+                print('Observing log files committed.')
         else:
-            print('Observing log files committed.')
+            print('(dry run)')
 
         obsdb_dir = os.path.join(os.environ['HOME'], 'obsbot', 'obsdb')
 
@@ -1950,11 +1955,14 @@ def main(cmdlineargs=None, get_copilot=False):
                + '&& git push') % (obsdb_dir, 'decam.sqlite3', yymmdd)
         print('Committing copilot database:')
         print(cmd)
-        rtn = os.system(cmd)
-        if rtn:
-            print('WARNING: committing copilot database file failed.')
+        if not opt.dry_run:
+            rtn = os.system(cmd)
+            if rtn:
+                print('WARNING: committing copilot database file failed.')
+            else:
+                print('Copilot database file committed.')
         else:
-            print('Copilot database file committed.')
+            print('(dry run)')
 
         return 0
 
