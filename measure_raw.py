@@ -109,6 +109,9 @@ class RawMeasurer(object):
         slices = find_objects(blobs)
         return slices
 
+    def filter_detected_sources(self, detsn, fx, fy, ps):
+        return None
+
     def zeropoint_for_exposure(self, band, ext=None, exptime=None, primhdr=None):
         try:
             zp0 = self.nom.zeropoint(band, ext=self.ext)
@@ -410,15 +413,30 @@ class RawMeasurer(object):
         fy = np.array(fy)
         xx = np.array(xx)
         yy = np.array(yy)
-            
+        del xx,yy
+
         if ps is not None:
-    
             plt.clf()
             dimshow(detsn, vmin=-3, vmax=50, cmap='gray')
             ax = plt.axis()
             plt.plot(fx, fy, 'go', mec='g', mfc='none', ms=10)
             plt.colorbar()
             plt.title('Detected sources')
+            plt.axis(ax)
+            ps.savefig()
+
+        keep = self.filter_detected_sources(detsn, fx, fy, ps)
+        if keep is not None:
+            fx = fx[keep]
+            fy = fy[keep]
+
+        if ps is not None and not all(keep):
+            plt.clf()
+            dimshow(detsn, vmin=-3, vmax=50, cmap='gray')
+            ax = plt.axis()
+            plt.plot(fx, fy, 'go', mec='g', mfc='none', ms=10)
+            plt.colorbar()
+            plt.title('Filtered detected sources')
             plt.axis(ax)
             ps.savefig()
 
@@ -541,7 +559,8 @@ class RawMeasurer(object):
         apmag2 = -2.5 * np.log10(apflux2) + zp0 + 2.5 * np.log10(exptime)
         apmag  = -2.5 * np.log10(apflux ) + zp0 + 2.5 * np.log10(exptime)
 
-        meas.update(x=fx[J], y=fy[J], apflux=apflux2[J], apmag=apmag2[J],
+        meas.update(all_x=fx, all_y=fy, all_apflux=apflux2,
+                    x=fx[J], y=fy[J], apflux=apflux2[J], apmag=apmag2[J],
                     colorterm=colorterm[I], refmag=ps1mag, refstars=stars[I])
 
         if ps is not None:
@@ -730,7 +749,7 @@ class RawMeasurer(object):
         fwhms = np.array(fwhms)
         fwhm = np.median(fwhms)
         printmsg('Median FWHM : %.3f arcsec' % np.median(fwhms))
-        meas.update(seeing=fwhm)
+        meas.update(seeing=fwhm, seeings=fwhms)
     
         if False and ps is not None:
             lo,hi = np.percentile(fwhms, [5,95])
