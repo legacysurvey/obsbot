@@ -207,7 +207,7 @@ class RawMeasurer(object):
             dimshow(img, **self.imgkwa)
             plt.title('Raw image')
             ps.savefig()
-    
+
             M = 200
             plt.clf()
             plt.subplot(2,2,1)
@@ -221,7 +221,6 @@ class RawMeasurer(object):
             plt.suptitle('Raw image corners')
             ps.savefig()
 
-
         if flat is not None:
             I = (flat != 0)
             med = np.median(flat[I]).astype(float)
@@ -229,7 +228,6 @@ class RawMeasurer(object):
             #img /= (flat / np.median(flat).astype(float))
 
         img,trim_x0,trim_y0 = self.trim_edges(img)
-
         fullH,fullW = img.shape
 
         if self.debug and ps is not None:
@@ -237,7 +235,7 @@ class RawMeasurer(object):
             dimshow(img, **self.imgkwa)
             plt.title('Trimmed image')
             ps.savefig()
-    
+
             M = 200
             plt.clf()
             plt.subplot(2,2,1)
@@ -250,7 +248,7 @@ class RawMeasurer(object):
             dimshow(img[:M, -M:], ticks=False, **self.imgkwa)
             plt.suptitle('Trimmed corners')
             ps.savefig()
-            
+
         band = self.get_band(primhdr)
         exptime = self.get_exptime(primhdr)
         airmass = self.get_airmass(primhdr)
@@ -283,6 +281,7 @@ class RawMeasurer(object):
         skymod,sky1,sig1 = self.get_sky_and_sigma(img)
 
         if zp0 is not None:
+            printmsg('Sky rate:       %8.3f counts/pix/sec' % (sky1/exptime))
             skybr = -2.5 * np.log10(sky1/pixsc/pixsc/exptime) + zp0
             printmsg('Sky brightness: %8.3f mag/arcsec^2' % skybr)
             printmsg('Fiducial:       %8.3f mag/arcsec^2' % sky0)
@@ -291,7 +290,10 @@ class RawMeasurer(object):
 
         # Read WCS header and compute boresight
         wcs = self.get_wcs(hdr)
-        ra_ccd,dec_ccd = wcs.pixelxy2radec((fullW+1)/2., (fullH+1)/2.)
+        if wcs is not None:
+            ra_ccd,dec_ccd = wcs.pixelxy2radec((fullW+1)/2., (fullH+1)/2.)
+        else:
+            ra_ccd = dec_ccd = None
 
         camera = primhdr.get('INSTRUME','').strip().lower()
         # -> "decam" / "mosaic3"
@@ -299,11 +301,12 @@ class RawMeasurer(object):
                     skybright=skybr, rawsky=sky1,
                     pixscale=pixsc, primhdr=primhdr,
                     hdr=hdr, wcs=wcs, ra_ccd=ra_ccd, dec_ccd=dec_ccd,
-                    extension=ext, camera=camera)
+                    extension=ext, camera=camera, trim_x0=trim_x0, trim_y0=trim_y0,
+                    nom_zp=zp0)
 
         if get_image:
             meas.update(image=img, trim_x0=trim_x0, trim_y0=trim_y0)
-        
+
         if skybr is not None and not np.isfinite(skybr):
             print('Measured negative sky brightness:', sky1, 'counts')
             return meas
@@ -341,7 +344,6 @@ class RawMeasurer(object):
 
         # Measure moments, etc around detected stars.
         # These measurements don't seem to be very good!
-        xx,yy = [],[]
         fx,fy = [],[]
         mx2,my2,mxy = [],[],[]
         wmx2,wmy2,wmxy = [],[],[]
@@ -358,8 +360,6 @@ class RawMeasurer(object):
             if (x0+x) < P or (x0+x) > W-1-P or (y0+y) < P or (y0+y) > H-1-P:
                 #print('Skipping edge peak', x0+x, y0+y)
                 continue
-            xx.append(x0 + x)
-            yy.append(y0 + y)
             pkarea = detsn[y0+y-P: y0+y+P+1, x0+x-P: x0+x+P+1]
 
             from scipy.ndimage.measurements import center_of_mass
@@ -411,9 +411,6 @@ class RawMeasurer(object):
             
         fx = np.array(fx)
         fy = np.array(fy)
-        xx = np.array(xx)
-        yy = np.array(yy)
-        del xx,yy
 
         if ps is not None:
             plt.clf()
@@ -450,7 +447,7 @@ class RawMeasurer(object):
     
         # Manual aperture photometry to get clipped means in sky annulus
         sky_inner_r, sky_outer_r = [r / pixsc for r in self.skyrad]
-        sky = []
+        apsky = []
         for xi,yi in zip(fx,fy):
             ix = int(np.round(xi))
             iy = int(np.round(yi))
@@ -465,16 +462,23 @@ class RawMeasurer(object):
             skypix = img[ylo:yhi, xlo:xhi][inannulus]
             #print('ylo,yhi, xlo,xhi', ylo,yhi, xlo,xhi, 'img subshape', img[ylo:yhi, xlo:xhi].shape, 'inann shape', inannulus.shape)
             s,nil = sensible_sigmaclip(skypix)
-            sky.append(s)
-        sky = np.array(sky)
+            apsky.append(s)
+        apsky = np.array(apsky)
+        print('Aperture sky estimates:', apsky)
 
-        apflux2 = apflux - sky * (np.pi * aprad_pix**2)
+        apflux2 = apflux - apsky * (np.pi * aprad_pix**2)
         good = (apflux2>0)*(apflux>0)
         apflux = apflux[good]
         apflux2 = apflux2[good]
+        apsky = apsky[good]
         fx = fx[good]
         fy = fy[good]
 
+        meas.update(all_x=fx, all_y=fy, all_apflux=apflux2, all_apflux_noskysub=apflux,
+                    all_apsky=apsky)
+
+        if wcs is None:
+            return meas
 
         stars = self.get_reference_stars(wcs, band)
         if stars is None:
@@ -559,8 +563,8 @@ class RawMeasurer(object):
         apmag2 = -2.5 * np.log10(apflux2) + zp0 + 2.5 * np.log10(exptime)
         apmag  = -2.5 * np.log10(apflux ) + zp0 + 2.5 * np.log10(exptime)
 
-        meas.update(all_x=fx, all_y=fy, all_apflux=apflux2,
-                    x=fx[J], y=fy[J], apflux=apflux2[J], apmag=apmag2[J],
+        meas.update(x=fx[J], y=fy[J], apflux=apflux2[J], apflux_noskysub=apflux[J],
+                    apmag=apmag2[J], apsky=apsky[J], apmag_noskysub=apmag[J],
                     colorterm=colorterm[I], refmag=ps1mag, refstars=stars[I])
 
         if ps is not None:
