@@ -302,7 +302,7 @@ class RawMeasurer(object):
                     pixscale=pixsc, primhdr=primhdr,
                     hdr=hdr, wcs=wcs, ra_ccd=ra_ccd, dec_ccd=dec_ccd,
                     extension=ext, camera=camera, trim_x0=trim_x0, trim_y0=trim_y0,
-                    nom_zp=zp0)
+                    nom_zp=zp0, sig1=sig1)
 
         if get_image:
             meas.update(image=img, trim_x0=trim_x0, trim_y0=trim_y0)
@@ -427,7 +427,7 @@ class RawMeasurer(object):
             fx = fx[keep]
             fy = fy[keep]
 
-        if ps is not None and not all(keep):
+        if ps is not None and (keep is None or not all(keep)):
             plt.clf()
             dimshow(detsn, vmin=-3, vmax=50, cmap='gray')
             ax = plt.axis()
