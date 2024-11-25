@@ -1937,6 +1937,7 @@ def main(cmdlineargs=None, get_copilot=False):
         files = ' '.join([ecsv, plot, radec])
         cmd = ('cd %s && git add %s && '
                + 'git commit %s -m "add copilot database and plots for %s" && '
+               + 'git pull --no-edit && '
                + 'git push') % (logdir, files, files, yymmdd)
         print('Committing observing log files:')
         print(cmd)
