@@ -1,3 +1,4 @@
+#! /usr/bin/env python2.7
 from __future__ import print_function
 #
 # Client for SISPI Remote CommandServer
@@ -94,9 +95,22 @@ class RemoteClient():
 
         return self.execute('addexposure', parameter=paramstr)
 
+def main():
+    import argparse
 
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--stop', action='store_true', help='Run stop-exposure')
+    opt = parser.parse_args()
+
+    rc = RemoteClient()
+    if opt.stop:
+        rc.stopexposure()
+
+    return 0
 
 if __name__ == '__main__':
+    sys.exit(main())
+
     # rc = RemoteClient(cs_host='10.10.168.162', cs_port=7767)
     # rc.addexposure()
     # rc.addexposure(exptype='dark')
