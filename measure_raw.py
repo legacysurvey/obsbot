@@ -464,8 +464,8 @@ class RawMeasurer(object):
 
         apflux2 = apflux - apsky * (np.pi * aprad_pix**2)
         # HACK for IBIS guider
-        #good = (apflux2>0)*(apflux>0)
-        good = (apflux>0)
+        good = (apflux2>0)*(apflux>0)
+        #good = (apflux>0)
         apflux = apflux[good]
         apflux2 = apflux2[good]
         apsky = apsky[good]
