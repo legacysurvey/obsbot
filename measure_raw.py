@@ -461,10 +461,11 @@ class RawMeasurer(object):
             s,nil = sensible_sigmaclip(skypix)
             apsky.append(s)
         apsky = np.array(apsky)
-        print('Aperture sky estimates:', apsky)
 
         apflux2 = apflux - apsky * (np.pi * aprad_pix**2)
-        good = (apflux2>0)*(apflux>0)
+        # HACK for IBIS guider
+        #good = (apflux2>0)*(apflux>0)
+        good = (apflux>0)
         apflux = apflux[good]
         apflux2 = apflux2[good]
         apsky = apsky[good]
@@ -1283,7 +1284,7 @@ def read_raw_decam(F, ext):
         dimshow(img[:M, -M:], ticks=False, **kwa)
         plt.suptitle('Raw corners')
         ps.savefig()
-    
+
     if 'DESBIAS' in hdr:
         assert(False)
 
@@ -1332,7 +1333,8 @@ def read_raw_decam(F, ext):
         plt.title('Img DataB')
         ps.savefig()
 
-    
+    print('Gains', gainA, gainB)
+
     img[dataA] = (img[dataA] - np.median(img[biasA])) * gainA
     img[dataB] = (img[dataB] - np.median(img[biasB])) * gainB
     
