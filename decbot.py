@@ -83,6 +83,9 @@ def main(cmdlineargs=None, get_decbot=False):
                       default=True, action='store_false',
                       help='Do not cut tiles that were supposed to be observed in the past upon startup')
 
+    parser.add_option('--no-set-exptime', dest='do_set_exptime', default=True, action='store_false',
+                      help='Do not change exposure times of exposures.')
+
     parser.add_option('--no-queue', dest='do_queue', default=True, action='store_false',
                       help='Do not actually queue exposures.')
 
@@ -584,7 +587,10 @@ class Decbot(NewFileWatcher):
             return
         # Update planned exposure times
         M = self.latest_measurement
-        if M is not None:
+        if not opt.do_set_exptime:
+            # We're not updating exptimes
+            pass
+        elif M is not None:
             # Keep track of expected time of observations
             # FIXME -- should add margin for the images currently in the queue.
             self.obs.date = ephem.now()
@@ -615,7 +621,7 @@ class Decbot(NewFileWatcher):
         # tiles (+1 for the pipelined one)
         recent = self.queued_tiles[-(self.nqueued+1):]
         M = self.latest_measurement
-        if len(recent) and M is not None:
+        if len(recent) and M is not None and opt.do_set_exptime:
             print('Updating exposure times for recently queued tiles')
             self.obs.date = ephem.now()
             for ii,jplan in enumerate(recent):
