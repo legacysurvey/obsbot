@@ -109,6 +109,7 @@ def main():
     return 0
 
 if __name__ == '__main__':
+    import sys
     sys.exit(main())
 
     # rc = RemoteClient(cs_host='10.10.168.162', cs_port=7767)
