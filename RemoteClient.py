@@ -58,7 +58,7 @@ class RemoteClient():
         return self.execute('clear_queue')
 
     def addexposure(self, exptime=10., exptype='object', filter='r',
-                    object=None, ra=0., dec=0., verbose=False, propid=None):
+                    object=None, ra=0., dec=0., efftime=None, verbose=False, propid=None):
         import json
         kw = dict(expType=exptype, object=object)
         if propid is not None:
@@ -67,6 +67,8 @@ class RemoteClient():
             if object is None:
                 object = 'Object'
             kw.update(expTime=exptime, filter=filter, RA=ra, dec=dec)
+            if efftime is not None:
+                kw.update(efftime=efftime)
             paramstr = json.dumps(kw)
                                        
         elif exptype == 'dark':

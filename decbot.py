@@ -393,6 +393,8 @@ class Decbot(NewFileWatcher):
             expo = dict(filter=j['filter'], ra=j['RA'], dec=j['dec'],
                         object=j['object'], exptime=j['expTime'],
                         verbose=self.verbose)
+            if 'efftime' in j:
+                expo['efftime'] = j['efftime']
 
             # What is the total exposure time of our last Nq queued exposures?
             queuedtime = sum(tile['expTime'] + self.nom.overhead
