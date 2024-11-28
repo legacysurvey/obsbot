@@ -621,7 +621,7 @@ class Decbot(NewFileWatcher):
         # tiles (+1 for the pipelined one)
         recent = self.queued_tiles[-(self.nqueued+1):]
         M = self.latest_measurement
-        if len(recent) and M is not None and opt.do_set_exptime:
+        if len(recent) and M is not None and self.opt.do_set_exptime:
             print('Updating exposure times for recently queued tiles')
             self.obs.date = ephem.now()
             for ii,jplan in enumerate(recent):
