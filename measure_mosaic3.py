@@ -77,7 +77,7 @@ class Mosaic3Measurer(RawMeasurer):
             wcs = Tan(hdr)
         return wcs
 
-    def colorterm_ps1_to_observed(self, ps1stars, band):
+    def colorterm_ref_to_observed(self, ps1stars, band):
         bandmap = dict(zd='z', D51='g')
         band = bandmap.get(band, band)
         return ps1_to_mosaic(ps1stars, band)

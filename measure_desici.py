@@ -151,6 +151,6 @@ class DesiCiMeasurer(RawMeasurer):
     def get_ps1_band(self, band):
         return ps1cat.ps1band[band]
 
-    def colorterm_ps1_to_observed(self, ps1stars, band):
+    def colorterm_ref_to_observed(self, ps1stars, band):
         return 0.
 

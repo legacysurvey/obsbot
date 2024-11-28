@@ -61,7 +61,7 @@ class BokMeasurer(RawMeasurer):
     def remove_sky_gradients(self, img):
         pass
 
-    def colorterm_ps1_to_observed(self, ps1stars, band):
+    def colorterm_ref_to_observed(self, ps1stars, band):
         return ps1_to_90prime(ps1stars, band)
 
     def get_ps1_band(self, band):
