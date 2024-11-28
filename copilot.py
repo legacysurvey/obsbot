@@ -1572,51 +1572,58 @@ def update_tile_file(meas, tilefn, opt, obs, nom):
     fmt = 'ascii.ecsv'
     tiles = Table.read(tilefn, format=fmt)
     print('Read', len(tiles), 'tiles')
-    print('tiles:', tiles)
-    print('columns:', tiles.columns)
-
-    print('Measurements:')
-    meas.about()
-    # meas tileids are all zero.
-    print('meas 0:', meas[0])
-    meas[0].about()
+    #print('tiles:', tiles)
+    #print('columns:', tiles.columns)
+    # print('Measurements:')
+    # meas.about()
+    # # meas tileids are all zero.
+    # print('meas 0:', meas[0])
+    # meas[0].about()
 
     # Ugh, on at least one night, I (dstn) messed up and manually submitted tiles
     # with the wrong OBJECT name (ie, they had M411 in the OBJECT name, but actually
-    # used the M464 filter).  So we can't depend on OBJECt... or we find and work around
+    # used the M464 filter).  So we can't depend on OBJECT... or we find and work around
     # these mess-ups?
 
     objmap = dict([(obj, i) for i,obj in enumerate(meas.object)])
+    updates = []
     for i in range(len(tiles)):
         # match each row in tiles to meas (most won't match)
         try:
             j = objmap[tiles['OBJECT'][i]]
         except KeyError:
             continue
-
         # Lookup tile center vs boresight pointing
         from astrometry.util.starutil_numpy import arcsec_between
         dd = arcsec_between(meas.rabore[j], meas.decbore[j], tiles['RA'][i], tiles['DEC'][i])
         assert(dd < 15.)
-
         assert(meas.band[j] == tiles['FILTER'][i])
-
         if meas.zeropoint[j] <= 0:
             continue
-
         efftime = meas.exptime[j] / meas.expfactor[j]
-
-        tiles['EFFTIME_TOT'][i] += efftime
-        # ????
+        # If the new efftime ~= the existing efftime, assume that the user re-ran the
+        # end-of-night script; don't update anything
+        was_done = tiles['DONE'][i]
+        if was_done and np.abs(tiles['EFFTIME_TOT'][i] - efftime) < 0.001:
+            print(('Tile %s: was already marked DONE with same EFFTIME -- assuming ' +
+                   'end-of-night script is being run a second time -- not updating anything') %
+                  tiles['OBJECT'][i])
+            updates = []
+            break
+        # Previously unobserved, or different efftime - increment efftime
+        updates.append((i, efftime))
+    # Apply updates
+    for i,efftime in updates:
         tiles['DONE'][i] = True
+        tiles['EFFTIME_TOT'][i] += efftime
 
     tilefn = os.path.realpath(tilefn)
-    print('Real tile filename:', tilefn)
+    #print('Real tile filename:', tilefn)
     tmpfn = os.path.join(os.path.dirname(tilefn), 'tmp-' + os.path.basename(tilefn))
     tiles.write(tmpfn, overwrite=True)
-    print('Wrote', tmpfn)
-    #os.rename(tmpfn, tilefn)
-    #print('Updated', tilefn)
+    #print('Wrote', tmpfn)
+    os.rename(tmpfn, tilefn)
+    print('Updated', tilefn)
 
 def main(cmdlineargs=None, get_copilot=False):
     import optparse
@@ -1916,6 +1923,7 @@ def main(cmdlineargs=None, get_copilot=False):
 
     botplanfn = '%s-plan.fits' % bot_name
 
+    updated_tile_file = False
     if opt.plot:
         meas = plot_recent(opt, obs, nom,
                            tiles=tiles, markmjds=markmjds, show_plot=False,
@@ -1927,6 +1935,8 @@ def main(cmdlineargs=None, get_copilot=False):
             else:
                 print('Updating tile file...')
                 update_tile_file(meas, opt.tiles, opt, obs, nom)
+                updated_tile_file = True
+
         if not opt.end_of_night:
             return 0
 
@@ -1965,6 +1975,22 @@ def main(cmdlineargs=None, get_copilot=False):
         else:
             print('(dry run)')
 
+        if updated_tile_file:
+            tilefn = os.path.realpath(opt.tiles)
+            tiledir = os.path.dirname(tilefn)
+            tilefile = os.path.basename(tilefn)
+            cmd = ('cd %s && git commit %s -m "update tile file for %s" '
+                + '&& git push') % (tiledir, tilefile, yymmdd)
+            print('Committing tile file:')
+            print(cmd)
+            if not opt.dry_run:
+                rtn = os.system(cmd)
+                if rtn:
+                    print('WARNING: committing tile file failed.')
+                else:
+                    print('Tile file committed.')
+            else:
+                print('(dry run)')
         return 0
 
     print('Loading SFD maps...')
