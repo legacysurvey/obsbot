@@ -330,7 +330,7 @@ class RawMeasurer(object):
     
         slices = self.detect_sources(detsn, self.det_thresh, ps)
         printmsg(len(slices), 'sources detected')
-        if len(slices) < 20:
+        if len(slices) < 20 and self.det_thresh > 10.:
             slices = self.detect_sources(detsn, 10., ps)
             printmsg(len(slices), 'sources detected')
         ndetected = len(slices)
