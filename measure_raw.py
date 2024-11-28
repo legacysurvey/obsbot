@@ -257,7 +257,7 @@ class RawMeasurer(object):
             airmass = 1.0
 
         zp0 = self.zeropoint_for_exposure(band, ext=self.ext, exptime=exptime, primhdr=primhdr)
-        printmsg('Nominal zeropoint:', zp0)
+        printmsg('Nominal zeropoint: %.3f' % zp0)
 
         try:
             sky0 = self.nom.sky(band)
@@ -582,8 +582,8 @@ class RawMeasurer(object):
     
         dm = ps1mag - apmag[J]
         dmag,dsig = sensible_sigmaclip(dm, nsigma=2.5)
-        printmsg('Mag offset: %8.3f' % dmag)
-        printmsg('Scatter:    %8.3f' % dsig)
+        #printmsg('Mag offset: %8.3f' % dmag)
+        #printmsg('Scatter:    %8.3f' % dsig)
 
         if not np.isfinite(dmag) or not np.isfinite(dsig):
             print('FAILED TO GET ZEROPOINT!')
@@ -634,13 +634,13 @@ class RawMeasurer(object):
         zp_mean = zp0 + dmag
 
         zp_obs = zp0 + dmagmedsky
-        print('zp_obs', zp_obs, 'kx', kx, 'airmass', airmass)
-        print('zp0 for this exposure would be', zp_obs + kx * (airmass-1.))
+        #print('zp_obs', zp_obs, 'kx', kx, 'airmass', airmass)
+        print('Nominal zeropoint for this exposure would be %.3f' % (zp_obs + kx * (airmass-1.)))
         transparency = 10.**(-0.4 * (zp0 - zp_obs - kx * (airmass - 1.)))
         meas.update(zp=zp_obs, transparency=transparency)
 
-        printmsg('Zeropoint %6.3f' % zp_obs)
-        printmsg('Fiducial  %6.3f' % zp0)
+        printmsg('Zeropoint:   %6.3f' % zp_obs)
+        printmsg('Fiducial:    %6.3f' % zp0)
         printmsg('Transparency: %.3f' % transparency)
 
         # Also return the zeropoints using the sky-subtracted mags,
@@ -772,7 +772,6 @@ class RawMeasurer(object):
                 ylo = max(0, iy-psf_r)
                 yhi = min(H, iy+psf_r+1)
                 pix = img[ylo:yhi, xlo:xhi]
-        
                 slc = pix[iy-ylo, :].copy()
                 slc /= np.sum(slc)
                 p1 = plt.plot(slc, 'b-', alpha=0.2)
@@ -843,7 +842,7 @@ class RawMeasurer(object):
 
         # Broad (5-pixel) bins are okay because we're going to refine them later... right?
         bins = 2*int(np.ceil(radius / 5.))
-        print('Histogramming with', bins, 'bins')
+        #print('Histogramming with', bins, 'bins')
         histo,xe,ye = np.histogram2d(dx, dy, bins=bins,
                                      range=((-radius,radius),(-radius,radius)))
         # smooth histogram before finding peak -- fuzzy matching
