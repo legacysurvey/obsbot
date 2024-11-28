@@ -587,7 +587,7 @@ class Decbot(NewFileWatcher):
             return
         # Update planned exposure times
         M = self.latest_measurement
-        if not opt.do_set_exptime:
+        if not self.opt.do_set_exptime:
             # We're not updating exptimes
             pass
         elif M is not None:
