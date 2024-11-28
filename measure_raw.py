@@ -411,7 +411,7 @@ class RawMeasurer(object):
 
         if ps is not None:
             plt.clf()
-            dimshow(detsn, vmin=-3, vmax=50, cmap='gray')
+            dimshow(detsn, vmin=-3, vmax=20, cmap='gray')
             ax = plt.axis()
             plt.plot(fx, fy, 'go', mec='g', mfc='none', ms=10)
             plt.colorbar()
@@ -655,14 +655,17 @@ class RawMeasurer(object):
         # trans_sky = 10.**(-0.4 * (zp0 - zp_sky - kx * (airmass - 1.)))
         # print('Zeropoint %6.3f' % zp_sky)
         # print('Transparency: %.3f' % trans_sky)
-        
-        fwhms = []
+
+        # Arrays aligned with apflux; will cut to [J] below
+        fwhms = np.zeros(len(apflux), np.float32)
+        tractor_fluxes = np.zeros(len(apflux), np.float32)
         psf_r = 15
+        fit_I = J
         if n_fwhm not in [0, None]:
-            Jf = J[:n_fwhm]
-            
-        for i,(xi,yi,fluxi) in enumerate(zip(fx[Jf],fy[Jf],apflux[Jf])):
-            #print('Fitting source', i, 'of', len(Jf))
+            # Fit the brightest N
+            fit_I = J[np.argsort(-apflux[J])[:n_fwhm]]
+
+        for num,(i,xi,yi,fluxi) in enumerate(zip(fit_I, fx[fit_I], fy[fit_I], apflux[fit_I])):
             ix = int(np.round(xi))
             iy = int(np.round(yi))
             xlo = max(0, ix-psf_r)
@@ -675,13 +678,6 @@ class RawMeasurer(object):
             pix = img[ylo:yhi, xlo:xhi].copy()
             ie = np.zeros_like(pix)
             ie[keep] = 1. / sig1
-            #print('fitting source at', ix,iy)
-            #print('number of active pixels:', np.sum(ie > 0), 'shape', ie.shape)
-
-            # plt.clf()
-            # plt.imshow(pix, interpolation='nearest', origin='lower',
-            #            vmin=-2.*sig1, vmax=5.*sig1)
-            # plt.savefig('star-%03i.png' % i)
 
             psf = tractor.NCircularGaussianPSF([4.], [1.])
             psf.radius = psf_r
@@ -689,49 +685,49 @@ class RawMeasurer(object):
             src = tractor.PointSource(tractor.PixPos(xi-xlo, yi-ylo),
                                       tractor.Flux(fluxi))
             tr = tractor.Tractor([tim],[src])
-    
-            #print('Posterior before prior:', tr.getLogProb())
-            src.pos.addGaussianPrior('x', 0., 1.)
-            #print('Posterior after prior:', tr.getLogProb())
-            
-            doplot = (i < 5) * (ps is not None)
+
+            #print('Star position:', src.pos)
+            #src.pos.addGaussianPrior('x', 0., 1.)
+
+            doplot = (num < 5) * (ps is not None)
             if doplot:
                 mod0 = tr.getModelImage(0)
-    
+
+            # Fit PSF width + Catalog entries
             tim.freezeAllBut('psf')
             psf.freezeAllBut('sigmas')
-    
-            # print('Optimizing params:')
-            # tr.printThawedParams()
-    
-            #print('Parameter step sizes:', tr.getStepSizes())
             optargs = dict(priors=False, shared_params=False)
-            for step in range(50):
-                dlnp,x,alpha = tr.optimize(**optargs)
-                #print('dlnp', dlnp)
-                #print('src', src)
-                #print('psf', psf)
-                if dlnp == 0:
-                    break
-            # Now fit only the PSF size
-            tr.freezeParam('catalog')
-            # print('Optimizing params:')
-            # tr.printThawedParams()
-    
-            for step in range(50):
-                dlnp,x,alpha = tr.optimize(**optargs)
-                # print('dlnp', dlnp)
-                # print('src', src)
-                # print('psf', psf)
-                if dlnp == 0:
-                    break
+            tr.optimize_loop(**optargs)
+            # for step in range(50):
+            #     dlnp,x,alpha = tr.optimize(**optargs)
+            #     #print('dlnp', dlnp)
+            #     #print('src', src)
+            #     #print('psf', psf)
+            #     if dlnp == 0:
+            #         break
+            # # Now fit only the PSF size
+            # tr.freezeParam('catalog')
+            # # print('Optimizing params:')
+            # # tr.printThawedParams()
+            # 
+            # for step in range(50):
+            #     dlnp,x,alpha = tr.optimize(**optargs)
+            #     # print('dlnp', dlnp)
+            #     # print('src', src)
+            #     # print('psf', psf)
+            #     if dlnp == 0:
+            #         break
 
-            fwhms.append(psf.sigmas[0] * 2.35 * pixsc)
-                
+            tr.thawParam('catalog')
+            print('Optimized params:')
+            tr.printThawedParams()
+
+            fwhms[i] = psf.sigmas[0] * 2.35 * pixsc
+            tractor_fluxes[i] = src.brightness.getValue()
+
             if doplot:
                 mod1 = tr.getModelImage(0)
                 chi1 = tr.getChiImage(0)
-            
                 plt.clf()
                 plt.subplot(2,2,1)
                 plt.title('Image')
@@ -745,23 +741,13 @@ class RawMeasurer(object):
                 plt.subplot(2,2,4)
                 plt.title('Final chi')
                 dimshow(chi1, vmin=-10, vmax=10)
-                plt.suptitle('PSF fit')
+                plt.suptitle('Tractor fit')
                 ps.savefig()
-    
-        fwhms = np.array(fwhms)
-        fwhm = np.median(fwhms)
-        printmsg('Median FWHM : %.3f arcsec' % np.median(fwhms))
-        meas.update(seeing=fwhm, seeings=fwhms)
-    
-        if False and ps is not None:
-            lo,hi = np.percentile(fwhms, [5,95])
-            lo -= 0.1
-            hi += 0.1
-            plt.clf()
-            plt.hist(fwhms, 25, range=(lo,hi), histtype='step', color='b')
-            plt.xlabel('FWHM (arcsec)')
-            ps.savefig()
-    
+
+        fwhm = np.median(fwhms[fwhms > 0])
+        printmsg('Seeing:       %.3f arcsec' % fwhm)
+        meas.update(seeing=fwhm, seeings=fwhms[J], tractor_fluxes=tractor_fluxes[J])
+
         if ps is not None:
             plt.clf()
             for i,(xi,yi) in enumerate(list(zip(fx[J],fy[J]))[:50]):
