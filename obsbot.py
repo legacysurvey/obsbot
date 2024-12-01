@@ -382,6 +382,9 @@ class NewFileWatcher(Logger):
         # timeout was called.
         self.timeout = 60.
 
+        # For the run() loop: sleep next time through the loop?
+        self.run_loop_sleep = True
+
         # Get current file list
         files = self.get_file_list()
 
@@ -530,11 +533,11 @@ class NewFileWatcher(Logger):
 
     def run(self):
         print('Checking directory for new files:', self.dir)
-        sleep = False
+        self.run_loop_sleep = False
         while True:
             print
-            if sleep:
+            if self.run_loop_sleep:
                 time.sleep(self.sleeptime)
             gotone = self.run_one()
-            sleep = not gotone
+            self.run_loop_sleep = not gotone
             self.heartbeat()
