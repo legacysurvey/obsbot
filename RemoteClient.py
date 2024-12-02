@@ -51,6 +51,9 @@ class RemoteClient():
     def stopexposure(self):
         return self.execute('stopexposure')
 
+    def stoprequested(self):
+        return self.execute('stoprequested')
+
     def get_n_queued(self):
         n = self.execute('get_nqueue')
         return int(n)
@@ -100,11 +103,14 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--stop', action='store_true', help='Run stop-exposure')
+    parser.add_argument('--stop-requested', action='store_true', help='Run stop-requested')
     opt = parser.parse_args()
 
     rc = RemoteClient()
     if opt.stop:
         rc.stopexposure()
+    if opt.stop_requested:
+        rc.stoprequested()
 
     return 0
 
