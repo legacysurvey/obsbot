@@ -167,7 +167,8 @@ class RawMeasurer(object):
         return airmass
 
     def run(self, ps=None, primext=0, focus=False, momentsize=5,
-            n_fwhm=100, verbose=True, get_image=False, flat=None):
+            n_fwhm=100, verbose=True, get_image=False, flat=None,
+            normalize_flat=False):
         if ps is not None:
             import pylab as plt
             from astrometry.util.plotutils import dimshow, plothist
@@ -215,8 +216,12 @@ class RawMeasurer(object):
 
         if flat is not None:
             I = (flat != 0)
-            med = np.median(flat[I]).astype(float)
-            img[I] = img[I] / (flat[I] / med)
+            assert(flat.shape == img.shape)
+            if normalize_flat:
+                med = np.median(flat[I]).astype(float)
+                img[I] = img[I] / (flat[I] / med)
+            else:
+                img[I] = img[I] / flat[I]
 
         img,trim_x0,trim_y0 = self.trim_edges(img)
         fullH,fullW = img.shape
@@ -423,8 +428,13 @@ class RawMeasurer(object):
         ap = []
         aprad_pix = self.aprad / pixsc
         aper = photutils.CircularAperture(apxy, aprad_pix)
-        p = photutils.aperture_photometry(img, aper)
+        imsigma = np.ones_like(img) * sig1
+        p = photutils.aperture_photometry(img, aper, error=imsigma)
         apflux = p.field('aperture_sum')
+        apflux_err = p.field('aperture_sum_err')
+        imsigma = np.hypot(sig1, np.sqrt(np.maximum(img, 0.)))
+        p = photutils.aperture_photometry(img, aper, error=imsigma)
+        apflux_err_poisson = p.field('aperture_sum_err')
 
         # Manual aperture photometry to get clipped means in sky annulus
         sky_inner_r, sky_outer_r = [r / pixsc for r in self.skyrad]
@@ -454,7 +464,8 @@ class RawMeasurer(object):
         fy = fy[good]
 
         meas.update(all_x=fx, all_y=fy, all_apflux=apflux2, all_apflux_noskysub=apflux,
-                    all_apsky=apsky)
+                    all_apsky=apsky, all_apflux_error=apflux_err,
+                    all_apflux_error_poisson=apflux_err_poisson)
 
         if wcs is None:
             return meas
@@ -518,19 +529,18 @@ class RawMeasurer(object):
         colorterm = self.get_color_term(stars, band)
         #print('Color term:', colorterm)
         stars.mag += colorterm
-        ps1mag = stars.mag[I]
-        #print('PS1 mag:', ps1mag)
-        ps1_gi = stars.median[I, 0] - stars.median[I, 2]
+        refmag = stars.mag[I]
+        #print('PS1 mag:', refmag)
 
         if False and ps is not None:
             plt.clf()
-            plt.semilogy(ps1mag, apflux2[J], 'b.')
+            plt.semilogy(refmag, apflux2[J], 'b.')
             plt.xlabel('PS1 mag')
             plt.ylabel('DECam ap flux (with sky sub)')
             ps.savefig()
 
             plt.clf()
-            plt.semilogy(ps1mag, apflux[J], 'b.')
+            plt.semilogy(refmag, apflux[J], 'b.')
             plt.xlabel('PS1 mag')
             plt.ylabel('DECam ap flux (no sky sub)')
             ps.savefig()
@@ -541,19 +551,21 @@ class RawMeasurer(object):
 
         meas.update(x=fx[J], y=fy[J], apflux=apflux2[J], apflux_noskysub=apflux[J],
                     apmag=apmag2[J], apsky=apsky[J], apmag_noskysub=apmag[J],
-                    colorterm=colorterm[I], refmag=ps1mag, refstars=stars[I])
+                    apflux_err=apflux_err[J],
+                    apflux_err_poisson=apflux_err_poisson[J],
+                    colorterm=colorterm[I], refmag=refmag, refstars=stars[I])
 
         if ps is not None:
             plt.clf()
-            plt.plot(ps1mag, apmag[J], 'b.', label='No sky sub')
-            plt.plot(ps1mag, apmag2[J], 'r.', label='Sky sub')
+            plt.plot(refmag, apmag[J], 'b.', label='No sky sub')
+            plt.plot(refmag, apmag2[J], 'r.', label='Sky sub')
             plt.xlabel('PS1 mag')
             plt.ylabel('DECam ap mag')
             plt.legend(loc='upper left')
             plt.title('Zeropoint')
             ps.savefig()
 
-        dm = ps1mag - apmag[J]
+        dm = refmag - apmag[J]
         dmag,dsig = sensible_sigmaclip(dm, nsigma=2.5)
         #printmsg('Mag offset: %8.3f' % dmag)
         #printmsg('Scatter:    %8.3f' % dsig)
@@ -572,7 +584,7 @@ class RawMeasurer(object):
         #print('Zeropoint %6.3f' % zp_med)
         #print('Transparency: %.3f' % trans_med)
 
-        dm = ps1mag - apmag2[J]
+        dm = refmag - apmag2[J]
         dmag2,dsig2 = sensible_sigmaclip(dm, nsigma=2.5)
         #print('Sky-sub mag offset', dmag2)
         #print('Scatter', dsig2)
@@ -583,8 +595,8 @@ class RawMeasurer(object):
 
         if ps is not None:
             plt.clf()
-            plt.plot(ps1mag, apmag[J] + dmag - ps1mag, 'b.', label='No sky sub')
-            plt.plot(ps1mag, apmag2[J]+ dmag2- ps1mag, 'r.', label='Sky sub')
+            plt.plot(refmag, apmag[J] + dmag - refmag, 'b.', label='No sky sub')
+            plt.plot(refmag, apmag2[J]+ dmag2- refmag, 'r.', label='Sky sub')
             plt.xlabel('PS1 mag')
             plt.ylabel('DECam ap mag - PS1 mag')
             plt.legend(loc='upper left')
@@ -593,8 +605,9 @@ class RawMeasurer(object):
             plt.title('Zeropoint')
             ps.savefig()
 
+            ps1_gi = stars.median[I, 0] - stars.median[I, 2]
             plt.clf()
-            plt.plot(ps1_gi, apmag2[J] + dmag2 - ps1mag, 'r.', label='Sky sub')
+            plt.plot(ps1_gi, apmag2[J] + dmag2 - refmag, 'r.', label='Sky sub')
             plt.xlabel('PS1 g-i color (mag)')
             plt.ylabel('DECam ap mag - PS1 mag')
             plt.legend(loc='upper left')
@@ -776,7 +789,7 @@ class RawMeasurer(object):
         # Match PS1 to our detections, find offset
         radius = self.maxshift / pixsc
 
-        print('Matching stars:', len(px), 'PS1 and', len(fullx), 'in image')
+        print('Matching stars:', len(px), 'reference and', len(fullx), 'in image')
         I,J,dx,dy = self.match_reference_stars(px, py, fullx, fully, radius, stars)
         #print(len(I), 'spatial matches with large radius', self.maxshift,
         #      'arcsec,', radius, 'pix')
