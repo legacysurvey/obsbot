@@ -553,7 +553,8 @@ class RawMeasurer(object):
                     apmag=apmag2[J], apsky=apsky[J], apmag_noskysub=apmag[J],
                     apflux_err=apflux_err[J],
                     apflux_err_poisson=apflux_err_poisson[J],
-                    colorterm=colorterm[I], refmag=refmag, refstars=stars[I])
+                    colorterm=colorterm[I], refmag=refmag, refstars=stars[I],
+                    all_refstars=stars, all_refstars_matched=I)
 
         if ps is not None:
             plt.clf()
