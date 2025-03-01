@@ -89,10 +89,10 @@ def main(cmdlineargs=None, get_decbot=False):
     parser.add_option('--no-queue', dest='do_queue', default=True, action='store_false',
                       help='Do not actually queue exposures.')
 
-    parser.add_option('--remote-server', default=None,
-                      help='Hostname of CommandServer for queue control')
-    parser.add_option('--remote-port', default=None, type=int,
-                      help='Port number of CommandServer for queue control')
+    # parser.add_option('--remote-server', default=None,
+    #                   help='Hostname of CommandServer for queue control')
+    # parser.add_option('--remote-port', default=None, type=int,
+    #                   help='Port number of CommandServer for queue control')
 
     parser.add_option('--threads', type=int, default=1,
                       help='Run multi-threaded when processing multiple extensions?')
@@ -149,14 +149,16 @@ def main(cmdlineargs=None, get_decbot=False):
         print('Looking in directory $DECAM_DATA = ', opt.rawdata, 'for image files')
 
     if opt.do_queue:
-        kw = dict()
-        if opt.remote_server is not None:
-            kw['cs_host'] = opt.remote_server
-        if opt.remote_port is not None:
-            kw['cs_port'] = opt.remote_port
-        from RemoteClient import RemoteClient
-        print('Creating RemoteClient connection with args:', kw)
-        rc = RemoteClient(**kw)
+        # kw = dict()
+        # if opt.remote_server is not None:
+        #     kw['cs_host'] = opt.remote_server
+        # if opt.remote_port is not None:
+        #     kw['cs_port'] = opt.remote_port
+        # from RemoteClient import RemoteClient
+        # print('Creating RemoteClient connection with args:', kw)
+        # rc = RemoteClient(**kw)
+        from RunRemoteClient import RunRemoteClient
+        rc = RunRemoteClient()
     else:
         rc = None
 
