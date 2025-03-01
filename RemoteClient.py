@@ -104,6 +104,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--stop', action='store_true', help='Run stop-exposure')
     parser.add_argument('--stop-requested', action='store_true', help='Run stop-requested')
+    parser.add_argument('--get-n-queued', action='store_true', help='Get number of queued exposures')
     opt = parser.parse_args()
 
     rc = RemoteClient()
@@ -111,6 +112,9 @@ def main():
         rc.stopexposure()
     if opt.stop_requested:
         rc.stoprequested()
+    if opt.get_n_queued():
+        n = rc.get_n_queued()
+        print('n_queued = %i' % n)
 
     return 0
 
