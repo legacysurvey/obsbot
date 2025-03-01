@@ -1,5 +1,6 @@
 import os
 import subprocess
+import json
 
 class RunRemoteClient(object):
     def stoprequested(self):
@@ -30,6 +31,14 @@ class RunRemoteClient(object):
         return -1
 
     def addexposure(self, **exp):
-        pass
+        cmd = ['remote-client', '--add-exposure',  json.dumps(exp)]
+        rtn = os.system(cmd)
+        if rtn:
+            print('failed to run command', cmd, ': return val', rtn)
+
     def modifyexposure(self, select=None, update=None):
-        pass
+        cmd = ['remote-client', '--modify-exposure',  json.dumps(select), json.dumps(update)]
+        rtn = os.system(cmd)
+        if rtn:
+            print('failed to run command', cmd, ': return val', rtn)
+

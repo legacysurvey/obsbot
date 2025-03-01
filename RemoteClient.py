@@ -1,5 +1,6 @@
 #! /usr/bin/env python2.7
 from __future__ import print_function
+import json
 #
 # Client for SISPI Remote CommandServer
 # Code from Klaus Honscheid, 2015-11-06, [decam-chatter 1546]
@@ -36,7 +37,6 @@ class RemoteClient():
     Returns SUCCESS or FAILED: qManager.modify: No matching... checking pipeline
     '''
     def modifyexposure(self, select=None, update=None):
-        import json
         if select is None or update is None:
             raise ValueError('Need to set select= and update=')
         select_str = json.dumps(select)
@@ -63,7 +63,6 @@ class RemoteClient():
 
     def addexposure(self, exptime=10., exptype='object', filter='r',
                     object=None, ra=0., dec=0., efftime=None, verbose=False, propid=None):
-        import json
         kw = dict(expType=exptype, object=object)
         if propid is not None:
             kw.update(propid=propid)
@@ -105,6 +104,8 @@ def main():
     parser.add_argument('--stop', action='store_true', help='Run stop-exposure')
     parser.add_argument('--stop-requested', action='store_true', help='Run stop-requested')
     parser.add_argument('--get-n-queued', action='store_true', help='Get number of queued exposures')
+    parser.add_argument('--add-exposure', nargs=1, type=str, help='Enqueue the given JSON-encoded exposure')
+    parser.add_argument('--modify-exposure', nargs=2, type=str, help='Modify an exposure given the JSON-encoded selection and JSON-encoded update arguments')
     opt = parser.parse_args()
 
     rc = RemoteClient()
@@ -115,7 +116,14 @@ def main():
     if opt.get_n_queued:
         n = rc.get_n_queued()
         print('n_queued = %i' % n)
-
+    if opt.add_exposure is not None:
+        exp = json.loads(opt.add_exposure)
+        rc.addexposure(**exp)
+    if opt.modify_exposure is not None:
+        sel,up = opt.modify_exposure
+        select = json.loads(sel)
+        update = json.loads(up)
+        rc.modifyexposure(select=select, update=update)
     return 0
 
 if __name__ == '__main__':
