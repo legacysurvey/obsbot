@@ -15,7 +15,7 @@ class RunRemoteClient(object):
             print('failed to run remote-client:', rtn)
 
     def get_n_queued(self):
-        cmd = 'remote-client --get-n-queued'
+        cmd = ['remote-client', '--get-n-queued']
         cp = subprocess.run(cmd, capture_output=True, check=True, text=True)
         for line in cp.stdout.split('\n'):
             words = line.split(' ')

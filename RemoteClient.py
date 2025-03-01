@@ -112,7 +112,7 @@ def main():
         rc.stopexposure()
     if opt.stop_requested:
         rc.stoprequested()
-    if opt.get_n_queued():
+    if opt.get_n_queued:
         n = rc.get_n_queued()
         print('n_queued = %i' % n)
 
