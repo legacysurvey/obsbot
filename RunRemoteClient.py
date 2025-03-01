@@ -32,13 +32,9 @@ class RunRemoteClient(object):
 
     def addexposure(self, **exp):
         cmd = ['remote-client', '--add-exposure',  json.dumps(exp)]
-        rtn = os.system(cmd)
-        if rtn:
-            print('failed to run command', cmd, ': return val', rtn)
+        subprocess.run(cmd, check=True)
 
     def modifyexposure(self, select=None, update=None):
         cmd = ['remote-client', '--modify-exposure',  json.dumps(select), json.dumps(update)]
-        rtn = os.system(cmd)
-        if rtn:
-            print('failed to run command', cmd, ': return val', rtn)
+        subprocess.run(cmd, check=True)
 

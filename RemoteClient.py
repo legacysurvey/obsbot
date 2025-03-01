@@ -104,7 +104,7 @@ def main():
     parser.add_argument('--stop', action='store_true', help='Run stop-exposure')
     parser.add_argument('--stop-requested', action='store_true', help='Run stop-requested')
     parser.add_argument('--get-n-queued', action='store_true', help='Get number of queued exposures')
-    parser.add_argument('--add-exposure', nargs=1, type=str, help='Enqueue the given JSON-encoded exposure')
+    parser.add_argument('--add-exposure', type=str, help='Enqueue the given JSON-encoded exposure')
     parser.add_argument('--modify-exposure', nargs=2, type=str, help='Modify an exposure given the JSON-encoded selection and JSON-encoded update arguments')
     opt = parser.parse_args()
 
