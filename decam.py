@@ -33,7 +33,9 @@ class DecamNominalCalibration(NominalCalibration):
             # from Arjun, 2024-10-28
             M438 = 24.79,
             M490 = 24.98,
-            M517 = 24.77,
+            #M517 = 24.77,
+            # 2025-02-28
+            M517 = 25.03,
             )
 
         self.sky0 = dict(
