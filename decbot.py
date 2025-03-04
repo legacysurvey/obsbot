@@ -82,7 +82,8 @@ def main(cmdlineargs=None, get_decbot=False):
     parser.add_option('--no-cut-past-at-startup', dest='cut_past_at_startup',
                       default=True, action='store_false',
                       help='Do not cut tiles that were supposed to be observed in the past upon startup')
-
+    parser.add_option('--deep', default=False, action='store_true',
+                      help='Shortcut for IBIS Deep fields: run all entries in the JSON file in sequence, do not drop any.  Same as --no-cut-past --no-cut-past-at-startup')
     parser.add_option('--no-set-exptime', dest='do_set_exptime', default=True, action='store_false',
                       help='Do not change exposure times of exposures.')
 
@@ -122,6 +123,10 @@ def main(cmdlineargs=None, get_decbot=False):
 
     print('Reading tiles table', opt.tiles)
     tiles = read_tiles_file(opt.tiles)
+
+    if opt.deep:
+        opt.cut_past_at_startup = True
+        opt.cut_before_now = True
 
     if opt.cut_past_at_startup:
         # Drop exposures that are scheduled for before *now*
