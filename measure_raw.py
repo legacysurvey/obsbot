@@ -9,8 +9,8 @@ import numpy as np
 
 import fitsio
 
-from legacypipe.ps1cat import ps1cat, ps1_to_decam, ps1_to_90prime
-from legacypipe.gaiacat import GaiaCatalog
+from legacypipe.ps1cat import ps1cat, ps1_to_decam
+from legacypipe.gaiacat import GaiaCatalog, gaia_to_decam
 
 class RawMeasurer(object):
     def __init__(self, fn, ext, nom, aprad=3.5, skyrad_inner=7.,
@@ -121,17 +121,30 @@ class RawMeasurer(object):
                 return stars
             stars.use_for_astrometry = np.ones(len(stars), bool)
             stars.use_for_photometry = self.keep_ps1_stars_photom(stars, band)
-            colorterm = self.colorterm_ps1_to_observed(stars[stars.use_for_photometry],
+            colorterm = self.colorterm_ps1_to_observed(stars.median[stars.use_for_photometry, :],
                                                        band)
             stars.mag[stars.use_for_photometry] += colorterm
+            stars.colorterm = np.zeros(len(stars), np.float32)
+            stars.colorterm[stars.use_for_photometry] = colorterm
+            return stars
+        elif ref == 'gaia':
+            stars = self.get_gaia_stars(wcs, band)
+            stars.use_for_astrometry = np.ones(len(stars), bool)
+            mags = gaia_to_decam(stars, [band])
+            stars.mag = mags[0]
+            stars.use_for_photometry = (stars.mag != 0)
+            mags = gaia_to_decam(stars, [band], only_color_term=True)
+            stars.colorterm = mags[0]
             return stars
         else:
             print('Unknown reference catalog "%s"' % ref)
             return None
 
+    def get_gaia_stars(self, wcs, band):
+        gaia = GaiaCatalog().get_catalog_in_wcs(wcs)
+        return gaia
+
     def get_ps1_stars(self, wcs, band):
-        # Read in the PS1 catalog, and keep those within 0.25 deg of CCD center
-        # and those with main sequence colors
         pscat = ps1cat(ccdwcs=wcs)
         try:
             stars = pscat.get_stars()
@@ -184,7 +197,7 @@ class RawMeasurer(object):
 
     def run(self, ps=None, primext=0, focus=False, momentsize=5,
             n_fwhm=100, verbose=True, get_image=False, flat=None,
-            normalize_flat=False):
+            normalize_flat=False, ref='ps1'):
         if ps is not None:
             import pylab as plt
             from astrometry.util.plotutils import dimshow, plothist
@@ -486,7 +499,7 @@ class RawMeasurer(object):
         if wcs is None:
             return meas
 
-        stars = self.get_reference_stars(wcs, band)
+        stars = self.get_reference_stars(wcs, band, ref=ref)
         if stars is None:
             return meas
 
@@ -527,8 +540,9 @@ class RawMeasurer(object):
 
         # Re-match with smaller search radius (and photometry stars)
         radius2 = 3. / pixsc
-        I,J,dx,dy = self.match_reference_stars(px, py, fx, fy, radius2,
-                                               stars[stars.use_for_photometry])
+        cut = stars.use_for_photometry
+        I,J,dx,dy = self.match_reference_stars(px[cut], py[cut], fx, fy, radius2,
+                                               stars[cut])
 
         printmsg('Matched %i photometric calibrator stars, with smaller search radius' %
                  (len(I)))
@@ -569,7 +583,7 @@ class RawMeasurer(object):
                     apmag=apmag2[J], apsky=apsky[J], apmag_noskysub=apmag[J],
                     apflux_err=apflux_err[J],
                     apflux_err_poisson=apflux_err_poisson[J],
-                    colorterm=colorterm[I], refmag=refmag, refstars=refstars,
+                    colorterm=refstars.colorterm, refmag=refmag, refstars=refstars,
                     all_refstars=stars,
                     all_refstars_matched=np.flatnonzero(stars.use_for_photometry)[I])
 
