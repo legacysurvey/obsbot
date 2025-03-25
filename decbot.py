@@ -86,7 +86,8 @@ def main(cmdlineargs=None, get_decbot=False):
                       help='Shortcut for IBIS Deep fields: run all entries in the JSON file in sequence, do not drop any.  Same as --no-cut-past --no-cut-past-at-startup')
     parser.add_option('--no-set-exptime', dest='do_set_exptime', default=True, action='store_false',
                       help='Do not change exposure times of exposures.')
-
+    parser.add_option('--etc', default=False, action='store_true',
+                      help='Shortcut for IBIS ETC mode: same as --no-set-exptime.')
     parser.add_option('--no-queue', dest='do_queue', default=True, action='store_false',
                       help='Do not actually queue exposures.')
 
@@ -127,6 +128,9 @@ def main(cmdlineargs=None, get_decbot=False):
     if opt.deep:
         opt.cut_past_at_startup = True
         opt.cut_before_now = True
+
+    if opt.etc:
+        opt.do_set_exptime = False
 
     if opt.cut_past_at_startup:
         # Drop exposures that are scheduled for before *now*
