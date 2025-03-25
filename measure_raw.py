@@ -1,4 +1,3 @@
-from __future__ import print_function
 import os
 import tempfile
 import json
@@ -115,7 +114,22 @@ class RawMeasurer(object):
             zp0 = None
         return zp0
 
-    def get_reference_stars(self, wcs, band):
+    def get_reference_stars(self, wcs, band, ref='ps1'):
+        if ref == 'ps1':
+            stars = self.get_ps1_stars(wcs, band)
+            if stars is None:
+                return stars
+            stars.use_for_astrometry = np.ones(len(stars), bool)
+            stars.use_for_photometry = self.keep_ps1_stars_photom(stars, band)
+            colorterm = self.colorterm_ps1_to_observed(stars[stars.use_for_photometry],
+                                                       band)
+            stars.mag[stars.use_for_photometry] += colorterm
+            return stars
+        else:
+            print('Unknown reference catalog "%s"' % ref)
+            return None
+
+    def get_ps1_stars(self, wcs, band):
         # Read in the PS1 catalog, and keep those within 0.25 deg of CCD center
         # and those with main sequence colors
         pscat = ps1cat(ccdwcs=wcs)
@@ -135,7 +149,6 @@ class RawMeasurer(object):
         if len(stars) == 0:
             print('Did not find any PS1 stars (maybe outside footprint?)')
             return None
-        # we add the color term later
         try:
             ps1band = self.get_ps1_band(band)
             stars.mag = stars.median[:, ps1band]
@@ -145,15 +158,18 @@ class RawMeasurer(object):
             stars.mag = np.zeros(len(stars), np.float32)
         return stars
 
-    def cut_reference_catalog(self, stars):
+    def get_ps1_band(self, band):
+        return ps1cat.ps1band[band]
+
+    def keep_ps1_stars_photom(self, stars, band):
         # Now cut to just stars with good colors
         stars.gicolor = stars.median[:,0] - stars.median[:,2]
         keep = (stars.gicolor > 0.4) * (stars.gicolor < 2.7)
         return keep
 
-    def get_color_term(self, stars, band):
+    def colorterm_ps1_to_observed(self, ps1stars, band):
         try:
-            colorterm = self.colorterm_ref_to_observed(stars.median, band)
+            return ps1_to_decam(ps1stars, band)
         except KeyError:
             print('Color term not found for band "%s"; assuming zero.' % band)
             colorterm = 0.
@@ -477,18 +493,22 @@ class RawMeasurer(object):
         if len(fx) == 0:
             print('No stars detected in image?')
             return meas
-        wcs2,measargs = self.update_astrometry(stars, wcs, fx, fy, trim_x0, trim_y0,
-                                               pixsc, img, hdr, fullW, fullH, ps, printmsg)
+        if np.sum(stars.use_for_astrometry) == 0:
+            print('No reference stars with "use_for_astrometry" set')
+            return meas
+
+        wcs2,measargs = self.update_astrometry(
+            stars[stars.use_for_astrometry], wcs, fx, fy, trim_x0, trim_y0,
+            pixsc, img, hdr, fullW, fullH, ps, printmsg)
         meas.update(measargs)
 
-        keep = self.cut_reference_catalog(stars)
-        stars.cut(keep)
-        if len(stars) == 0:
-            print('No reference stars overlapping')
-            return meas
         ok,px,py = wcs2.radec2pixelxy(stars.ra, stars.dec)
         px -= 1
         py -= 1
+
+        if np.sum(stars.use_for_photometry) == 0:
+            print('No reference stars with "use_for_photometry" set')
+            return meas
 
         ## DEBUG
         if ps is not None:
@@ -505,11 +525,13 @@ class RawMeasurer(object):
             plt.axis(ax)
             ps.savefig()
 
-        # Re-match with smaller search radius
+        # Re-match with smaller search radius (and photometry stars)
         radius2 = 3. / pixsc
-        I,J,dx,dy = self.match_reference_stars(px, py, fx, fy, radius2, stars)
-        printmsg('Keeping %i reference stars; matched %i with smaller search radius' %
-                 (len(stars), len(I)))
+        I,J,dx,dy = self.match_reference_stars(px, py, fx, fy, radius2,
+                                               stars[stars.use_for_photometry])
+
+        printmsg('Matched %i photometric calibrator stars, with smaller search radius' %
+                 (len(I)))
         nmatched = len(I)
         meas.update(nmatched=nmatched)
 
@@ -521,16 +543,10 @@ class RawMeasurer(object):
                         apflux=apflux, apflux2=apflux2)
             return meas
 
-        #print('Mean astrometric shift (arcsec): delta-ra=', -np.mean(dy)*0.263, 'delta-dec=', np.mean(dx)*0.263)
-            
         # Compute photometric offset compared to PS1
         # as the PS1 minus observed mags
-
-        colorterm = self.get_color_term(stars, band)
-        #print('Color term:', colorterm)
-        stars.mag += colorterm
-        refmag = stars.mag[I]
-        #print('PS1 mag:', refmag)
+        refstars = stars[stars.use_for_photometry][I]
+        refmag = refstars.mag
 
         if False and ps is not None:
             plt.clf()
@@ -553,8 +569,9 @@ class RawMeasurer(object):
                     apmag=apmag2[J], apsky=apsky[J], apmag_noskysub=apmag[J],
                     apflux_err=apflux_err[J],
                     apflux_err_poisson=apflux_err_poisson[J],
-                    colorterm=colorterm[I], refmag=refmag, refstars=stars[I],
-                    all_refstars=stars, all_refstars_matched=I)
+                    colorterm=colorterm[I], refmag=refmag, refstars=refstars,
+                    all_refstars=stars,
+                    all_refstars_matched=np.flatnonzero(stars.use_for_photometry)[I])
 
         if ps is not None:
             plt.clf()
@@ -992,12 +1009,6 @@ class DECamMeasurer(RawMeasurer):
         hdr['CRVAL2'] = oldcrval2
         #print('Converted WCS to', wcs)
         return wcs
-
-    def colorterm_ref_to_observed(self, ps1stars, band):
-        return ps1_to_decam(ps1stars, band)
-
-    def get_ps1_band(self, band):
-        return ps1cat.ps1band[band]
 
 class DECamCPMeasurer(DECamMeasurer):
     def read_raw(self, F, ext):
