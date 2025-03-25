@@ -561,8 +561,7 @@ class RawMeasurer(object):
                         apflux=apflux, apflux2=apflux2)
             return meas
 
-        # Compute photometric offset compared to PS1
-        # as the PS1 minus observed mags
+        # Compute photometric offset compared to reference mags
         refstars = stars[stars.use_for_photometry][I]
         refmag = refstars.mag
 
@@ -822,7 +821,7 @@ class RawMeasurer(object):
         fullx = fx + trim_x0
         fully = fy + trim_y0
 
-        # Match PS1 to our detections, find offset
+        # Match refs to our detections, find offset
         radius = self.maxshift / pixsc
 
         print('Matching stars:', len(px), 'reference and', len(fullx), 'in image')
@@ -863,7 +862,7 @@ class RawMeasurer(object):
         radius2 = 3. / pixsc
         I,J,dx,dy = self.match_reference_stars(px, py, fullx+shiftx, fully+shifty,
                                          radius2, stars)
-        #print(len(J), 'matches to PS1 with small radius', 3, 'arcsec')
+        #print(len(J), 'matches to ref with small radius', 3, 'arcsec')
         shiftx2 = np.median(dx)
         shifty2 = np.median(dy)
         #print('Stage-1 shift', shiftx, shifty)
