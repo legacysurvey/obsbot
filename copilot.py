@@ -1,24 +1,18 @@
 #! /usr/bin/env python3.6
 '''
 
-This script is meant to be run during DECaLS/MzLS observing.  It waits
+This script is meant to be run during DECaLS/MzLS/IBIS observing.  It waits
 for new images to appear, measures their sky brightness, seeing, and
 transparency, and makes plots of the conditions.
 
 '''
-from __future__ import print_function
-try:
-    from collections import OrderedDict
-except:
-    print('Failed to import OrderedDict.  You are probably using python 2.6.  Please re-run with python2.7')
-    sys.exit(-1)
-
 import sys
 import os
 import re
 import time
 import json
 import datetime
+from collections import OrderedDict
 
 import numpy as np
 
@@ -199,8 +193,6 @@ def get_recent_exposures(recent, bands=None):
     # Sort by date
     exps.cut(np.argsort(exps.mjd_obs))
     return exps
-
-    
 
 class Duck(object):
     pass
@@ -917,14 +909,12 @@ def ephemdate_to_mjd(edate):
 
 def set_tile_fields(ccd, hdr, tiles):
     obj = hdr.get('OBJECT', '')
-    #print('Object name', obj)
     ccd.object = obj
     tile = get_tile_from_name(obj, tiles)
     if tile is not None:
         ccd.tileid = tile.tileid
         ccd.passnumber = tile.get('pass')
         ccd.tileebv = tile.ebv_med
-    #print('Tile id', ccd.tileid, 'pass', ccd.passnumber)
 
 # SFD map isn't picklable, use global instead
 gSFD = None
@@ -1039,9 +1029,6 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
         import obsdb
         if ext is None:
             ext = get_default_extension(fn)
-        #m,created = obsdb.MeasuredCCD.objects.get_or_create(
-        #    filename=fn, extension=ext)
-
         if skip or opt.by_expnum:
             mlist = obsdb.MeasuredCCD.objects.filter(
                 expnum=expnum, extension=ext)
@@ -1389,7 +1376,7 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart, plotfn):
                    np.array([m.decbore for m in msorted])))
 
     if not nightly and P is not None:
-        # Plot the planned exposures per pass.
+        # Plot the planned exposures
         P.color = np.array([filter_plot_color(f[:1],'k') for f in P.filter])
 
         pl = plt.plot(mlast.rabore, mlast.decbore, 'o',
@@ -1629,7 +1616,7 @@ def main(cmdlineargs=None, get_copilot=False):
     import optparse
     parser = optparse.OptionParser(usage='%prog')
 
-    # Mosaic or Decam?
+    # Import camera-specific details (Mosaic3, DECam, ...)
     from camera import (nominal_cal, ephem_observer, default_extension,
                         tile_path, camera_name, data_env_var, bot_name,
                         nice_camera_name)
@@ -2089,7 +2076,7 @@ class Copilot(NewFileWatcher):
         self.plot_recent()
 
     def process_file(self, path):
-        ### HACK -- mp
+        ### HACK -- should multiprocess this
         for ext in self.exts:
             M = process_image(path, ext, self.nom, self.sfd,
                               self.opt, self.obs, self.tiles)
