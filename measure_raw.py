@@ -126,6 +126,8 @@ class RawMeasurer(object):
             stars.mag[stars.use_for_photometry] += colorterm
             stars.colorterm = np.zeros(len(stars), np.float32)
             stars.colorterm[stars.use_for_photometry] = colorterm
+            stars.color = stars.median[:, 0] - stars.median[:, 2]
+            stars.color_name = 'PS1 g-i'
             return stars
         elif ref == 'gaia':
             stars = self.get_gaia_stars(wcs, band)
@@ -135,6 +137,8 @@ class RawMeasurer(object):
             stars.use_for_photometry = (stars.mag != 0)
             mags = gaia_to_decam(stars, [band], only_color_term=True)
             stars.colorterm = mags[0]
+            stars.color = stars.phot_bp_mean_mag - stars.phot_rp_mean_mag
+            stars.color_name = 'Gaia BP-RP'
             return stars
         else:
             print('Unknown reference catalog "%s"' % ref)
@@ -531,7 +535,7 @@ class RawMeasurer(object):
             plothist(dx, dy, range=((-radius2,radius2),(-radius2,radius2)))
             plt.xlabel('dx (pixels)')
             plt.ylabel('dy (pixels)')
-            plt.title('Offsets to PS1 stars (with new WCS)')
+            plt.title('Offsets to ref stars (with new WCS)')
             ax = plt.axis()
             plt.axhline(0, color='b')
             plt.axvline(0, color='b')
@@ -565,13 +569,13 @@ class RawMeasurer(object):
         if False and ps is not None:
             plt.clf()
             plt.semilogy(refmag, apflux2[J], 'b.')
-            plt.xlabel('PS1 mag')
+            plt.xlabel('Ref mag')
             plt.ylabel('DECam ap flux (with sky sub)')
             ps.savefig()
 
             plt.clf()
             plt.semilogy(refmag, apflux[J], 'b.')
-            plt.xlabel('PS1 mag')
+            plt.xlabel('Ref mag')
             plt.ylabel('DECam ap flux (no sky sub)')
             ps.savefig()
 
@@ -591,7 +595,7 @@ class RawMeasurer(object):
             plt.clf()
             plt.plot(refmag, apmag[J], 'b.', label='No sky sub')
             plt.plot(refmag, apmag2[J], 'r.', label='Sky sub')
-            plt.xlabel('PS1 mag')
+            plt.xlabel('Ref mag')
             plt.ylabel('DECam ap mag')
             plt.legend(loc='upper left')
             plt.title('Zeropoint')
@@ -629,19 +633,19 @@ class RawMeasurer(object):
             plt.clf()
             plt.plot(refmag, apmag[J] + dmag - refmag, 'b.', label='No sky sub')
             plt.plot(refmag, apmag2[J]+ dmag2- refmag, 'r.', label='Sky sub')
-            plt.xlabel('PS1 mag')
-            plt.ylabel('DECam ap mag - PS1 mag')
+            plt.xlabel('Ref mag')
+            plt.ylabel('DECam ap mag - Ref mag')
             plt.legend(loc='upper left')
             plt.ylim(-0.25, 0.25)
             plt.axhline(0, color='k', alpha=0.25)
             plt.title('Zeropoint')
             ps.savefig()
 
-            ps1_gi = stars.median[I, 0] - stars.median[I, 2]
+            color = refstars.color
             plt.clf()
-            plt.plot(ps1_gi, apmag2[J] + dmag2 - refmag, 'r.', label='Sky sub')
-            plt.xlabel('PS1 g-i color (mag)')
-            plt.ylabel('DECam ap mag - PS1 mag')
+            plt.plot(color, apmag2[J] + dmag2 - refmag, 'r.', label='Sky sub')
+            plt.xlabel(refstars.color_name + ' (mag)')
+            plt.ylabel('DECam ap mag - ref mag')
             plt.legend(loc='upper left')
             plt.axhline(0, color='k', alpha=0.25)
             plt.title('Zeropoint (color term)')
@@ -810,7 +814,7 @@ class RawMeasurer(object):
             plt.plot(px[K[:10]]-trim_x0, py[K[:10]]-trim_y0, 'o', mec='m', mfc='none',ms=12,mew=2)
             plt.plot(px[K[10:]]-trim_x0, py[K[10:]]-trim_y0, 'o', mec='m', mfc='none', ms=8)
             plt.axis(ax)
-            plt.title('PS1 stars')
+            plt.title('Ref stars')
             #plt.colorbar()
             ps.savefig()
 
@@ -847,7 +851,7 @@ class RawMeasurer(object):
                        cmap='hot')
             plt.xlabel('dx (pixels)')
             plt.ylabel('dy (pixels)')
-            plt.title('Offsets to PS1 stars')
+            plt.title('Offsets to ref stars')
             ax = plt.axis()
             plt.axhline(0, color='b')
             plt.axvline(0, color='b')
@@ -917,7 +921,7 @@ class RawMeasurer(object):
             plothist(dx, dy, range=((-radius2,radius2),(-radius2,radius2)))
             plt.xlabel('dx (pixels)')
             plt.ylabel('dy (pixels)')
-            plt.title('Offsets to PS1 stars')
+            plt.title('Offsets to ref stars')
             ax = plt.axis()
             plt.axhline(0, color='b')
             plt.axvline(0, color='b')
@@ -936,7 +940,7 @@ class RawMeasurer(object):
             plothist(affdx, affdy, range=((-radius2,radius2),(-radius2,radius2)))
             plt.xlabel('dx (pixels)')
             plt.ylabel('dy (pixels)')
-            plt.title('Offsets to PS1 stars after Affine correction')
+            plt.title('Offsets to ref stars after Affine correction')
             ax = plt.axis()
             plt.axhline(0, color='b')
             plt.axvline(0, color='b')
@@ -953,7 +957,7 @@ class RawMeasurer(object):
             plt.plot(fx[J], fy[J], 'go', mec='g', mfc='none', ms=10, mew=2)
             plt.plot(px[I]-sx-trim_x0, py[I]-sy-trim_y0, 'm+', ms=10, mew=2)
             plt.axis(ax)
-            plt.title('Matched PS1 stars')
+            plt.title('Matched ref stars')
             plt.colorbar()
             ps.savefig()
 
@@ -965,7 +969,7 @@ class RawMeasurer(object):
             plt.plot(px[K[:10]]-sx-trim_x0, py[K[:10]]-sy-trim_y0, 'o', mec='m', mfc='none',ms=12,mew=2)
             plt.plot(px[K[10:]]-sx-trim_x0, py[K[10:]]-sy-trim_y0, 'o', mec='m', mfc='none', ms=8,mew=2)
             plt.axis(ax)
-            plt.title('All PS1 stars')
+            plt.title('All ref stars')
             plt.colorbar()
             ps.savefig()
 
@@ -980,7 +984,7 @@ class RawMeasurer(object):
 
             plt.plot(px2, py2, 'mo', mec='m', mfc='none', ms=8, mew=2)
             plt.axis(ax)
-            plt.title('All PS1 stars (with New WCS)')
+            plt.title('All ref stars (with New WCS)')
             plt.colorbar()
             ps.savefig()
 
