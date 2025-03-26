@@ -88,6 +88,9 @@ def main(cmdlineargs=None, get_decbot=False):
                       help='Do not change exposure times of exposures.')
     parser.add_option('--etc', default=False, action='store_true',
                       help='Shortcut for IBIS ETC mode: same as --no-set-exptime.')
+
+    parser.add_option('--gaia', default=False, action='store_true', help='Use Gaia for photometry (default is Pan-STARRS)')
+
     parser.add_option('--no-queue', dest='do_queue', default=True, action='store_false',
                       help='Do not actually queue exposures.')
 
@@ -108,6 +111,9 @@ def main(cmdlineargs=None, get_decbot=False):
         opt,args = parser.parse_args(cmdlineargs)
 
     if len(args) == 0:
+        if not os.path.exists('plan.json'):
+            parser.print_help()
+            sys.exit(-1)
         # Default JSON filenames
         args = ['plan.json']
 
@@ -179,9 +185,10 @@ def main(cmdlineargs=None, get_decbot=False):
         copilot_db = obsdb.MeasuredCCD.objects
     except:
         copilot_db = None
-    
+
     decbot = Decbot(J, opt, nominal_cal, obs, tiles, rc,
-                    copilot_db=copilot_db, nqueued=opt.nqueued)
+                    copilot_db=copilot_db, nqueued=opt.nqueued,
+                    gaia_for_photometry=opt.gaia)
     if get_decbot:
         return decbot
     decbot.queue_initial_exposures()
@@ -257,10 +264,12 @@ class Decbot(NewFileWatcher):
     '''
     def __init__(self, J, opt, nom, obs, tiles, rc,
                  nqueued=2,
-                 copilot_db=None,):
+                 copilot_db=None,
+                 gaia_for_photometry=False):
         super(Decbot, self).__init__(
             opt.rawdata, backlog=False, only_process_newest=True,
             ignore_missing_dir=True, verbose=opt.verbose)
+        self.gaia_for_photometry = gaia_for_photometry
         self.timeout = None
         self.nqueued = nqueued
         self.J = J
@@ -476,6 +485,9 @@ class Decbot(NewFileWatcher):
 
     def measure_extensions(self, fn, ext, kwa):
         # If we're checking multiple extensions, build argument lists for each.
+
+        if self.gaia_for_photometry:
+            kwa.update(ref='gaia')
         args = []
         if ext is not None:
             exts = ext.split(',')
