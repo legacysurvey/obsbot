@@ -592,6 +592,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         Tb.depth_factor = Tb.exptime / (basetime * Tb.expfactor)
         Tb.depth_factor[Tb.expfactor == 0] = 0.
 
+    ytop = min(ytop, 1000)
     plt.ylim(0, ytop*1.05)
     plt.legend(loc='center left', bbox_to_anchor=(0.0, 0.5), #bbox_to_anchor=(1.06, 0.5),
                frameon=True, shadow=True, fontsize=8)
