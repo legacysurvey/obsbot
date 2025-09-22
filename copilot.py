@@ -1553,15 +1553,17 @@ def coverage_plots(opt, camera_name, nice_camera_name):
                 plt.savefig(fn)
                 print('Wrote', fn)
 
-def update_tile_file(meas, tilefn, opt, obs, nom):
+def update_tile_file(meas, tilefn, opt, obs, nom, tiles=None):
     from astrometry.util.fits import fits_table
     from astropy.table import Table, MaskedColumn
     from collections import Counter
 
     print('Updating tiles file', tilefn, 'from exposures:', meas)
-    fmt = 'ascii.ecsv'
-    tiles = Table.read(tilefn, format=fmt)
-    print('Read', len(tiles), 'tiles')
+
+    if tiles is None:
+        fmt = 'ascii.ecsv'
+        tiles = Table.read(tilefn, format=fmt)
+        print('Read', len(tiles), 'tiles')
     #print('tiles:', tiles)
     #print('columns:', tiles.columns)
     # print('Measurements:')
@@ -1571,9 +1573,10 @@ def update_tile_file(meas, tilefn, opt, obs, nom):
     # meas[0].about()
 
     # Ugh, on at least one night, I (dstn) messed up and manually submitted tiles
-    # with the wrong OBJECT name (ie, they had M411 in the OBJECT name, but actually
-    # used the M464 filter).  So we can't depend on OBJECT... or we find and work around
+    # with the wrong OBJECT name (ie, they had M464 in the OBJECT name, but actually
+    # used the M411 filter).  So we can't depend on OBJECT... or we find and work around
     # these mess-ups?
+    # expnum 1301169, 172, 173
 
     objmap = dict([(obj, i) for i,obj in enumerate(meas.object)])
     updates = []
@@ -1586,7 +1589,12 @@ def update_tile_file(meas, tilefn, opt, obs, nom):
         # Lookup tile center vs boresight pointing
         from astrometry.util.starutil_numpy import arcsec_between
         dd = arcsec_between(meas.rabore[j], meas.decbore[j], tiles['RA'][i], tiles['DEC'][i])
-        assert(dd < 15.)
+        if dd >= 15.:
+            print('Pointing err', dd, ': meas (%.4f, %.4f), tile (%.4f, %.4f) expnum %i, object %s' %
+                  (meas.rabore[j], meas.decbore[j], tiles['RA'][i], tiles['DEC'][i],
+                   meas.expnum[j], meas.object[j]))
+
+        assert(dd < 30.)
         assert(meas.band[j] == tiles['FILTER'][i])
         if meas.zeropoint[j] <= 0:
             continue
@@ -1605,7 +1613,8 @@ def update_tile_file(meas, tilefn, opt, obs, nom):
     # Apply updates
     for i,efftime in updates:
         tiles['DONE'][i] = True
-        tiles['EFFTIME_TOT'][i] += efftime
+        # Round EFFTIME_TOT to 2 decimal places
+        tiles['EFFTIME_TOT'][i] = np.round(tiles['EFFTIME_TOT'][i] + efftime, decimals=2)
 
     tilefn = os.path.realpath(tilefn)
     #print('Real tile filename:', tilefn)
@@ -1721,6 +1730,8 @@ def main(cmdlineargs=None, get_copilot=False):
                       action='store_false',
                       help='Do not update tile file with copilot depth estimates for the plotted exposures')
 
+    parser.add_option('--set-tiles-efftime-from-db', default=False, action='store_true',
+                      help='Reset tile file EFFTIME_TOT column from all exposures in the copilot db.')
     parser.add_option('--verbose', default=False, action='store_true',
                       help='Turn on (even more) verbose logging')
 
@@ -1769,6 +1780,175 @@ def main(cmdlineargs=None, get_copilot=False):
         opt.mjdend = ephemdate_to_mjd(ephem.Date(opt.dateend))
 
     markmjds = []
+
+    if opt.set_tiles_efftime_from_db:
+        from astrometry.util.fits import fits_table
+        from astropy.table import Table, MaskedColumn
+
+        tilefn = opt.tiles
+        fmt = 'ascii.ecsv'
+        tiles = Table.read(tilefn, format=fmt)
+        print('Read', len(tiles), 'tiles')
+
+        # Create a fake "meas" table
+        meas = fits_table()
+
+        db = obsdb.MeasuredCCD.objects.filter(exptime__gt=0,
+                                              band__startswith='M',
+                                              obstype='object')
+        print(len(db), 'entries in db')
+
+        # Fix up a few bad exposures...
+        for exp in db:
+            if exp.expnum in [1301169, 1301172, 1301173]:
+                exp.object = exp.object.replace('M464', 'M411')
+
+        # Keep only one entry per expnum
+        expnum_map = {}
+        for exp in db:
+            expnum_map[exp.expnum] = exp
+        print(len(expnum_map), 'unique exposures in db')
+
+        expnums = list(expnum_map.keys())
+        expnums.sort()
+        print('expnum range:', expnums[0], expnums[-1])
+        db = [expnum_map[e] for e in expnums]
+
+        bands = set([e.band for e in db])
+        print('Bands:', bands)
+        fids = {}
+        for b in bands:
+            fids[b] = nom.fiducial_exptime(b)
+
+        # Recompute EXPFACTOR
+        for exp in db:
+            fid = fids[exp.band]
+            ebv = 0.
+            if ((exp.transparency == 0) or
+                (exp.zeropoint == 0) or
+                (exp.seeing < 0.5) or
+                (exp.seeing > 3) or
+                (exp.transparency > 1.5)
+                ):
+                exp.expfactor = 0.
+                exp.zeropoint = 0.
+                print('Exposure %i: exptime %.1f, seeing %.2f, sky %6.2f, transparency %6.2f'
+                      % (exp.expnum, exp.exptime, exp.seeing, exp.sky, exp.transparency))
+                continue
+
+            if exp.transparency > 1.1:
+                print('Clipping transparency down to 1.1: %.2f' % exp.transparency)
+                exp.transparency = 1.1
+
+            expfactor = exposure_factor(fid, nom, exp.airmass, ebv, exp.seeing,
+                                        exp.sky, exp.transparency)
+            if expfactor < 0.5:
+                print('Exposure %i: exptime %.1f, seeing %.2f, sky %6.2f, transparency %6.2f --> expfactor %.2f'
+                      % (exp.expnum, exp.exptime, exp.seeing, exp.sky, exp.transparency,
+                         expfactor))
+
+            exp.expfactor = expfactor
+            if expfactor == 0:
+                exp.zeropoint = 0.
+
+        for key in [
+            # These ones are used in the update_tile_file() function
+            'object', 'rabore', 'decbore', 'band', 'zeropoint', 'exptime', 'expfactor',
+            # just decorative...
+            'expnum', 'zeropoint', 'airmass', 'seeing', 'sky', 'transparency']:
+            meas.set(key, [getattr(e, key) for e in db])
+        meas.to_np_arrays()
+
+        for key in ['zeropoint', 'airmass', 'seeing', 'sky', 'transparency',
+                    'expfactor']:
+            v = meas.get(key)
+            print('Column', key, ': range', v.min(), v.max())
+
+        I = np.flatnonzero(meas.expfactor > 0.)
+        meas.cut(I)
+        print('Cut to', len(meas), 'good measurements')
+
+        for key in ['zeropoint', 'airmass', 'seeing', 'sky', 'transparency',
+                    'expfactor']:
+            v = meas.get(key)
+            print('Column', key, ': range', v.min(), v.max())
+
+        efftime_orig = tiles['EFFTIME_TOT'].copy()
+
+        tiles['EFFTIME_TOT'][:] = 0.
+
+        update_tile_file(meas, tilefn, opt, obs, nom, tiles=tiles)
+
+        efftime_new = tiles['EFFTIME_TOT']
+
+        bands = list(bands)
+        bands.sort()
+
+        plt.clf()
+        for b in bands:
+            I = np.flatnonzero(meas.band == b)
+            lo,hi = 22.0, 25.5
+            plt.hist(np.clip(meas.zeropoint[I], lo, hi), range=(lo, hi), bins=55, histtype='step',
+                     label=b)
+        plt.legend()
+        plt.title('Zeropoints')
+        plt.savefig('zpt.png')
+
+        plt.clf()
+        for b in bands:
+            I = np.flatnonzero(meas.band == b)
+            lo,hi = 20,23
+            plt.hist(np.clip(meas.sky[I], lo, hi), range=(lo,hi), bins=60, histtype='step',
+                     label=b)
+        plt.legend()
+        plt.title('Sky')
+        plt.savefig('sky.png')
+
+        plt.clf()
+        plt.hist(meas.seeing, bins=20)
+        plt.title('Seeing')
+        plt.savefig('see.png')
+
+        plt.clf()
+        tmax = 2.
+        plt.hist(np.clip(meas.transparency, 0, tmax), bins=20)
+        plt.title('Transparency')
+        plt.savefig('trans.png')
+
+        plt.clf()
+        for b in bands:
+            I = np.flatnonzero(meas.band == b)
+            plt.hist(1. / meas.expfactor[I], range=(0, 2.5), bins=75, histtype='step',
+                     label=b)
+        plt.legend()
+        plt.title('Speed = 1/expfactor = efftime/exptime')
+        plt.savefig('speed.png')
+
+        plt.clf()
+        for b in bands:
+            I = np.flatnonzero(meas.band == b)
+            plt.hist(meas.exptime[I] / meas.expfactor[I], bins=50, histtype='step',
+                     label=b)
+        plt.legend()
+        plt.title('Efftime')
+        plt.savefig('efftime.png')
+
+        mx = 800
+        tbands = tiles['FILTER']
+        plt.clf()
+        for b in bands:
+            I = np.flatnonzero((tbands == b) * (efftime_new > 0))
+            plt.plot(np.clip(efftime_orig[I], 0, mx),
+                     np.clip(efftime_new[I], 0, mx), '.', alpha=0.2, label=b)
+        plt.plot([0, mx], [0,mx], 'k--')
+        plt.axis([0, mx, 0, mx])
+        plt.legend()
+        plt.xlabel('OLD Efftime')
+        plt.ylabel('NEW Efftime')
+        plt.title('Efftime')
+        plt.savefig('efftimes.png')
+
+        sys.exit(0)
 
     if opt.nightplot or opt.covplots or opt.end_of_night:
         if opt.nightplot:
