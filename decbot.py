@@ -819,12 +819,19 @@ class Decbot(NewFileWatcher):
     def keep_good_tiles(self, plan):
         keep = []
         now = ephem.now()
+
+        # What is the total exposure time of our last Nq queued exposures?
+        queuedtime = sum(tile['expTime'] + self.nom.overhead
+                         for tile in self.queued_tiles[-nq:])
+        # What time will it be after that exposure time finishes?
+        tq = now + queuedtime / 86400.
+
         for j in plan:
             if self.opt.cut_before_now:
                 tstart = ephem.Date(str(j['approx_datetime']))
-                droptime = now
+                droptime = tq
                 if tstart < droptime:
-                    print('Dropping tile with approx_datetime', j['approx_datetime'], ' -- now is', now, 'and drop time is', droptime)
+                    print('Dropping tile with approx_datetime', j['approx_datetime'], ' -- now is', now, 'and now + queued exposures is', tq)
                     continue
             tilename = str(j['object'])
             # Was this tile seen in a file on disk? (not incl. backlog)
