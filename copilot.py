@@ -1884,6 +1884,7 @@ def main(cmdlineargs=None, get_copilot=False):
         bands = list(bands)
         bands.sort()
 
+        plt.figure(figsize=(7,5))
         plt.clf()
         for b in bands:
             I = np.flatnonzero(meas.band == b)
@@ -1937,7 +1938,7 @@ def main(cmdlineargs=None, get_copilot=False):
         tbands = tiles['FILTER']
         plt.clf()
         for b in bands:
-            I = np.flatnonzero((tbands == b) * (efftime_new > 0))
+            I = np.flatnonzero((tbands == b))# * (efftime_new > 0))
             plt.plot(np.clip(efftime_orig[I], 0, mx),
                      np.clip(efftime_new[I], 0, mx), '.', alpha=0.2, label=b)
         plt.plot([0, mx], [0,mx], 'k--')
