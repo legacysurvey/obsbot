@@ -35,7 +35,6 @@ TODO:
 
 '''
 
-from __future__ import print_function
 import matplotlib
 matplotlib.use('Agg')
 import sys
@@ -125,8 +124,8 @@ def main(cmdlineargs=None, get_decbot=False):
 
     jsonfn, = args
 
-    J = json.loads(open(jsonfn,'rb').read())
-    print('Read', len(J), 'exposures from the plan file')
+    plan = json.loads(open(jsonfn,'rb').read())
+    print('Read', len(plan), 'exposures from the plan file')
 
     print('Reading tiles table', opt.tiles)
     tiles = read_tiles_file(opt.tiles)
@@ -142,14 +141,14 @@ def main(cmdlineargs=None, get_decbot=False):
         # Drop exposures that are scheduled for before *now*
         now = ephem.now()
         print('Now:', str(now))
-        print('First planned exposure:', ephem.Date(str(J[0]['approx_datetime'])))
+        print('First planned exposure:', ephem.Date(str(plan[0]['approx_datetime'])))
 
-        J = [j for j in J if ephem.Date(str(j['approx_datetime'])) > now]
-        print('Keeping %i tiles based on time' % (len(J)))
-        if len(J):
-            print('First tile: %s' % J[0]['approx_datetime'])
+        plan = [j for j in plan if ephem.Date(str(j['approx_datetime'])) > now]
+        print('Keeping %i tiles based on time' % (len(plan)))
+        if len(plan):
+            print('First tile: %s' % plan[0]['approx_datetime'])
 
-    if len(J) == 0:
+    if len(plan) == 0:
         print('No tiles!')
         return
 
@@ -186,7 +185,7 @@ def main(cmdlineargs=None, get_decbot=False):
     except:
         copilot_db = None
 
-    decbot = Decbot(J, opt, nominal_cal, obs, tiles, rc,
+    decbot = Decbot(plan, opt, nominal_cal, obs, tiles, rc,
                     copilot_db=copilot_db, nqueued=opt.nqueued,
                     gaia_for_photometry=opt.gaia)
     if get_decbot:
@@ -251,8 +250,7 @@ class Decbot(NewFileWatcher):
 
     Data model:
 
-    - J are the planned tiles to observe (the name "J" comes
-      from the JSON files these are read from).  We drop exposures
+    - "plan" are the planned tiles to observe.  We drop exposures
       from this lists using the keep_good_tiles() function.
       Exposures (aka tiles in the code) can be dropped if they were
       planned for before now, or if we have already queued that tile
@@ -262,7 +260,7 @@ class Decbot(NewFileWatcher):
     - latest_measurement -- our most recent measurement of the
       conditions.  Updated when we see a new file on disk.
     '''
-    def __init__(self, J, opt, nom, obs, tiles, rc,
+    def __init__(self, plan, opt, nom, obs, tiles, rc,
                  nqueued=2,
                  copilot_db=None,
                  gaia_for_photometry=False):
@@ -272,7 +270,7 @@ class Decbot(NewFileWatcher):
         self.gaia_for_photometry = gaia_for_photometry
         self.timeout = None
         self.nqueued = nqueued
-        self.J = J
+        self.plan = plan
         self.opt = opt
         self.nom = nom
         self.obs = obs
@@ -394,20 +392,20 @@ class Decbot(NewFileWatcher):
         # (but only if cut_before_now is set)
         if not self.opt.cut_before_now:
             return
-        if len(self.J) == 0:
+        if len(self.plan) == 0:
             return
         # Is the first planned tile scheduled for before now?
-        jj = [self.J[0]]
+        jj = [self.plan[0]]
         jj = self.tiles_after_now(jj)
         if len(jj) == 0:
             # Replan
             self.update_plans()
 
     def queue_exposure(self, nq):
-        if len(self.J) == 0:
+        if len(self.plan) == 0:
             print('Time to queue an exposure, but none are left in the plan!')
             return None
-        j = self.J.pop(0)
+        j = self.plan.pop(0)
 
         if self.rc is None:
             print('Not actually queuing exposure (--no-queue):', j)
@@ -605,8 +603,8 @@ class Decbot(NewFileWatcher):
             M['grsee'] = gr
 
     def update_plans(self, exptime=None):
-        self.J = self.keep_good_tiles(self.J)
-        if len(self.J) == 0:
+        self.plan = self.keep_good_tiles(self.plan)
+        if len(self.plan) == 0:
             return
         # Update planned exposure times
         M = self.latest_measurement
@@ -617,17 +615,17 @@ class Decbot(NewFileWatcher):
             # Keep track of expected time of observations
             # FIXME -- should add margin for the images currently in the queue.
             self.obs.date = ephem.now()
-            for ii,jplan in enumerate(self.J):
+            for ii,jplan in enumerate(self.plan):
                 exptime = self.exptime_for_tile(jplan)
                 jplan['expTime'] = exptime
                 self.obs.date += (exptime + self.nom.overhead) / 86400.
             self.obs.date = ephem.now()
         elif exptime is not None: 
-            for ii,jplan in enumerate(self.J):
+            for ii,jplan in enumerate(self.plan):
                 jplan['expTime'] = exptime
 
         # Print out our next few planned tiles
-        for ii,jplan in enumerate(self.J):
+        for ii,jplan in enumerate(self.plan):
             s = ('%s, band %s, RA,Dec (%.3f,%.3f), exptime %i.' %
                  (jplan['object'], jplan['filter'],
                   jplan['RA'], jplan['dec'], jplan['expTime']))
@@ -764,10 +762,10 @@ class Decbot(NewFileWatcher):
                    'for airmass %.2f to %.2f' % (mairmass, airmass))
         return seeing
 
-    def tiles_after_now(self, J):
+    def tiles_after_now(self, plan):
         now = ephem.now()
         keep = []
-        for i,j in enumerate(J):
+        for i,j in enumerate(plan):
             tstart = ephem.Date(str(j['approx_datetime']))
             if tstart > now:
                 keep.append(j)
@@ -777,7 +775,7 @@ class Decbot(NewFileWatcher):
         # Write upcoming plan to a JSON file
         fn = 'decbot-plan.json'
         tmpfn = fn + '.tmp'
-        jstr = json.dumps(self.J, sort_keys=True,
+        jstr = json.dumps(self.plan, sort_keys=True,
                           indent=4, separators=(',', ': '))
         f = open(tmpfn, 'w')
         f.write(jstr + '\n')
@@ -787,7 +785,7 @@ class Decbot(NewFileWatcher):
 
         fn = 'decbot-plan-5.json'
         tmpfn = fn + '.tmp'
-        jstr = json.dumps(self.J[:5], sort_keys=True,
+        jstr = json.dumps(self.plan[:5], sort_keys=True,
                           indent=4, separators=(',', ': '))
         f = open(tmpfn, 'w')
         f.write(jstr + '\n')
@@ -797,20 +795,20 @@ class Decbot(NewFileWatcher):
 
         # Write a FITS table of the exposures we've queued,
         # and the ones we have planned
-        J,types = [],[]
+        plan,types = [],[]
         for t,j in [
                 ('Q', self.queued_tiles),
-                ('P', self.J),]:
-            J.extend(j)
+                ('P', self.plan),]:
+            plan.extend(j)
             types.extend(t * len(j))
 
         T = fits_table()
         T.type = types
-        T.tilename = [str(j['object'])  for j in J]
-        T.filter   = [str(j['filter'])  for j in J]
-        T.exptime  = [    j['expTime']  for j in J]
-        T.ra       = [    j['RA']       for j in J]
-        T.dec      = [    j['dec']      for j in J]
+        T.tilename = [str(j['object'])  for j in plan]
+        T.filter   = [str(j['filter'])  for j in plan]
+        T.exptime  = [    j['expTime']  for j in plan]
+        T.ra       = [    j['RA']       for j in plan]
+        T.dec      = [    j['dec']      for j in plan]
         T.to_np_arrays()
         fn = 'decbot-plan.fits'
         tmpfn = fn + '.tmp'
@@ -818,15 +816,22 @@ class Decbot(NewFileWatcher):
         os.rename(tmpfn, fn)
         self.debug('Wrote', fn)
 
-    def keep_good_tiles(self, J):
+    def keep_good_tiles(self, plan):
         keep = []
         now = ephem.now()
-        for j in J:
+
+        # What is the total exposure time of our last Nq queued exposures?
+        queuedtime = sum(tile['expTime'] + self.nom.overhead
+                         for tile in self.queued_tiles[-nq:])
+        # What time will it be after that exposure time finishes?
+        tq = now + queuedtime / 86400.
+
+        for j in plan:
             if self.opt.cut_before_now:
                 tstart = ephem.Date(str(j['approx_datetime']))
-                droptime = now
+                droptime = tq
                 if tstart < droptime:
-                    print('Dropping tile with approx_datetime', j['approx_datetime'], ' -- now is', now, 'and drop time is', droptime)
+                    print('Dropping tile with approx_datetime', j['approx_datetime'], ' -- now is', now, 'and now + queued exposures is', tq)
                     continue
             tilename = str(j['object'])
             # Was this tile seen in a file on disk? (not incl. backlog)
@@ -843,9 +848,9 @@ class Decbot(NewFileWatcher):
             keep.append(j)
         return keep
 
-def object_name_in_list(j, Jlist):
+def object_name_in_list(j, planlist):
     tilename = str(j['object'])
-    for tile in Jlist:
+    for tile in planlist:
         if str(tile['object']) == tilename:
             return True
     return False
