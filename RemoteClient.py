@@ -106,6 +106,7 @@ def main():
     parser.add_argument('--get-n-queued', action='store_true', help='Get number of queued exposures')
     parser.add_argument('--add-exposure', type=str, help='Enqueue the given JSON-encoded exposure')
     parser.add_argument('--modify-exposure', nargs=2, type=str, help='Modify an exposure given the JSON-encoded selection and JSON-encoded update arguments')
+    parser.add_argument('--clear-queue', action='store_true', help='Remove all exposures from queue')
     opt = parser.parse_args()
 
     rc = RemoteClient()
@@ -116,6 +117,8 @@ def main():
     if opt.get_n_queued:
         n = rc.get_n_queued()
         print('n_queued = %i' % n)
+    if opt.clear_queue:
+        rc.clear_queue()
     if opt.add_exposure is not None:
         exp = json.loads(opt.add_exposure)
         rc.addexposure(**exp)
