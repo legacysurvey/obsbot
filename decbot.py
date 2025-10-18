@@ -821,6 +821,8 @@ class Decbot(NewFileWatcher):
         now = ephem.now()
 
         # What is the total exposure time of our last Nq queued exposures?
+        # (assume we have our target number of tiles queued)
+        nq = self.nqueued
         queuedtime = sum(tile['expTime'] + self.nom.overhead
                          for tile in self.queued_tiles[-nq:])
         # What time will it be after that exposure time finishes?
