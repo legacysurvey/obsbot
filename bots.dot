@@ -26,7 +26,9 @@ ibis_etc;
 copilot;
 }
 
-guider -> disk_g [label="Start ETC"];
+guider -> disk_g [label=<
+<TABLE><TR><TD BORDER="0">Start ETC</TD></TR></TABLE>
+>];
 
 disk_g -> ibis_etc;
 ibis_etc -> stop_exposure;
@@ -34,7 +36,10 @@ ibis_etc -> stop_exposure;
 disk_s -> copilot;
 
 disk_s -> decbot;
-decbot -> queue;
+decbot -> queue [label=<
+<TABLE><TR><TD BORDER="0">with --etc : as-is</TD></TR>
+<TR><TD BORDER="0">without --etc : set <I>EXPTIME</I></TD></TR></TABLE>
+>];
 
 camera -> disk_s;
 
