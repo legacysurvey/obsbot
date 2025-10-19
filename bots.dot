@@ -1,0 +1,43 @@
+# dot -O -Tpng bots.dot
+
+digraph {
+
+subgraph cluster_sispi {
+bgcolor="grey";
+label="SISPI";
+guider;
+queue;
+stop_exposure;
+camera;
+}
+
+subgraph cluster_disk {
+bgcolor="lightblue";
+label="Disk";
+disk_g [label="guider images"];
+disk_s [label="science images"];
+}
+
+subgraph cluster_ibis {
+bgcolor="lightyellow";
+label="IBIS Tools";
+decbot;
+ibis_etc;
+copilot;
+}
+
+guider -> disk_g [label="Start ETC"];
+
+disk_g -> ibis_etc;
+ibis_etc -> stop_exposure;
+
+disk_s -> copilot;
+
+disk_s -> decbot;
+decbot -> queue;
+
+camera -> disk_s;
+
+}
+
+
