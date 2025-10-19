@@ -37,7 +37,9 @@ disk_s -> copilot;
 
 disk_s -> decbot;
 decbot -> queue [label=<
-<TABLE><TR><TD BORDER="0">with --etc : as-is</TD></TR>
+<TABLE>
+<TR><TD BORDER="0">Exposure added to queue</TD></TR>
+<TR><TD BORDER="0">with --etc : as-is</TD></TR>
 <TR><TD BORDER="0">without --etc : set <I>EXPTIME</I></TD></TR></TABLE>
 >];
 
