@@ -1790,9 +1790,6 @@ def main(cmdlineargs=None, get_copilot=False):
         tiles = Table.read(tilefn, format=fmt)
         print('Read', len(tiles), 'tiles')
 
-        # Create a fake "meas" table
-        meas = fits_table()
-
         db = obsdb.MeasuredCCD.objects.filter(exptime__gt=0,
                                               band__startswith='M',
                                               obstype='object')
@@ -1808,7 +1805,6 @@ def main(cmdlineargs=None, get_copilot=False):
         for exp in db:
             expnum_map[exp.expnum] = exp
         print(len(expnum_map), 'unique exposures in db')
-
         expnums = list(expnum_map.keys())
         expnums.sort()
         print('expnum range:', expnums[0], expnums[-1])
@@ -1828,11 +1824,11 @@ def main(cmdlineargs=None, get_copilot=False):
                 (exp.zeropoint == 0) or
                 (exp.seeing < 0.5) or
                 (exp.seeing > 3) or
-                (exp.transparency > 1.5)
+                (exp.transparency > 1.2)
                 ):
                 exp.expfactor = 0.
                 exp.zeropoint = 0.
-                print('Exposure %i: exptime %.1f, seeing %.2f, sky %6.2f, transparency %6.2f'
+                print('Zeroing out speed for: Exposure %i: exptime %.1f, seeing %.2f, sky %6.2f, transparency %6.2f'
                       % (exp.expnum, exp.exptime, exp.seeing, exp.sky, exp.transparency))
                 continue
 
@@ -1851,6 +1847,8 @@ def main(cmdlineargs=None, get_copilot=False):
             if expfactor == 0:
                 exp.zeropoint = 0.
 
+        # Create a fake "meas" table
+        meas = fits_table()
         for key in [
             # These ones are used in the update_tile_file() function
             'object', 'rabore', 'decbore', 'band', 'zeropoint', 'exptime', 'expfactor',
@@ -1864,6 +1862,55 @@ def main(cmdlineargs=None, get_copilot=False):
             v = meas.get(key)
             print('Column', key, ': range', v.min(), v.max())
 
+        if True:
+            from glob import glob
+
+            logdir = os.path.join(os.environ['HOME'], 'ibis-observing', 'logs')
+            fns = glob(os.path.join(logdir, 'db-*.ecsv'))
+            fns.sort()
+
+            expnum_map = dict([(e,i) for i,e in enumerate(meas.expnum)])
+
+            expfactor_old_new = []
+
+            for fn in fns:
+                db = Table.read(fn, format='ascii.ecsv')
+                print('Read', len(db), 'from', fn)
+                for i,(e,b) in enumerate(zip(db['expnum'], db['band'])):
+                    if not b.startswith('M'):
+                        continue
+                    if not e in expnum_map:
+                        print('Did not find expnum %i' % e)
+                        continue
+
+                    old_expfactor = db['expfactor'][i]
+                    j = expnum_map[e]
+                    expfactor = meas.expfactor[j]
+                    db['expfactor'][i] = expfactor
+                    if expfactor == 0:
+                        db['efftime'][i] = 0.
+                    else:
+                        db['efftime'][i] = meas.exptime[j] / expfactor
+                        expfactor_old_new.append((old_expfactor, expfactor, b, db['ebv'][i]))
+                #outfn = fn.replace('db-', 'new-db-')
+                outfn = fn
+                db.write(outfn, overwrite=True)
+
+            plt.scatter([1./e[0] for e in expfactor_old_new],
+                        [1./e[1] for e in expfactor_old_new],
+                        c=[e[3] for e in expfactor_old_new],
+                        vmin=0, vmax=0.1)
+            plt.xlabel('Old speed')
+            plt.ylabel('New speed')
+            plt.savefig('expfactor-oldnew.png')
+
+                
+            sys.exit(0)
+
+
+
+
+            
         I = np.flatnonzero(meas.expfactor > 0.)
         meas.cut(I)
         print('Cut to', len(meas), 'good measurements')
