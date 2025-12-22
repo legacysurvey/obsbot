@@ -359,21 +359,23 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
     
     SP = 6
     # which ones will we use to set the scale?
+    mn,mx = 0.7, 2.5
     I = np.flatnonzero((T.seeing > 0) * (T.exptime > 30))
     if len(I):
         mn,mx = T.seeing[I].min(), T.seeing[I].max()
     else:
-        mn,mx = 0.7, 2.5
+        I = np.flatnonzero(T.seeing > 0)
+        if len(I):
+            mn,mx = T.seeing[I].min(), T.seeing[I].max()
     mx = min(mx, max_seeing)
     yl,yh = mn - 0.15*(mx-mn), mx + 0.05*(mx-mn)
-    #print('mn,mx', mn,mx, 'yl,yh', yl,yh)
 
     ## Seeing
     plt.subplot(SP,1,1)
     for band,Tb in zip(bands, TT):
         # print('Band', band, 'with', len(Tb), 'images.  Seeing:', Tb.seeing, 'exptime', Tb.exptime)
         # print('Expnum', Tb.expnum)
-        I = np.flatnonzero((Tb.seeing > 0) * (Tb.exptime > 30))
+        I = np.flatnonzero((Tb.seeing >= mn) * (Tb.seeing <= mx))
         if len(I):
             Tavg,Tind = average_by_mjd(Tb[I])
             if Tind is not None:
@@ -385,6 +387,9 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
         I = np.flatnonzero(Tb.seeing > mx)
         if len(I):
             plt.plot(Tb.mjd_obs[I], [mx]*len(I), '^', **limitstyle(band))
+        I = np.flatnonzero(Tb.seeing < mn)
+        if len(I):
+            plt.plot(Tb.mjd_obs[I], [mn]*len(I), 'v', **limitstyle(band))
     plt.axhline(2.0, color='k', alpha=0.5)
     plt.axhline(1.3, color='k', alpha=0.5)
     plt.axhline(1.2, color='k', alpha=0.1)
