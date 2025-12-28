@@ -129,7 +129,7 @@ def main(cmdlineargs=None, get_decbot=False):
     print('Reading tiles table', opt.tiles)
     if not os.path.exists(opt.tiles):
         dirnm = os.path.dirname(__file__)
-        fn = os.path.relpath(opt.tiles, start, dirnm)
+        fn = os.path.join(dirnm, opt.tiles)
         print('File', opt.tiles, 'not found; trying', fn)
         if os.path.exists(fn):
             opt.tiles = fn
