@@ -62,15 +62,14 @@ def main(cmdlineargs=None, get_decbot=False):
     import optparse
     parser = optparse.OptionParser(usage='%prog [<plan.json>]')
 
-    from camera_decam import (ephem_observer, default_extension, nominal_cal,
-                              tile_path)
-    
+    from camera_decam import (ephem_observer, default_extension, nominal_cal, tile_path)
+
     parser.add_option('--rawdata', default=None,
                       help='Directory to monitor for new images: default $DECAM_DATA if set, else "rawdata"')
     parser.add_option('--ext', default=default_extension,
                       help='Extension to read for computing observing conditions, default %default.  Can give comma-separated list.')
     parser.add_option('--tiles', default=tile_path,
-                      help='Observation status file, default %default')
+                      help='Observation status file, default %default (first relative to cwd, then relative to the directory containing decbot.py)')
     parser.add_option('--exptime', type=int, default=None,
                       help='Set default exposure time, default whatever is in the JSON file')
     parser.add_option('--nqueued', type=int, default=2,
@@ -128,6 +127,12 @@ def main(cmdlineargs=None, get_decbot=False):
     print('Read', len(plan), 'exposures from the plan file')
 
     print('Reading tiles table', opt.tiles)
+    if not os.path.exists(opt.tiles):
+        dirnm = os.path.dirname(__file__)
+        fn = os.path.relpath(opt.tiles, start, dirnm)
+        print('File', opt.tiles, 'not found; trying', fn)
+        if os.path.exists(fn):
+            opt.tiles = fn
     tiles = read_tiles_file(opt.tiles)
 
     if opt.deep:
