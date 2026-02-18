@@ -421,6 +421,8 @@ class Decbot(NewFileWatcher):
                         verbose=self.verbose)
             if 'efftime' in j:
                 expo['efftime'] = j['efftime']
+            if 'propid' in j:
+                expo['propid'] = j['propid']
 
             # What is the total exposure time of our last Nq queued exposures?
             queuedtime = sum(tile['expTime'] + self.nom.overhead
