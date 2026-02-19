@@ -336,7 +336,7 @@ class RawMeasurer(object):
 
         if skybr is not None and not np.isfinite(skybr):
             print('Measured negative sky brightness:', sky1, 'counts')
-            return meas
+            #return meas
 
         img -= skymod
         del skymod
