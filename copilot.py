@@ -1204,7 +1204,8 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
 
     if trans > 0:
         fid = nom.fiducial_exptime(band)
-        expfactor = exposure_factor(fid, nom, airmass, ebv, seeing, skybright, trans)
+        expfactor_ebv = 0.0
+        expfactor = exposure_factor(fid, nom, airmass, expfactor_ebv, seeing, skybright, trans)
         # #print('Exposure factor:              %6.3f' % expfactor)
         # t_exptime = expfactor * fid.exptime
         # #print('Target exposure time:         %6.1f' % t_exptime)
@@ -1908,13 +1909,8 @@ def main(cmdlineargs=None, get_copilot=False):
             plt.xlabel('Old speed')
             plt.ylabel('New speed')
             plt.savefig('expfactor-oldnew.png')
-
                 
             sys.exit(0)
-
-
-
-
             
         I = np.flatnonzero(meas.expfactor > 0.)
         meas.cut(I)
