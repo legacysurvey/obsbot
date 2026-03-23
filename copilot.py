@@ -1630,6 +1630,132 @@ def update_tile_file(meas, tilefn, opt, obs, nom, tiles=None):
     os.rename(tmpfn, tilefn)
     print('Updated', tilefn)
 
+def set_tiles_efftime_from_db(nom, opt):
+    import obsdb
+    from astrometry.util.fits import fits_table
+    from astropy.table import Table, MaskedColumn
+    import pylab as plt
+
+    tilefn = opt.tiles
+    fmt = 'ascii.ecsv'
+    tiles = Table.read(tilefn, format=fmt)
+    print('Read', len(tiles), 'tiles')
+
+    db = obsdb.MeasuredCCD.objects.filter(exptime__gt=0,
+                                          band__startswith='M',
+                                          obstype='object')
+    print(len(db), 'entries in db')
+
+    # Fix up a few bad exposures...
+    for exp in db:
+        if exp.expnum in [1301169, 1301172, 1301173]:
+            exp.object = exp.object.replace('M464', 'M411')
+
+    # Keep only one entry per expnum
+    expnum_map = {}
+    for exp in db:
+        expnum_map[exp.expnum] = exp
+    print(len(expnum_map), 'unique exposures in db')
+    expnums = list(expnum_map.keys())
+    expnums.sort()
+    print('expnum range:', expnums[0], expnums[-1])
+    db = [expnum_map[e] for e in expnums]
+
+    bands = set([e.band for e in db])
+    print('Bands:', bands)
+    fids = {}
+    for b in bands:
+        fids[b] = nom.fiducial_exptime(b)
+
+    # Recompute EXPFACTOR
+    for exp in db:
+        fid = fids[exp.band]
+        if ((exp.transparency == 0) or
+            (exp.zeropoint == 0) or
+            (exp.seeing < 0.5) or
+            (exp.seeing > 3) or
+            (exp.transparency > 1.2)
+            ):
+            exp.expfactor = 0.
+            exp.zeropoint = 0.
+            print('Zeroing out speed for: Exposure %i: exptime %.1f, seeing %.2f, sky %6.2f, transparency %6.2f'
+                  % (exp.expnum, exp.exptime, exp.seeing, exp.sky, exp.transparency))
+            continue
+
+        if exp.transparency > 1.1:
+            print('Clipping transparency down to 1.1: %.2f' % exp.transparency)
+            exp.transparency = 1.1
+
+        ebv = 0.
+        expfactor = exposure_factor(fid, nom, exp.airmass, ebv, exp.seeing,
+                                    exp.sky, exp.transparency)
+        if expfactor < 0.5:
+            print('Exposure %i: exptime %.1f, seeing %.2f, sky %6.2f, transparency %6.2f --> expfactor %.2f'
+                  % (exp.expnum, exp.exptime, exp.seeing, exp.sky, exp.transparency,
+                     expfactor))
+
+        exp.expfactor = expfactor
+        if expfactor == 0:
+            exp.zeropoint = 0.
+
+    # Create a fake "meas" table
+    meas = fits_table()
+    for key in [
+        # These ones are used in the update_tile_file() function
+        'object', 'rabore', 'decbore', 'band', 'zeropoint', 'exptime', 'expfactor',
+        # just decorative...
+        'expnum', 'zeropoint', 'airmass', 'seeing', 'sky', 'transparency']:
+        meas.set(key, [getattr(e, key) for e in db])
+    meas.to_np_arrays()
+
+    for key in ['zeropoint', 'airmass', 'seeing', 'sky', 'transparency',
+                'expfactor']:
+        v = meas.get(key)
+        print('Column', key, ': range', v.min(), v.max())
+
+    if True:
+        from glob import glob
+
+        logdir = os.path.join(os.environ['HOME'], 'ibis-observing', 'logs')
+        fns = glob(os.path.join(logdir, 'db-*.ecsv'))
+        fns.sort()
+
+        expnum_map = dict([(e,i) for i,e in enumerate(meas.expnum)])
+
+        expfactor_old_new = []
+
+        for fn in fns:
+            db = Table.read(fn, format='ascii.ecsv')
+            print('Read', len(db), 'from', fn)
+            for i,(e,b) in enumerate(zip(db['expnum'], db['band'])):
+                if not b.startswith('M'):
+                    continue
+                if not e in expnum_map:
+                    print('Did not find expnum %i (listed in db file %s)' % (e, fn))
+                    continue
+
+                old_expfactor = db['expfactor'][i]
+                j = expnum_map[e]
+                expfactor = meas.expfactor[j]
+                db['expfactor'][i] = expfactor
+                if expfactor == 0:
+                    db['efftime'][i] = 0.
+                else:
+                    db['efftime'][i] = meas.exptime[j] / expfactor
+                    expfactor_old_new.append((old_expfactor, expfactor, b, db['ebv'][i]))
+            outfn = fn
+            db.write(outfn, overwrite=True)
+
+        plt.scatter([1./e[0] for e in expfactor_old_new],
+                    [1./e[1] for e in expfactor_old_new],
+                    c=[e[3] for e in expfactor_old_new],
+                    vmin=0, vmax=0.1)
+        cb = plt.colorbar()
+        cb.set_label('E(B-V)')
+        plt.xlabel('Old speed')
+        plt.ylabel('New speed')
+        plt.savefig('expfactor-oldnew.png')
+
 def main(cmdlineargs=None, get_copilot=False):
     import optparse
     parser = optparse.OptionParser(usage='%prog')
@@ -1788,129 +1914,8 @@ def main(cmdlineargs=None, get_copilot=False):
     markmjds = []
 
     if opt.set_tiles_efftime_from_db:
-        from astrometry.util.fits import fits_table
-        from astropy.table import Table, MaskedColumn
-
-        tilefn = opt.tiles
-        fmt = 'ascii.ecsv'
-        tiles = Table.read(tilefn, format=fmt)
-        print('Read', len(tiles), 'tiles')
-
-        db = obsdb.MeasuredCCD.objects.filter(exptime__gt=0,
-                                              band__startswith='M',
-                                              obstype='object')
-        print(len(db), 'entries in db')
-
-        # Fix up a few bad exposures...
-        for exp in db:
-            if exp.expnum in [1301169, 1301172, 1301173]:
-                exp.object = exp.object.replace('M464', 'M411')
-
-        # Keep only one entry per expnum
-        expnum_map = {}
-        for exp in db:
-            expnum_map[exp.expnum] = exp
-        print(len(expnum_map), 'unique exposures in db')
-        expnums = list(expnum_map.keys())
-        expnums.sort()
-        print('expnum range:', expnums[0], expnums[-1])
-        db = [expnum_map[e] for e in expnums]
-
-        bands = set([e.band for e in db])
-        print('Bands:', bands)
-        fids = {}
-        for b in bands:
-            fids[b] = nom.fiducial_exptime(b)
-
-        # Recompute EXPFACTOR
-        for exp in db:
-            fid = fids[exp.band]
-            ebv = 0.
-            if ((exp.transparency == 0) or
-                (exp.zeropoint == 0) or
-                (exp.seeing < 0.5) or
-                (exp.seeing > 3) or
-                (exp.transparency > 1.2)
-                ):
-                exp.expfactor = 0.
-                exp.zeropoint = 0.
-                print('Zeroing out speed for: Exposure %i: exptime %.1f, seeing %.2f, sky %6.2f, transparency %6.2f'
-                      % (exp.expnum, exp.exptime, exp.seeing, exp.sky, exp.transparency))
-                continue
-
-            if exp.transparency > 1.1:
-                print('Clipping transparency down to 1.1: %.2f' % exp.transparency)
-                exp.transparency = 1.1
-
-            expfactor = exposure_factor(fid, nom, exp.airmass, ebv, exp.seeing,
-                                        exp.sky, exp.transparency)
-            if expfactor < 0.5:
-                print('Exposure %i: exptime %.1f, seeing %.2f, sky %6.2f, transparency %6.2f --> expfactor %.2f'
-                      % (exp.expnum, exp.exptime, exp.seeing, exp.sky, exp.transparency,
-                         expfactor))
-
-            exp.expfactor = expfactor
-            if expfactor == 0:
-                exp.zeropoint = 0.
-
-        # Create a fake "meas" table
-        meas = fits_table()
-        for key in [
-            # These ones are used in the update_tile_file() function
-            'object', 'rabore', 'decbore', 'band', 'zeropoint', 'exptime', 'expfactor',
-            # just decorative...
-            'expnum', 'zeropoint', 'airmass', 'seeing', 'sky', 'transparency']:
-            meas.set(key, [getattr(e, key) for e in db])
-        meas.to_np_arrays()
-
-        for key in ['zeropoint', 'airmass', 'seeing', 'sky', 'transparency',
-                    'expfactor']:
-            v = meas.get(key)
-            print('Column', key, ': range', v.min(), v.max())
-
-        if True:
-            from glob import glob
-
-            logdir = os.path.join(os.environ['HOME'], 'ibis-observing', 'logs')
-            fns = glob(os.path.join(logdir, 'db-*.ecsv'))
-            fns.sort()
-
-            expnum_map = dict([(e,i) for i,e in enumerate(meas.expnum)])
-
-            expfactor_old_new = []
-
-            for fn in fns:
-                db = Table.read(fn, format='ascii.ecsv')
-                print('Read', len(db), 'from', fn)
-                for i,(e,b) in enumerate(zip(db['expnum'], db['band'])):
-                    if not b.startswith('M'):
-                        continue
-                    if not e in expnum_map:
-                        print('Did not find expnum %i' % e)
-                        continue
-
-                    old_expfactor = db['expfactor'][i]
-                    j = expnum_map[e]
-                    expfactor = meas.expfactor[j]
-                    db['expfactor'][i] = expfactor
-                    if expfactor == 0:
-                        db['efftime'][i] = 0.
-                    else:
-                        db['efftime'][i] = meas.exptime[j] / expfactor
-                        expfactor_old_new.append((old_expfactor, expfactor, b, db['ebv'][i]))
-                #outfn = fn.replace('db-', 'new-db-')
-                outfn = fn
-                db.write(outfn, overwrite=True)
-
-            plt.scatter([1./e[0] for e in expfactor_old_new],
-                        [1./e[1] for e in expfactor_old_new],
-                        c=[e[3] for e in expfactor_old_new],
-                        vmin=0, vmax=0.1)
-            plt.xlabel('Old speed')
-            plt.ylabel('New speed')
-            plt.savefig('expfactor-oldnew.png')
-                
-            sys.exit(0)
+        set_tiles_efftime_from_db(nom, opt)
+        sys.exit(0)
             
         I = np.flatnonzero(meas.expfactor > 0.)
         meas.cut(I)
