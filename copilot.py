@@ -2068,6 +2068,9 @@ def main(cmdlineargs=None, get_copilot=False):
         T.efftime = np.zeros(len(T), np.float32)
         I = np.flatnonzero(T.expfactor > 0)
         T.efftime[I] = T.exptime[I] / T.expfactor[I]
+        # Sort by expnum
+        T.cut(np.argsort(T.expnum))
+
         if opt.fits:
             T.writeto(opt.fits)
             print('Wrote', opt.fits)
