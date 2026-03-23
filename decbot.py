@@ -584,6 +584,10 @@ class Decbot(NewFileWatcher):
             neff     = Neff(seeing, pixscale)
             print('   from seeing : %6.02f' % (neff / neff_fid))
             print('   from sky    : %6.02f' % (10.**(-0.4 * (skybright - fid.skybright))))
+            ebv = 0.
+            expfactor = exposure_factor(fid, self.nom, airmass, ebv, seeing,
+                                        skybright, trans)
+            print('Exposure factor without E(B-V): %6.02f' % expfactor)
         except:
             pass
 
@@ -707,6 +711,7 @@ class Decbot(NewFileWatcher):
         seeing = self.predict_seeing(band, seeing, mairmass, airmass, grsee)
 
         fid = self.nom.fiducial_exptime(band)
+        ebv = 0.
         expfactor = exposure_factor(fid, self.nom, airmass, ebv, seeing, sky, trans)
         exptime = expfactor * fid.exptime
         exptime = int(np.ceil(exptime))
