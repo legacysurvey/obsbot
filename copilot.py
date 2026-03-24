@@ -2207,7 +2207,13 @@ def main(cmdlineargs=None, get_copilot=False):
                 print('No measurements to update tile file')
             else:
                 print('Updating tile file...')
-                update_tile_file(meas, opt.tiles, opt, obs, nom)
+                #update_tile_file(meas, opt.tiles, opt, obs, nom)
+
+                from update_tile_file_and_bad_exp import update_tile_and_bad_exp_file
+                ibis_obs = os.path.join(os.environ['HOME'], 'ibis-observing')
+                logdir = os.path.join(ibis_obs, 'logs')
+                bad_exp_file = os.path.join(ibis_obs, 'obstatus', 'bad_expid.txt')
+                update_tile_and_bad_exp_file(logdir, opt.tiles, bad_exp_file)
                 updated_tile_file = True
 
         if not opt.end_of_night:

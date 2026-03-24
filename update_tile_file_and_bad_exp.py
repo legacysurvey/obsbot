@@ -99,7 +99,7 @@ def update_tile_and_bad_exp_file(logs_dir_path, tile_file, bad_exp_file):
     '''
 
     print('Updating tile & bad exposure file')
-    db_log_files = glob.glob(logs_dir_path+'db-*.ecsv')
+    db_log_files = glob.glob(os.path.join(logs_dir_path, 'db-*.ecsv'))
 
     fmt = 'ascii.ecsv'
     tiles = Table.read(tile_file, format=fmt)
