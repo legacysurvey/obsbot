@@ -10,6 +10,8 @@ from astrometry.util.starutil_numpy import degrees_between
 
 from obsbot import get_tile_from_name
 
+SGC_DRA = 180.
+
 def plot_init():
     import matplotlib
     matplotlib.use('Agg')
@@ -17,8 +19,8 @@ def plot_init():
 def plot_one(args):
     import pylab as plt
     #print('Plot_one', args)
-    (opt, ax, tiles, filtddec, fcmap, passmap,
-     also, LSTs, times, ras, decs, ddecs, fieldname, passnum, exptime, i,
+    (opt, ax, tiles, filtddec, fcmap,
+     also, LSTs, times, ras, decs, ddecs, fieldname, exptime, efftime, i,
      filtcc, alsocolors, ddecmap, fn) = args
     print('Plotting', fn)
 
@@ -39,23 +41,31 @@ def plot_one(args):
     if tiles is not None:
         todo = np.ones(len(tiles), bool)
         for filt in opt.bands:
-            for p in [1,2,3]:
-                I = ((tiles.get('pass') == p) *
-                     (tiles.get('%s_done' % filt) == 1))
-                todo[I] = False
-                #print sum(I), 'tiles done in', filt, 'pass', p
-                plt.plot(transform_ra(tiles.ra[I], opt),
-                         tiles.dec[I] + filtddec[filt],
-                         linestyle='none',
-                         color=fcmap[filt], alpha=0.25, mec=fcmap[filt],
-                         zorder=10,
-                         **passmap[p])
+            #print('Filter', filt)
+            #print('  tiles matching this FILTER: %i' %
+            # (np.sum(tiles.get('filter') == filt)))
+            #print('  tiles matching this FILTER and DONE: %i' %
+            # (np.sum((tiles.get('filter') == filt) * (tiles.done == 1))))
+            I = (#(tiles.get('filter') == filt) *   # We already filtered on --bands
+                 (tiles.done == 1))
+            todo[I] = False
+            #print('Plotting', np.sum(I), 'DONE tiles')
+            plt.plot(transform_ra(tiles.ra[I], opt),
+                     tiles.dec[I] + filtddec.get(filt, 0),
+                     '.',
+                     #linestyle='none',
+                     color=fcmap[filt],
+                     mec=fcmap[filt],
+                     alpha=0.25,
+                     zorder=10)
         #print sum(todo), 'tiles to-do'
+        #aa = 0.1
+        #if opt.mosaic:
+        #    aa = 0.03
         aa = 0.1
-        if opt.mosaic:
-            aa = 0.03
+        #print('Plotting', np.sum(todo), 'not-DONE tiles')
         plt.plot(transform_ra(tiles.ra[todo], opt), tiles.dec[todo], '.',
-                 color='k', alpha=aa, zorder=15)
+                 color='k', mfc='k', mec='none', alpha=aa, zorder=15)
 
     rr = ras[:i+1]
     dd = decs[:i+1] + ddecs[:i+1]
@@ -70,7 +80,7 @@ def plot_one(args):
              bbox=dict(facecolor='w', alpha=0.8, edgecolor=edgecolor,
                        zorder=60), zorder=61)
 
-    for ia,(atimes, aras, adecs, afilts, aexptime, afieldname, apassnum) in enumerate(also):
+    for ia,(atimes, aras, adecs, afilts, aexptime, afieldname) in enumerate(also):
         I = np.flatnonzero(atimes <= times[i])
         afiltcc = np.array([fcmap[f]  for f in afilts])
         addecs = np.array([ddecmap[f] for f in afilts])
@@ -92,12 +102,12 @@ def plot_one(args):
     moon.compute(obs)
     moonra  = np.rad2deg(moon.ra)
     moondec = np.rad2deg(moon.dec)
-    print('Moon RA,Dec', moonra, moondec)
+    #print('Moon RA,Dec', moonra, moondec)
     plt.plot(transform_ra(moonra, opt), moondec, 'o',
              ms=20, mec=(1,0.6,0), mew=5, mfc='none', zorder=40)
     #plt.plot(moonra, moondec, 'o', ms=20, mec='k', mew=1)
 
-    # Plot airmass contours
+    # Plot airmass & moon-separation contours
     dd = np.linspace(ax[2], ax[3], 20)
     rr = np.linspace(ax[0], ax[1], 21)
     airmass = np.zeros((len(dd), len(rr)))
@@ -118,6 +128,7 @@ def plot_one(args):
                 
     levels = np.append(np.arange(1.0, 2.5, 0.1), [2.5, 3.0, 4.0])
     darkblue = (0.03, 0.19, 0.42, 0.5)
+
     if opt.sgc:
         # Plot the contours in two parts... if SGC_DRA != an rr grid point, this
         # may be ugly...
@@ -134,7 +145,13 @@ def plot_one(args):
             plt.clabel(con, inline=1, fontsize=10, fmt='%.1f',
                        use_clabeltext=True)#, alpha=0.25)
             plt.contour(trr, dd, am, [2.0, 2.5], colors=[darkblue], linewidths=[2])
-        
+
+        moon_levels = np.array([40,50,60])
+        for trr,moon in [(trr1, moonsep[:,I1]), (trr2, moonsep[:,I2])]:
+            con = plt.contour(trr, dd, moon, moon_levels, colors='r')
+            plt.clabel(con, inline=1, fontsize=10, fmt='%i',
+                       use_clabeltext=True)
+
     else:
         plt.contourf(transform_ra(rr, opt), dd, airmass, levels,
                      cmap='Blues', alpha=0.2,
@@ -146,34 +163,34 @@ def plot_one(args):
         plt.contour(transform_ra(rr, opt), dd, airmass,
                     [2.0, 2.5], colors=[darkblue], linewidths=[2])
 
-    #levels = np.array([10,20,30,40,50,60,70,80])
-    levels = np.array([40,50,60])
-    #plt.contourf(rr, dd, moonsep, levels, cmap='Blues', alpha=0.2,
-    #            vmin=1.0, vmax=2.2)
-    #darkblue = (0.03, 0.19, 0.42, 0.5)
-    con = plt.contour(transform_ra(rr, opt), dd, moonsep, levels, colors='r')
-    plt.clabel(con, inline=1, fontsize=10, fmt='%i',
-               use_clabeltext=True)#, alpha=0.25)
+        moon_levels = np.array([40,50,60])
+        con = plt.contour(transform_ra(rr, opt), dd, moonsep, moon_levels, colors='r')
+        plt.clabel(con, inline=1, fontsize=10, fmt='%i',
+                   use_clabeltext=True)
 
     LST = LSTs[i]
     plt.axvline(transform_ra(LST, opt), color='0.5')
         
     plt.xlabel('RA (deg)')
     plt.ylabel('Dec (deg)')
-    tt = ('%s: (%.1f,%.1f), pass %i, UT: %s, %i sec' %
-          (fieldname[i], ras[i], decs[i],passnum[i], times[i], exptime[i]))
-    for (atimes, aras, adecs, afilts, aexptime, afieldname, apassnum) in also:
+    timestr = '%i sec' % exptime[i]
+    if efftime is not None:
+        timestr = '%i sec eff' % efftime[i]
+
+    tt = ('%s: (%.1f,%.1f), UT: %s, %s' %
+          (fieldname[i], ras[i], decs[i], times[i], timestr))
+    for (atimes, aras, adecs, afilts, aexptime, afieldname) in also:
         I = np.flatnonzero(atimes <= times[i])
         ii = I[-1]
-        tt += ('\n%s, (%.1f, %.1f), pass %i, %i sec' %
-               (afieldname[ii], aras[ii], adecs[ii], apassnum[i], aexptime[ii]))
+        tt += ('\n%s, (%.1f, %.1f), %i sec' %
+               (afieldname[ii], aras[ii], adecs[ii], aexptime[ii]))
 
     if len(also):
         for ia,txt in enumerate(tt.split('\n')):
             plt.figtext(0.5, 0.96 - ia*0.03, txt, fontsize='large',
                         color=alsocolors[ia], ha ='center')
     else:
-        plt.title(tt)
+        plt.title(tt, fontsize=10)
 
     tt = np.arange(0, 361, 60)
     if opt.rahi - opt.ralo <= 120:
@@ -199,7 +216,6 @@ def transform_ra(x, opt):
     # We then explicitly set the tick marks to hide the body... ahem, cover
     # our tracks.
     #
-    SGC_DRA = 180.
     if opt.sgc:
         #transform_ra = lambda x: (x + SGC_DRA) % 360.
         return (x + SGC_DRA) % 360.
@@ -214,7 +230,7 @@ def main():
     parser = optparse.OptionParser(usage='%prog <json>')
     parser.add_option('--base', default='plan', help='Plot base filename')
     parser.add_option('-t', '--obstatus', help='Show already-observed tiles?')
-    parser.add_option('--bands', help='Plot only already-observed tiles in the given bands', default='g,r,z')
+    parser.add_option('--bands', help='Plot only already-observed tiles in the given bands')
     parser.add_option('--sgc', action='store_true', help='Center on SGC?')
 
     parser.add_option('--ralo',  type=float, default=None)
@@ -365,49 +381,48 @@ def main():
 
     tiles = None
     if opt.obstatus is not None:
-        from astrometry.util.fits import fits_table
+        from obsbot import read_tiles_file
         
-        tiles = fits_table(opt.obstatus)
+        tiles = read_tiles_file(opt.obstatus)
         print('Read', len(tiles), 'tiles')
-        tiles = tiles[(tiles.in_des == 0) * np.logical_or(
-            (tiles.in_sdss == 1),
-            (tiles.in_sdss == 0) * (tiles.in_desi == 1))]
-        print(len(tiles), 'in footprint')
-    
-    fcmap = dict(g='g',r='r',z='m', zd='m')
+        #tiles = tiles[(tiles.in_des == 0) * np.logical_or(
+        #    (tiles.in_sdss == 1),
+        #    (tiles.in_sdss == 0) * (tiles.in_desi == 1))]
+        #print(len(tiles), 'in footprint')
+
+    from copilot import filter_plot_color
+    filts = ['g','r','z','M411','M438','M464','M490','M517']
+    fcmap = dict([(f, filter_plot_color(f)) for f in filts])
+    #fcmap = dict(g='g',r='r',z='m', zd='m')
+
+    print('fcmap:', fcmap)
+
     ddecmap = dict(g=-0.2, r=0, z=0.2, zd=0.2)
     
     ras = np.array([j['RA'] for j in J])
     decs = np.array([j['dec'] for j in J])
     filts = np.array([j['filter'] for j in J])
     exptime = np.array([j['expTime'] for j in J])
+    efftime = np.array([j['efftime'] for j in J])
     fieldname = [j['object'] for j in J]
-    passnum = np.zeros(len(J), int)
-
     
-    filtcc = np.array([fcmap[f] for f in filts])
-    ddecs = np.array([ddecmap[f] for f in filts])
-
-    # passmap = { 1: dict(marker='.'),
-    #             2: dict(marker='o', mfc='none'),
-    #             3: dict(marker='x') }
-    passmap = { 1: dict(marker='.'),
-                2: dict(marker='.'),
-                3: dict(marker='.'), }
+    filtcc = np.array([fcmap.get(f,'k') for f in filts])
+    ddecs = np.array([ddecmap.get(f,0) for f in filts])
 
     opt.bands = opt.bands.split(',')
-    if len(opt.bands) == 1:
-        filtddec = {'g':0, 'r':0, 'z':0}
-    else:
-        ddec = 0.4
-        filtddec = { 'g': -ddec, 'r': 0, 'z': ddec }
-    
+    if len(opt.bands):
+        print('Cutting tiles to FILTER in %s' % opt.bands)
+        I = np.flatnonzero([f in opt.bands for f in tiles.get('filter')])
+        print('Cut to', len(I), 'tiles')
+        tiles = tiles[I]
+    filtddec = {}
+    #ddec = 0.4
+    #filtddec = { 'g': -ddec, 'r': 0, 'z': ddec }
+
     seqmap = ['r','y','g','b','m']
-    #seqcc = np.array([seqmap[s % len(seqmap)] for s in seqnum])
-    #seqcc = np.array([seqmap[s % len(seqmap)] for s in seqid])
-    
-    ax = [transform_ra(opt.rahi, opt), transform_ra(opt.ralo, opt),
-          opt.declo, opt.dechi]
+
+    # "ax" are the limits that we tell matplotlib - for SGC these are FAKE coords
+    ax = [opt.rahi, opt.ralo, opt.declo, opt.dechi]
 
     alsocolors = 'kbr'
 
@@ -420,26 +435,12 @@ def main():
         afilts = np.array([j['filter'] for j in Ja])
         aexptime = np.array([j['expTime'] for j in Ja])
         afieldname = [j['object'] for j in Ja]
-        apassnum = np.zeros(len(Ja), int)
         if tiles is not None:
             for i,f in enumerate(afieldname):
                 tile = get_tile_from_name(f, tiles)
                 if tile is None:
                     continue
-                pa = tile.get('pass')
-                apassnum[i] = pa
-        also.append((atimes, aras, adecs, afilts, aexptime, afieldname, apassnum))
-
-    # Try to get the pass number via parsing the field name to get tile id
-    # and looking up the pass number in the tiles table.
-    if tiles is not None:
-        for i,f in enumerate(fieldname):
-            tile = get_tile_from_name(f, tiles)
-            if tile is None:
-                continue
-            pa = tile.get('pass')
-            passnum[i] = pa
-            print('Field', f, 'tileid', tile.tileid, 'pass', pa)
+        also.append((atimes, aras, adecs, afilts, aexptime, afieldname))
 
     plotdir = os.path.dirname(args[0])
     plotpat = os.path.join(plotdir, '%s-%%03d.png' % (opt.base))
@@ -448,8 +449,8 @@ def main():
     for i in reversed(range(0,len(J),opt.skip)):
         #print('Exposure', i, 'of', len(J))
         fn = plotpat % i
-        pargs = (opt, ax, tiles, filtddec, fcmap, passmap,
-                also, LSTs, times, ras, decs, ddecs, fieldname, passnum, exptime, i,
+        pargs = (opt, ax, tiles, filtddec, fcmap,
+                also, LSTs, times, ras, decs, ddecs, fieldname, exptime, efftime, i,
                 filtcc, alsocolors, ddecmap, fn)
         allargs.append(pargs)
         plot_one(pargs)
@@ -465,11 +466,13 @@ def main():
     print()
     #cmd = 'avconv -r 4 -i %s-%%03d.png -y %s.mov' % (opt.base, opt.base)
     # https://hamelot.io/visualization/using-ffmpeg-to-convert-a-set-of-images-into-a-video/
-    cmd = ('ffmpeg -r 4 -i %s -vcodec libx264 -crf 25 -pix_fmt yuv420p -y %s.mov' %
-           (plotpat, opt.base))
+    outfn = '%s.mov' % opt.base
+    cmd = ('ffmpeg -r 4 -i %s -vcodec libx264 -crf 25 -pix_fmt yuv420p -y %s' %
+           (plotpat, outfn))
     print(cmd)
     os.system(cmd)
 
+    print('Wrote %s' % outfn)
         
 #### From nightlystrategy.py:
 

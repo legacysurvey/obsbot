@@ -1,4 +1,6 @@
+#! /usr/bin/env python2.7
 from __future__ import print_function
+import json
 #
 # Client for SISPI Remote CommandServer
 # Code from Klaus Honscheid, 2015-11-06, [decam-chatter 1546]
@@ -40,13 +42,17 @@ class RemoteClient():
         select_str = json.dumps(select)
         update_str = json.dumps(update)
         param_str = 'filter=' + select_str + ',modifications=' + update_str
-        return self.execute('modifyexposure', params=param_str)
+        print('Sending command:', param_str)
+        return self.execute('modifyexposure', parameter=param_str)
 
     def get_propid(self):
         return self.execute('get_propid')
 
     def stopexposure(self):
         return self.execute('stopexposure')
+
+    def stoprequested(self):
+        return self.execute('stoprequested')
 
     def get_n_queued(self):
         n = self.execute('get_nqueue')
@@ -56,8 +62,7 @@ class RemoteClient():
         return self.execute('clear_queue')
 
     def addexposure(self, exptime=10., exptype='object', filter='r',
-                    object=None, ra=0., dec=0., verbose=False, propid=None):
-        import json
+                    object=None, ra=0., dec=0., efftime=None, verbose=False, propid=None):
         kw = dict(expType=exptype, object=object)
         if propid is not None:
             kw.update(propid=propid)
@@ -65,6 +70,8 @@ class RemoteClient():
             if object is None:
                 object = 'Object'
             kw.update(expTime=exptime, filter=filter, RA=ra, dec=dec)
+            if efftime is not None:
+                kw.update(efftime=efftime)
             paramstr = json.dumps(kw)
                                        
         elif exptype == 'dark':
@@ -90,9 +97,42 @@ class RemoteClient():
 
         return self.execute('addexposure', parameter=paramstr)
 
+def main():
+    import argparse
 
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--stop', action='store_true', help='Run stop-exposure')
+    parser.add_argument('--stop-requested', action='store_true', help='Run stop-requested')
+    parser.add_argument('--get-n-queued', action='store_true', help='Get number of queued exposures')
+    parser.add_argument('--add-exposure', type=str, help='Enqueue the given JSON-encoded exposure')
+    parser.add_argument('--modify-exposure', nargs=2, type=str, help='Modify an exposure given the JSON-encoded selection and JSON-encoded update arguments')
+    parser.add_argument('--clear-queue', action='store_true', help='Remove all exposures from queue')
+    opt = parser.parse_args()
+
+    rc = RemoteClient()
+    if opt.stop:
+        rc.stopexposure()
+    if opt.stop_requested:
+        rc.stoprequested()
+    if opt.get_n_queued:
+        n = rc.get_n_queued()
+        print('n_queued = %i' % n)
+    if opt.clear_queue:
+        rc.clear_queue()
+    if opt.add_exposure is not None:
+        exp = json.loads(opt.add_exposure)
+        rc.addexposure(**exp)
+    if opt.modify_exposure is not None:
+        sel,up = opt.modify_exposure
+        select = json.loads(sel)
+        update = json.loads(up)
+        rc.modifyexposure(select=select, update=update)
+    return 0
 
 if __name__ == '__main__':
+    import sys
+    sys.exit(main())
+
     # rc = RemoteClient(cs_host='10.10.168.162', cs_port=7767)
     # rc.addexposure()
     # rc.addexposure(exptype='dark')
@@ -109,8 +149,13 @@ if __name__ == '__main__':
     res = rc.get_n_queued()
     print('Got N queued:', res)
 
-    res = rc.addexposure(ra=80., dec=-10., verbose=True,
-                         propid='2014B-0404',
-                         #propid='2023A-140687',
-                         object='DECaLS_5774_z')
-    print('Addexposure: got', res)
+    # res = rc.addexposure(ra=80., dec=-10., verbose=True,
+    #                      propid='2014B-0404',
+    #                      #propid='2023A-140687',
+    #                      object='DECaLS_5774_z')
+    # print('Addexposure: got', res)
+
+    res = rc.modifyexposure(select=dict(object='IBIS_deep_desi220_M464_29'),
+                            update=dict(expTime=401))#filter='M411'))#
+    #"IBIS_deep_cosmos_M464_1"
+    print('Got', res)
