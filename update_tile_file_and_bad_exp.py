@@ -59,38 +59,36 @@ def update_bad_expid_file(bad_exp_file, bad_obs_table):
     comment = np.full(len(bad_obs_table), 'Automatically flagged')
     
     # The information that will be written to bad exposure file
-    data = np.column_stack((expnum, seeing, efftime, survey_speed, comment))
+
+    # note that this list *must* match the same order as the columns in 'data'
+    # and the bad_expid file!
+    columns = ["expnum", "seeing", "efftime", "survey_speed", "comment"]
+    data = np.rec.fromarrays([expnum, seeing, efftime, survey_speed, comment],
+                             names=columns)
 
     # Read existing expnums in bad_exp_file
+    existing_bad_exps = None
     existing_expnums = set()
     if os.path.exists(bad_exp_file):
-        with open(bad_exp_file, "r") as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                existing_expnums.add(int(line.split()[0]))
+        existing_bad_exps =  Table.read(bad_exp_file, format="ascii.basic", guess=False,
+                                        names=columns)
+        existing_bad_exps = np.array(existing_bad_exps)
+        existing_expnums = existing_bad_exps['expnum']
 
     # Remove rows that are already in bad_exp_file
     mask = ~np.isin(expnum, list(existing_expnums))
-    new_data = data[mask]
+    data = data[mask]
+    if len(data) == 0:
+        return
 
-    if len(new_data) == 0: # Nothing new to add
-        sort_bad_exp_file(bad_exp_file) # Make sure sorting is in order
-        return  
-    
-    # Write bad exposures to file
-    with open(bad_exp_file, "a") as f:
-        for i, row in enumerate(new_data):
-            f.write(f"{int(new_data[i][0])} "
-                    f"{float(new_data[i][1]):.3f} "
-                    f"{float(new_data[i][2]):.1f} "
-                    f"{float(new_data[i][3]):.3f} "
-                    f"\"{new_data[i][4]}\"\n")
+    if existing_bad_exps is not None:
+        data = np.concatenate((data, existing_bad_exps))
 
     # Sort by expnum
-    sort_bad_exp_file(bad_exp_file)
+    data = data[np.argsort(data['expnum'])]
 
+    # Convert back to astropy table and write
+    Table(data).write(bad_exp_file, format='ascii.basic', overwrite=True)
 
 def update_tile_and_bad_exp_file(logs_dir_path, tile_file, bad_exp_file):
     '''
@@ -158,6 +156,7 @@ def update_tile_and_bad_exp_file(logs_dir_path, tile_file, bad_exp_file):
 
     # Write the new efftime array to the EFFTIME_TOT column
     tiles['EFFTIME_TOT'] = np.round(updated_efftime_array, decimals=2)
+    tiles['DONE'] = done_array.astype(int)
     tiles.write(tile_file, overwrite=True)
 
     print('Wrote new tile file. Done!')
@@ -172,4 +171,9 @@ def main(ibis_tile_file, logs_dir_path, bad_exp_filename):
 
     update_tile_and_bad_exp_file(logs_dir_path, ibis_tile_file, bad_exp_filename)
 
-
+if __name__ == '__main__':
+    ibis_obs = os.path.join(os.environ['HOME'], 'ibis-observing')
+    logdir = os.path.join(ibis_obs, 'logs')
+    bad_exp_file = os.path.join(ibis_obs, 'obstatus', 'bad_expid.txt')
+    tile_file = os.path.join(ibis_obs, 'obstatus', 'ibis-tiles.ecsv')
+    update_tile_and_bad_exp_file(logdir, tile_file, bad_exp_file)
