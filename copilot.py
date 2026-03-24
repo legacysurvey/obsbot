@@ -1763,12 +1763,39 @@ def set_tiles_efftime_from_db(nom, opt):
         missing_from_db = list(set(meas.expnum) - set(db_file_expnums))
         print('Expnums missing from db files:', len(missing_from_db))
 
-        #I = np.flatnonzero([e in missing_from_db for e in meas.expnum])
-        #meas.cut(I)
-
+        missing_from_db.sort()
         missing_db = [expnum_to_exp[e] for e in missing_from_db]
-        write_fits_or_ecsv(missing_db, None, 'missing.ecsv')
-        print('Wrote missing.ecsv')
+
+        # put a fake entry on the end of 'missing_db' to make the loop logic
+        # below simpler
+        fake_lastone = Duck()
+        fake_lastone.mjd_obs = -1
+        missing_db.append(fake_lastone)
+
+        last_date = None
+        inds = []
+        for i,meas in enumerate(missing_db):
+            d = mjdtodate(meas.mjd_obs)
+            d -= datetime.timedelta(hours=12)
+            d = d.date()
+            if d != last_date:
+                if last_date is not None:
+                    # Write out
+                    mm = [missing_db[i] for i in inds]
+                    inds = []
+                    outfn = ('db-%i-%02i-%02i.ecsv' %
+                             (last_date.year, last_date.month, last_date.day))
+                    write_fits_or_ecsv(mm, None, outfn)
+                    print('Wrote', outfn)
+                print()
+                if meas.mjd_obs < 0:
+                    break
+                print('Date', d)
+                last_date = d
+            print('Expnum', meas.expnum, 'exptime', meas.exptime, 'efftime %.1f' %
+                  (meas.exptime / meas.expfactor if meas.expfactor > 0 else 0.),
+                  'object', meas.object)
+            inds.append(i)
 
 def write_fits_or_ecsv(ccds, fits, ecsv):
     T = db_to_fits(ccds)
