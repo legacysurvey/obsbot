@@ -1652,14 +1652,14 @@ def set_tiles_efftime_from_db(nom, opt):
             exp.object = exp.object.replace('M464', 'M411')
 
     # Keep only one entry per expnum
-    expnum_map = {}
+    expnum_to_exp = {}
     for exp in db:
-        expnum_map[exp.expnum] = exp
-    print(len(expnum_map), 'unique exposures in db')
-    expnums = list(expnum_map.keys())
+        expnum_to_exp[exp.expnum] = exp
+    print(len(expnum_to_exp), 'unique exposures in db')
+    expnums = list(expnum_to_exp.keys())
     expnums.sort()
     print('expnum range:', expnums[0], expnums[-1])
-    db = [expnum_map[e] for e in expnums]
+    db = [expnum_to_exp[e] for e in expnums]
 
     bands = set([e.band for e in db])
     print('Bands:', bands)
@@ -1724,12 +1724,15 @@ def set_tiles_efftime_from_db(nom, opt):
 
         expfactor_old_new = []
 
+        db_file_expnums = []
+
         for fn in fns:
             db = Table.read(fn, format='ascii.ecsv')
             print('Read', len(db), 'from', fn)
             for i,(e,b) in enumerate(zip(db['expnum'], db['band'])):
                 if not b.startswith('M'):
                     continue
+                db_file_expnums.append(e)
                 if not e in expnum_map:
                     print('Did not find expnum %i (listed in db file %s)' % (e, fn))
                     continue
@@ -1756,6 +1759,50 @@ def set_tiles_efftime_from_db(nom, opt):
         plt.ylabel('New speed')
         plt.savefig('expfactor-oldnew.png')
 
+        # Now find expnums that are not in db files (missing db file entries)
+        missing_from_db = list(set(meas.expnum) - set(db_file_expnums))
+        print('Expnums missing from db files:', len(missing_from_db))
+
+        #I = np.flatnonzero([e in missing_from_db for e in meas.expnum])
+        #meas.cut(I)
+
+        missing_db = [expnum_to_exp[e] for e in missing_from_db]
+        write_fits_or_ecsv(missing_db, None, 'missing.ecsv')
+        print('Wrote missing.ecsv')
+
+def write_fits_or_ecsv(ccds, fits, ecsv):
+    T = db_to_fits(ccds)
+    # IBIS, drop irrelevant columns
+    T.delete_column('bad_pixcnt')
+    T.delete_column('readtime')
+    T.delete_column('passnumber')
+    T.rename('md5sum', 'checksum')
+    for k in ['exptime', 'airmass', 'ebv', 'zeropoint', 'transparency',
+              'seeing', 'sky', 'expfactor', 'dx', 'dy', 'tileebv',
+              'affine_x0', 'affine_y0', 'affine_dx', 'affine_dxx',
+              'affine_dxy', 'affine_dy', 'affine_dyx', 'affine_dyy' ]:
+        T.set(k, T.get(k).astype(np.float32))
+    # Compute effective exposure time
+    T.efftime = np.zeros(len(T), np.float32)
+    I = np.flatnonzero(T.expfactor > 0)
+    T.efftime[I] = T.exptime[I] / T.expfactor[I]
+    # Sort by expnum
+    T.cut(np.argsort(T.expnum))
+
+    if fits:
+        T.writeto(fits)
+        print('Wrote', fits)
+    if ecsv:
+        from astropy.table import Table
+        import tempfile
+        # hack: write FITS and read with astropy!
+        f,tmpfn = tempfile.mkstemp(suffix='.fits')
+        os.close(f)
+        T.writeto(tmpfn)
+        t = Table.read(tmpfn)
+        os.remove(tmpfn)
+        t.write(ecsv, overwrite=True)
+        
 def main(cmdlineargs=None, get_copilot=False):
     import optparse
     parser = optparse.OptionParser(usage='%prog')
@@ -2053,37 +2100,7 @@ def main(cmdlineargs=None, get_copilot=False):
         print(ccds.count(), 'measured CCDs')
         if len(ccds) == 0:
             return -1
-        T = db_to_fits(ccds)
-        # IBIS, drop irrelevant columns
-        T.delete_column('bad_pixcnt')
-        T.delete_column('readtime')
-        T.delete_column('passnumber')
-        T.rename('md5sum', 'checksum')
-        for k in ['exptime', 'airmass', 'ebv', 'zeropoint', 'transparency',
-                  'seeing', 'sky', 'expfactor', 'dx', 'dy', 'tileebv',
-                  'affine_x0', 'affine_y0', 'affine_dx', 'affine_dxx',
-                  'affine_dxy', 'affine_dy', 'affine_dyx', 'affine_dyy' ]:
-            T.set(k, T.get(k).astype(np.float32))
-        # Compute effective exposure time
-        T.efftime = np.zeros(len(T), np.float32)
-        I = np.flatnonzero(T.expfactor > 0)
-        T.efftime[I] = T.exptime[I] / T.expfactor[I]
-        # Sort by expnum
-        T.cut(np.argsort(T.expnum))
-
-        if opt.fits:
-            T.writeto(opt.fits)
-            print('Wrote', opt.fits)
-        elif opt.ecsv:
-            from astropy.table import Table
-            import tempfile
-            # hack: write FITS and read with astropy!
-            f,tmpfn = tempfile.mkstemp(suffix='.fits')
-            os.close(f)
-            T.writeto(tmpfn)
-            t = Table.read(tmpfn)
-            os.remove(tmpfn)
-            t.write(opt.ecsv, overwrite=True)
+        write_fits_ecsv(ccds, opt.fits, opt.ecsv)
         if not opt.end_of_night:
             return 0
 
