@@ -2127,7 +2127,7 @@ def main(cmdlineargs=None, get_copilot=False):
         print(ccds.count(), 'measured CCDs')
         if len(ccds) == 0:
             return -1
-        write_fits_or_csv(ccds, opt.fits, opt.ecsv)
+        write_fits_or_ecsv(ccds, opt.fits, opt.ecsv)
         if not opt.end_of_night:
             return 0
 
