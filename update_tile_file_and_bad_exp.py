@@ -155,8 +155,8 @@ def update_tile_and_bad_exp_file(logs_dir_path, tile_file, bad_exp_file):
     print('Total number of bad exposures = ', count)
 
     # Write the new efftime array to the EFFTIME_TOT column
-    tiles['EFFTIME_TOT'] = np.round(updated_efftime_array, decimals=2)
-    tiles['DONE'] = done_array.astype(int)
+    tiles['EFFTIME_TOT'] = np.round(updated_efftime_array, decimals=2).astype(np.float32)
+    tiles['DONE'] = done_array.astype(np.int16)
     tiles.write(tile_file, overwrite=True)
 
     print('Wrote new tile file. Done!')
