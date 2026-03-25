@@ -1797,6 +1797,93 @@ def set_tiles_efftime_from_db(nom, opt):
                   'object', meas.object)
             inds.append(i)
 
+    # disabled plots
+    if False:
+        I = np.flatnonzero(meas.expfactor > 0.)
+        meas.cut(I)
+        print('Cut to', len(meas), 'good measurements')
+
+        for key in ['zeropoint', 'airmass', 'seeing', 'sky', 'transparency',
+                    'expfactor']:
+            v = meas.get(key)
+            print('Column', key, ': range', v.min(), v.max())
+
+        efftime_orig = tiles['EFFTIME_TOT'].copy()
+
+        tiles['EFFTIME_TOT'][:] = 0.
+
+        update_tile_file(meas, tilefn, opt, obs, nom, tiles=tiles)
+
+        efftime_new = tiles['EFFTIME_TOT']
+
+        bands = list(bands)
+        bands.sort()
+
+        plt.figure(figsize=(7,5))
+        plt.clf()
+        for b in bands:
+            I = np.flatnonzero(meas.band == b)
+            lo,hi = 22.0, 25.5
+            plt.hist(np.clip(meas.zeropoint[I], lo, hi), range=(lo, hi), bins=55, histtype='step',
+                     label=b)
+        plt.legend()
+        plt.title('Zeropoints')
+        plt.savefig('zpt.png')
+
+        plt.clf()
+        for b in bands:
+            I = np.flatnonzero(meas.band == b)
+            lo,hi = 20,23
+            plt.hist(np.clip(meas.sky[I], lo, hi), range=(lo,hi), bins=60, histtype='step',
+                     label=b)
+        plt.legend()
+        plt.title('Sky')
+        plt.savefig('sky.png')
+
+        plt.clf()
+        plt.hist(meas.seeing, bins=20)
+        plt.title('Seeing')
+        plt.savefig('see.png')
+
+        plt.clf()
+        tmax = 2.
+        plt.hist(np.clip(meas.transparency, 0, tmax), bins=20)
+        plt.title('Transparency')
+        plt.savefig('trans.png')
+
+        plt.clf()
+        for b in bands:
+            I = np.flatnonzero(meas.band == b)
+            plt.hist(1. / meas.expfactor[I], range=(0, 2.5), bins=75, histtype='step',
+                     label=b)
+        plt.legend()
+        plt.title('Speed = 1/expfactor = efftime/exptime')
+        plt.savefig('speed.png')
+
+        plt.clf()
+        for b in bands:
+            I = np.flatnonzero(meas.band == b)
+            plt.hist(meas.exptime[I] / meas.expfactor[I], bins=50, histtype='step',
+                     label=b)
+        plt.legend()
+        plt.title('Efftime')
+        plt.savefig('efftime.png')
+
+        mx = 800
+        tbands = tiles['FILTER']
+        plt.clf()
+        for b in bands:
+            I = np.flatnonzero((tbands == b))# * (efftime_new > 0))
+            plt.plot(np.clip(efftime_orig[I], 0, mx),
+                     np.clip(efftime_new[I], 0, mx), '.', alpha=0.2, label=b)
+        plt.plot([0, mx], [0,mx], 'k--')
+        plt.axis([0, mx, 0, mx])
+        plt.legend()
+        plt.xlabel('OLD Efftime')
+        plt.ylabel('NEW Efftime')
+        plt.title('Efftime')
+        plt.savefig('efftimes.png')
+
 def write_fits_or_ecsv(ccds, fits, ecsv):
     T = db_to_fits(ccds)
     # IBIS, drop irrelevant columns
@@ -1989,93 +2076,6 @@ def main(cmdlineargs=None, get_copilot=False):
 
     if opt.set_tiles_efftime_from_db:
         set_tiles_efftime_from_db(nom, opt)
-        sys.exit(0)
-            
-        I = np.flatnonzero(meas.expfactor > 0.)
-        meas.cut(I)
-        print('Cut to', len(meas), 'good measurements')
-
-        for key in ['zeropoint', 'airmass', 'seeing', 'sky', 'transparency',
-                    'expfactor']:
-            v = meas.get(key)
-            print('Column', key, ': range', v.min(), v.max())
-
-        efftime_orig = tiles['EFFTIME_TOT'].copy()
-
-        tiles['EFFTIME_TOT'][:] = 0.
-
-        update_tile_file(meas, tilefn, opt, obs, nom, tiles=tiles)
-
-        efftime_new = tiles['EFFTIME_TOT']
-
-        bands = list(bands)
-        bands.sort()
-
-        plt.figure(figsize=(7,5))
-        plt.clf()
-        for b in bands:
-            I = np.flatnonzero(meas.band == b)
-            lo,hi = 22.0, 25.5
-            plt.hist(np.clip(meas.zeropoint[I], lo, hi), range=(lo, hi), bins=55, histtype='step',
-                     label=b)
-        plt.legend()
-        plt.title('Zeropoints')
-        plt.savefig('zpt.png')
-
-        plt.clf()
-        for b in bands:
-            I = np.flatnonzero(meas.band == b)
-            lo,hi = 20,23
-            plt.hist(np.clip(meas.sky[I], lo, hi), range=(lo,hi), bins=60, histtype='step',
-                     label=b)
-        plt.legend()
-        plt.title('Sky')
-        plt.savefig('sky.png')
-
-        plt.clf()
-        plt.hist(meas.seeing, bins=20)
-        plt.title('Seeing')
-        plt.savefig('see.png')
-
-        plt.clf()
-        tmax = 2.
-        plt.hist(np.clip(meas.transparency, 0, tmax), bins=20)
-        plt.title('Transparency')
-        plt.savefig('trans.png')
-
-        plt.clf()
-        for b in bands:
-            I = np.flatnonzero(meas.band == b)
-            plt.hist(1. / meas.expfactor[I], range=(0, 2.5), bins=75, histtype='step',
-                     label=b)
-        plt.legend()
-        plt.title('Speed = 1/expfactor = efftime/exptime')
-        plt.savefig('speed.png')
-
-        plt.clf()
-        for b in bands:
-            I = np.flatnonzero(meas.band == b)
-            plt.hist(meas.exptime[I] / meas.expfactor[I], bins=50, histtype='step',
-                     label=b)
-        plt.legend()
-        plt.title('Efftime')
-        plt.savefig('efftime.png')
-
-        mx = 800
-        tbands = tiles['FILTER']
-        plt.clf()
-        for b in bands:
-            I = np.flatnonzero((tbands == b))# * (efftime_new > 0))
-            plt.plot(np.clip(efftime_orig[I], 0, mx),
-                     np.clip(efftime_new[I], 0, mx), '.', alpha=0.2, label=b)
-        plt.plot([0, mx], [0,mx], 'k--')
-        plt.axis([0, mx, 0, mx])
-        plt.legend()
-        plt.xlabel('OLD Efftime')
-        plt.ylabel('NEW Efftime')
-        plt.title('Efftime')
-        plt.savefig('efftimes.png')
-
         sys.exit(0)
 
     if opt.nightplot or opt.covplots or opt.end_of_night:
