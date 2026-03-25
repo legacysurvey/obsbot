@@ -1916,7 +1916,46 @@ def write_fits_or_ecsv(ccds, fits, ecsv):
         t = Table.read(tmpfn)
         os.remove(tmpfn)
         t.write(ecsv, overwrite=True)
-        
+
+def update_db_from_ecsv(opt):
+    from astropy.table import Table, MaskedColumn
+    import obsdb
+    from django.db import transaction
+    fn = None
+    replace = False
+    fmt = 'ascii.ecsv'
+    if opt.append_ecsv:
+        fn = opt.append_ecsv
+    elif opt.replace_ecsv:
+        fn = opt.replace_ecsv
+        replace = True
+    elif opt.replace_fits:
+        fn = opt.replace_fits
+        replace = True
+        fmt = 'fits'
+
+    t = Table.read(fn, format=fmt)
+    with transaction.atomic():
+        if replace:
+            obsdb.MeasuredCCD.objects.all().delete()
+        t.rename_column('checksum', 'md5sum')
+        colnames = list(t.columns)
+        colnames.remove('efftime') # not in the db
+        # Fill in masked values (otherwise, ecsv contains -- not "")
+        columns = {}
+        for c in colnames:
+            col = t[c]
+            if isinstance(col, MaskedColumn):
+                col = col.filled('')
+            columns[c] = col
+        for i in range(len(t)):
+            d = dict()
+            for name,col in columns.items():
+                d[name] = col[i]
+            #print('init db row:', d)
+            m = obsdb.MeasuredCCD.objects.create(**d)
+            m.save()
+
 def main(cmdlineargs=None, get_copilot=False):
     import optparse
     parser = optparse.OptionParser(usage='%prog')
@@ -2133,43 +2172,7 @@ def main(cmdlineargs=None, get_copilot=False):
 
     # Update (replace or append) database from ECSV or FITS table
     if opt.replace_ecsv or opt.append_ecsv or opt.replace_fits:
-        from astropy.table import Table, MaskedColumn
-        import obsdb
-        from django.db import transaction
-        fn = None
-        replace = False
-        fmt = 'ascii.ecsv'
-        if opt.append_ecsv:
-            fn = opt.append_ecsv
-        elif opt.replace_ecsv:
-            fn = opt.replace_ecsv
-            replace = True
-        elif opt.replace_fits:
-            fn = opt.replace_fits
-            replace = True
-            fmt = 'fits'
-
-        t = Table.read(fn, format=fmt)
-        with transaction.atomic():
-            if replace:
-                obsdb.MeasuredCCD.objects.all().delete()
-            t.rename_column('checksum', 'md5sum')
-            colnames = list(t.columns)
-            colnames.remove('efftime') # not in the db
-            # Fill in masked values (otherwise, ecsv contains -- not "")
-            columns = {}
-            for c in colnames:
-                col = t[c]
-                if isinstance(col, MaskedColumn):
-                    col = col.filled('')
-                columns[c] = col
-            for i in range(len(t)):
-                d = dict()
-                for name,col in columns.items():
-                    d[name] = col[i]
-                #print('init db row:', d)
-                m = obsdb.MeasuredCCD.objects.create(**d)
-                m.save()
+        update_db_from_ecsv(opt)
         return 0
 
     if opt.fix_db:
