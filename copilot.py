@@ -2211,7 +2211,6 @@ def main(cmdlineargs=None, get_copilot=False):
             else:
                 print('Updating tile file...')
                 #update_tile_file(meas, opt.tiles, opt, obs, nom)
-
                 from update_tile_file_and_bad_exp import update_tile_and_bad_exp_file
                 ibis_obs = os.path.join(os.environ['HOME'], 'ibis-observing')
                 logdir = os.path.join(ibis_obs, 'logs')
@@ -2271,6 +2270,22 @@ def main(cmdlineargs=None, get_copilot=False):
                     print('WARNING: committing tile file failed.')
                 else:
                     print('Tile file committed.')
+            else:
+                print('(dry run)')
+
+            # bad_exp_file was set above
+            bad_exp_dir = os.path.dirname(bad_exp_file)
+            bad_exp_filename = os.path.basename(bad_exp_file)
+            cmd = ('cd %s && git commit %s -m "update bad_expid.txt file for %s" '
+                + '&& git push') % (bad_exp_dir, bad_exp_filename, yymmdd)
+            print('Committing bad-exposure file:')
+            print(cmd)
+            if not opt.dry_run:
+                rtn = os.system(cmd)
+                if rtn:
+                    print('WARNING: committing bad-expid file failed.')
+                else:
+                    print('Bad exposure file committed.')
             else:
                 print('(dry run)')
         return 0

@@ -98,6 +98,7 @@ def update_tile_and_bad_exp_file(logs_dir_path, tile_file, bad_exp_file):
 
     print('Updating tile & bad exposure file')
     db_log_files = glob.glob(os.path.join(logs_dir_path, 'db-*.ecsv'))
+    db_log_files.sort()
 
     fmt = 'ascii.ecsv'
     tiles = Table.read(tile_file, format=fmt)
@@ -138,6 +139,7 @@ def update_tile_and_bad_exp_file(logs_dir_path, tile_file, bad_exp_file):
                 continue
 
             idx = np.where(tiles['OBJECT'] == log_file[i]['object'])[0]
+            print(file_name, ':', log_file[i]['object'], 'adding efftime %.1f' % log_file[i]['efftime'], 'to existing %.1f' % updated_efftime_array[idx], 'total %.1f' % (log_file[i]['efftime'] + updated_efftime_array[idx]))
             updated_efftime_array[idx] += log_file[i]['efftime']
 
             if len(idx) == 0:
