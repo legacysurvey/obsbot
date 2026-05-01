@@ -47,7 +47,7 @@ def sort_bad_exp_file(filename):
     table.write(filename, format="ascii.commented_header", overwrite=True)
 
 
-def update_bad_expid_file(bad_exp_file, bad_obs_table):
+def update_bad_expid_file(bad_exp_file, bad_obs_table, exempt_exp_file):
     '''
     Updates the bad exposure ID file
     '''
@@ -78,6 +78,20 @@ def update_bad_expid_file(bad_exp_file, bad_obs_table):
     # Remove rows that are already in bad_exp_file
     mask = ~np.isin(expnum, list(existing_expnums))
     data = data[mask]
+
+    # Read existing expnums in exempt_bad_exp_file
+    existing_exempt_bad_exps = None
+    existing_exempt_expnums = set()
+    if os.path.exists(exempt_exp_file):
+        existing_exempt_bad_exps =  Table.read(exempt_exp_file, format="ascii.basic", guess=False,
+                                        names=columns)
+        existing_exempt_bad_exps = np.array(existing_exempt_bad_exps)
+        existing_exempt_expnums = existing_exempt_bad_exps['expnum']
+
+    # Remove rows that are in exempt_bad_expid file
+    mask_exempt = ~np.isin(data['expnum'], list(existing_exempt_expnums))
+    data = data[mask_exempt]
+
     if len(data) == 0:
         return
 
@@ -90,7 +104,8 @@ def update_bad_expid_file(bad_exp_file, bad_obs_table):
     # Convert back to astropy table and write
     Table(data).write(bad_exp_file, format='ascii.basic', overwrite=True)
 
-def update_tile_and_bad_exp_file(logs_dir_path, tile_file, bad_exp_file):
+
+def update_tile_and_bad_exp_file(logs_dir_path, tile_file, bad_exp_file, exempt_bad_exp_file):
     '''
     Reads db-*.ecsv log files and updates the efftime_tot in tile file. 
     Identifies bad exposures and writes bad exposure file.
@@ -126,7 +141,7 @@ def update_tile_and_bad_exp_file(logs_dir_path, tile_file, bad_exp_file):
         out_of_spec_boolean = identify_bad_exposures(log_file, bad_exp_file)
 
         # Add the out of spec exposures to the bad exposure file, if they are not already in there
-        update_bad_expid_file(bad_exp_file, log_file[out_of_spec_boolean]) 
+        update_bad_expid_file(bad_exp_file, log_file[out_of_spec_boolean], exempt_bad_exp_file) 
 
         # Read the file to ensure also bad exposures added by hand are removed from tile file
         bad_exps =  Table.read(bad_exp_file, format="ascii.basic", guess=False, names=["expnum", "seeing", "efftime", "survey_speed", "comment"])
@@ -139,7 +154,7 @@ def update_tile_and_bad_exp_file(logs_dir_path, tile_file, bad_exp_file):
                 continue
 
             idx = np.where(tiles['OBJECT'] == log_file[i]['object'])[0]
-            print(file_name, ':', log_file[i]['object'], 'adding efftime %.1f' % log_file[i]['efftime'], 'to existing %.1f' % updated_efftime_array[idx], 'total %.1f' % (log_file[i]['efftime'] + updated_efftime_array[idx]))
+            #print(file_name, ':', log_file[i]['object'], 'adding efftime %.1f' % log_file[i]['efftime'], 'to existing %.1f' % updated_efftime_array[idx], 'total %.1f' % (log_file[i]['efftime'] + updated_efftime_array[idx]))
             updated_efftime_array[idx] += log_file[i]['efftime']
 
             if len(idx) == 0:
@@ -164,18 +179,19 @@ def update_tile_and_bad_exp_file(logs_dir_path, tile_file, bad_exp_file):
     print('Wrote new tile file. Done!')
 
 
-def main(ibis_tile_file, logs_dir_path, bad_exp_filename):
+def main(ibis_tile_file, logs_dir_path, bad_exp_filename, exempt_bad_exp_file):
     '''
     ibis_tile_file (str) - path to IBIS tile file (ibis-observing/obstatus/ibis-tiles.ecsv) 
     logs_dir_path (str) - path to logs directory with db-* files (ibis-observing/logs/)
     bad_exp_filename (str) - path to bad exposure file (ibis-observing/obstatus/bad-exp-file.txt)
     '''
 
-    update_tile_and_bad_exp_file(logs_dir_path, ibis_tile_file, bad_exp_filename)
+    update_tile_and_bad_exp_file(logs_dir_path, ibis_tile_file, bad_exp_filename, exempt_bad_exp_file)
 
 if __name__ == '__main__':
     ibis_obs = os.path.join(os.environ['HOME'], 'ibis-observing')
     logdir = os.path.join(ibis_obs, 'logs')
     bad_exp_file = os.path.join(ibis_obs, 'obstatus', 'bad_expid.txt')
+    exempt_bad_exp_file = os.path.join(ibis_obs, 'obstatus', 'exempt_bad_expid.txt')
     tile_file = os.path.join(ibis_obs, 'obstatus', 'ibis-tiles.ecsv')
-    update_tile_and_bad_exp_file(logdir, tile_file, bad_exp_file)
+    update_tile_and_bad_exp_file(logdir, tile_file, bad_exp_file, exempt_bad_exp_file)
