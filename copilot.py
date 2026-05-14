@@ -2215,7 +2215,8 @@ def main(cmdlineargs=None, get_copilot=False):
                 ibis_obs = os.path.join(os.environ['HOME'], 'ibis-observing')
                 logdir = os.path.join(ibis_obs, 'logs')
                 bad_exp_file = os.path.join(ibis_obs, 'obstatus', 'bad_expid.txt')
-                update_tile_and_bad_exp_file(logdir, opt.tiles, bad_exp_file)
+                exempt_bad_exp_file = os.path.join(ibis_obs, 'obstatus', 'exempt_bad_expid.txt')
+                update_tile_and_bad_exp_file(logdir, opt.tiles, bad_exp_file, exempt_bad_exp_file)
                 updated_tile_file = True
 
         if not opt.end_of_night:
