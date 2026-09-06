@@ -71,6 +71,8 @@ def filter_plot_color(filt, default='0.5'):
                  M464=(0, 142/255, 255/255),
                  M490=(0, 255/255, 255/255),
                  M517=(36/255, 255/255, 0),
+                 # CFHT
+                 M4376=(23/255, 0, 255/255),
                 )
     return ccmap.get(filt, default)
 
