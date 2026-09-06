@@ -45,6 +45,9 @@ class CFHTQuicklookNominalCalibration(NominalCalibration):
             fid.update(
                 k_co = 0.273,
                 A_co = 4.103,
+                exptime = 300.,
+                exptime_min = 120.,
+                exptime_max = 600.,
             )
         else:
             raise ValueError('Unknown band "%s"' % band)
