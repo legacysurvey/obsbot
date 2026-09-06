@@ -453,7 +453,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
 
     # set the range based on:
     # -- do we need to add a "darker than 15-deg twi" cut?
-    I = np.flatnonzero((T.seeing > 0) * (T.exptime > 30))
+    I = np.flatnonzero((T.seeing > 0) * (T.exptime > 30) * (T.dsky != 0.0))
     if len(I):
         mn,mx = T.dsky[I].min(), T.dsky[I].max()
     else:
