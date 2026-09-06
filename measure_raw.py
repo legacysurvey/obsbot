@@ -298,8 +298,6 @@ class RawMeasurer(object):
             print('Unknown band "%s"; no nominal sky available.' % band)
             sky0 = None
 
-        print('nom:', self.nom)
-        print('fid exptime for', band, '->', self.nom.fiducial_exptime(band))
         try:
             kx = self.nom.fiducial_exptime(band).k_co
         except:
@@ -1207,7 +1205,6 @@ def measure_raw(fn, primext=0, **kwargs):
         if nom is None:
             import camera_cfht_quicklook
             nom = camera_cfht_quicklook.CFHTQuicklookNominalCalibration()
-        print('Nom:', nom)
         ext = kwargs.pop('ext', 0)
         from measure_cfht import CFHTQuicklookMeasurer
         meas = CFHTQuicklookMeasurer(fn, ext, nom, **kwargs)
