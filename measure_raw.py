@@ -459,16 +459,17 @@ class RawMeasurer(object):
             ps.savefig()
 
         # Aperture photometry
+        from photutils.aperture import CircularAperture, aperture_photometry
         apxy = np.vstack((fx, fy)).T
         ap = []
         aprad_pix = self.aprad / pixsc
-        aper = photutils.CircularAperture(apxy, aprad_pix)
+        aper = CircularAperture(apxy, aprad_pix)
         imsigma = np.ones_like(img) * sig1
-        p = photutils.aperture_photometry(img, aper, error=imsigma)
+        p = aperture_photometry(img, aper, error=imsigma)
         apflux = p.field('aperture_sum')
         apflux_err = p.field('aperture_sum_err')
         imsigma = np.hypot(sig1, np.sqrt(np.maximum(img, 0.)))
-        p = photutils.aperture_photometry(img, aper, error=imsigma)
+        p = aperture_photometry(img, aper, error=imsigma)
         apflux_err_poisson = p.field('aperture_sum_err')
 
         # Manual aperture photometry to get clipped means in sky annulus
