@@ -283,8 +283,8 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
 
     T.mjd_end = T.mjd_obs + T.exptime / 86400.
 
-    T.isobject = np.logical_or(T.obstype == 'object', T.obstype == 'science')
-    
+    T.isobject = np.isin(T.obstype, ['object', 'OBJECT', 'science'])
+
     Tnonobject = T[np.logical_not(T.isobject)]
     print(len(Tnonobject), 'exposures are not OBJECTs')
     print('Obs types:', np.unique(T.obstype))
@@ -1111,7 +1111,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
     if opt.maxshift is not None:
         kwa.update(measargs=dict(maxshift=opt.maxshift))
     M = measure_raw(fn, ps=ps, **kwa)
-    #print('measure_raw result:', M)
+    #print('measure_raw result:', M.keys())
 
     if opt.doplots:
         from glob import glob
@@ -1224,6 +1224,8 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
     else:
         expfactor = 0.
 
+    # update parsed band
+    m.band = M['band']
     m.racenter  = M['ra_ccd']
     m.deccenter = M['dec_ccd']
     m.ebv  = ebv
