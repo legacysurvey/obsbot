@@ -1111,7 +1111,7 @@ def process_image(fn, ext, nom, sfd, opt, obs, tiles):
     if opt.maxshift is not None:
         kwa.update(measargs=dict(maxshift=opt.maxshift))
     M = measure_raw(fn, ps=ps, **kwa)
-    #print(M)
+    #print('measure_raw result:', M)
 
     if opt.doplots:
         from glob import glob
