@@ -2087,7 +2087,10 @@ def main(cmdlineargs=None, get_copilot=False):
     rawext = opt.ext
     if opt.extnum is not None:
         rawext = opt.extnum
-    assert(rawext is not None)
+        exts = [rawext]
+    else:
+        exts = rawext.split(',')
+    #assert(rawext is not None)
 
     from astrometry.util.fits import fits_table
     if opt.tiles is None:
@@ -2293,8 +2296,6 @@ def main(cmdlineargs=None, get_copilot=False):
 
     print('Loading SFD maps...')
     sfd = SFDMap()
-
-    exts = rawext.split(',')
 
     if len(args) > 0:
         mp = None
