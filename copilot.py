@@ -453,7 +453,7 @@ def plot_measurements(mm, plotfn, nom, mjds=[], mjdrange=None, allobs=None,
 
     # set the range based on:
     # -- do we need to add a "darker than 15-deg twi" cut?
-    I = np.flatnonzero((T.seeing > 0) * (T.exptime > 30))
+    I = np.flatnonzero((T.seeing > 0) * (T.exptime > 30) * (T.dsky != 0.0))
     if len(I):
         mn,mx = T.dsky[I].min(), T.dsky[I].max()
     else:
@@ -1319,9 +1319,11 @@ def plot_recent(opt, obs, nom, tiles=None, markmjds=[],
         tiles is not None):
         import pylab as plt
         plt.figure(2)
-        radec_plot(botplanfn, mm, tiles, nightly, mjd_start, opt.radec_plot_filename)
+        radec_plot(botplanfn, mm, tiles, nightly, mjd_start, opt.radec_plot_filename,
+                   wrap_ra=opt.wrap_ra)
     elif nightly:
-        radec_plot(None, mm, tiles, nightly, mjd_start, opt.radec_plot_filename)
+        radec_plot(None, mm, tiles, nightly, mjd_start, opt.radec_plot_filename,
+                   wrap_ra=opt.wrap_ra)
 
     camera = mm[0].camera
     allobs = obsdb.MeasuredCCD.objects.filter(camera=camera)
@@ -1342,7 +1344,7 @@ def plot_recent(opt, obs, nom, tiles=None, markmjds=[],
                           **kwargs)
     return T
 
-def radec_plot(botplanfn, mm, tiles, nightly, mjdstart, plotfn):
+def radec_plot(botplanfn, mm, tiles, nightly, mjdstart, plotfn, wrap_ra=False):
     import pylab as plt
     from astrometry.util.fits import fits_table
     if botplanfn is None:
@@ -1356,6 +1358,12 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart, plotfn):
     mlast   = msorted[-1]
     mrecent = msorted[-10:]
 
+    def plotra(ra):
+        if wrap_ra:
+            ra = np.array(ra)
+            ra = ra + -360*(ra>180)
+        return ra
+
     lp,lt = [],[]
     plt.clf()
 
@@ -1364,16 +1372,16 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart, plotfn):
             #I = (tiles.in_ibis == 0) * (tiles.filter == 'M411')
             #plt.plot(tiles.ra[I], tiles.dec[I], 'k.', alpha=0.05)
             I = (tiles.in_ibis == 1) * (tiles.filter == 'M411')
-            plt.plot(tiles.ra[I], tiles.dec[I], 'ko', alpha=0.05, mew=0, ms=5)
+            plt.plot(plotra(tiles.ra[I]), tiles.dec[I], 'ko', alpha=0.05, mew=0, ms=5)
         except:
             pass
 
-    plt.plot([m.rabore for m in msorted], [m.decbore for m in msorted],
+    plt.plot(plotra([m.rabore for m in msorted]), [m.decbore for m in msorted],
              'k-', lw=2, alpha=0.1)
     bands = np.unique([m.band for m in msorted])
     for b in bands:
         mb = [m for m in msorted if m.band == b]
-        pr = plt.scatter([m.rabore for m in mb], [m.decbore for m in mb],
+        pr = plt.scatter(plotra([m.rabore for m in mb]), [m.decbore for m in mb],
                          color=filter_plot_color(b, 'k'),
                          marker='o', s=20, edgecolors='none')
         lp.append(pr)
@@ -1392,7 +1400,7 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart, plotfn):
         # Plot the planned exposures
         P.color = np.array([filter_plot_color(f[:1],'k') for f in P.filter])
 
-        pl = plt.plot(mlast.rabore, mlast.decbore, 'o',
+        pl = plt.plot(plotra(mlast.rabore), mlast.decbore, 'o',
                       color=filter_plot_color(mlast.band,'k'), ms=10)
         rd.append(([mlast.rabore], [mlast.decbore]))
         lp.append(pl[0])
@@ -1402,14 +1410,14 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart, plotfn):
         I = np.flatnonzero(P.type == 'P')
         # Bold the first few ones
         II = I[:6]
-        plt.plot(P.ra[II], P.dec[II], 'k-', lw=3, alpha=0.5)
+        plt.plot(plotra(P.ra[II]), P.dec[II], 'k-', lw=3, alpha=0.5)
         II = I[:5]
-        pplan = plt.scatter(P.ra[II], P.dec[II], c=P.color[II], marker='*',
+        pplan = plt.scatter(plotra(P.ra[II]), P.dec[II], c=P.color[II], marker='*',
                             s=100, alpha=1.0)
         # Faint the rest
         II = I[5:]
-        plt.plot(P.ra[II], P.dec[II], 'k-', lw=3, alpha=0.2)
-        pplan = plt.scatter(P.ra[II], P.dec[II], c=P.color[II], marker='*',
+        plt.plot(plotra(P.ra[II]), P.dec[II], 'k-', lw=3, alpha=0.2)
+        pplan = plt.scatter(plotra(P.ra[II]), P.dec[II], c=P.color[II], marker='*',
                             s=100, alpha=0.4)
 
         rd.append((P.ra[I], P.dec[I]))
@@ -1419,7 +1427,7 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart, plotfn):
         # Bold line from "most recent" to "first planned"
         if len(I) > 0:
             p = P[I[0]]
-            plt.plot([mlast.rabore, p.ra], [mlast.decbore, p.dec], '-', lw=3, alpha=0.5, color=filter_plot_color(p.filter,'k'))
+            plt.plot(plotra([mlast.rabore, p.ra]), [mlast.decbore, p.dec], '-', lw=3, alpha=0.5, color=filter_plot_color(p.filter,'k'))
 
     plt.xlabel('RA (deg)')
     plt.ylabel('Dec (deg)')
@@ -1430,6 +1438,8 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart, plotfn):
     rr = np.hstack([r for r,d in rd])
     dd = np.hstack([d for r,d in rd])
 
+    rr = plotra(rr)
+
     ralo  = rr.min()
     rahi  = rr.max()
     declo = dd.min()
@@ -1438,7 +1448,11 @@ def radec_plot(botplanfn, mm, tiles, nightly, mjdstart, plotfn):
     dr = rahi - ralo
     dd = dechi - declo
 
-    plt.axis([min(360, rahi+0.1*dr), max(0, ralo-0.1*dr), declo-0.1*dd, dechi+0.1*dd])
+    if wrap_ra:
+        plt.axis([min(180, rahi+0.1*dr + 10), max(-180, ralo-0.1*dr - 10),
+                  declo-0.1*dd - 5, dechi+0.1*dd + 5])
+    else:
+        plt.axis([min(360, rahi+0.1*dr), max(0, ralo-0.1*dr), declo-0.1*dd, dechi+0.1*dd])
 
     if nightly:
         ## HACK -- subtract 0.5 for UTC to local calendar date at start of night.
@@ -2016,6 +2030,9 @@ def main(cmdlineargs=None, get_copilot=False):
     parser.add_option('--radec-plot-filename', default='radec.png',
                       help='Save "radec" plot to given file, default %(default)s')
 
+    parser.add_option('--wrap-ra', default=False, action='store_true',
+                      help='Wrap at RA=0?')
+
     parser.add_option('--nightplot', '--night', action='store_true',
                       help="Plot tonight's data and quit", default=False)
     parser.add_option('--ago', type=int, help='Plot N nights ago; with --night')
@@ -2091,7 +2108,10 @@ def main(cmdlineargs=None, get_copilot=False):
     rawext = opt.ext
     if opt.extnum is not None:
         rawext = opt.extnum
-    assert(rawext is not None)
+        exts = [rawext]
+    else:
+        exts = rawext.split(',')
+    #assert(rawext is not None)
 
     from astrometry.util.fits import fits_table
     if opt.tiles is None:
@@ -2297,8 +2317,6 @@ def main(cmdlineargs=None, get_copilot=False):
 
     print('Loading SFD maps...')
     sfd = SFDMap()
-
-    exts = rawext.split(',')
 
     if len(args) > 0:
         mp = None

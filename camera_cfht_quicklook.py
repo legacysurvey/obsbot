@@ -37,14 +37,21 @@ class CFHTQuicklookNominalCalibration(NominalCalibration):
         return science
 
     def fiducial_exptime(self, band):
-        #def _fiducial_exptime(self, fid, band)
         fid = NominalExptime()
         print('fid: band', band)
         fid.update(seeing=1.0)
+
+        # For CFHT, from Rongpu, 2026-09-09
+        # M411   3.774
+        # M438   3.576
+        # M464   3.366
+        # M490   3.141
+        # M517   2.922
+
         if band == 'M4376':
             fid.update(
                 k_co = 0.273,
-                A_co = 4.103,
+                A_co = 3.576,
                 exptime = 300.,
                 exptime_min = 120.,
                 exptime_max = 600.,
